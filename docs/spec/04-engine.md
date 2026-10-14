@@ -214,7 +214,7 @@ Analyze base and head with the same actors and the same requirements (config plu
 
 ## 13. Patch ops (`engine/patch.py`)
 
-Candidate fixes are lists of ops applied to a copy of the head resources. Rules and Claude use the same catalog.
+Candidate fixes are lists of ops applied to a copy of the head resources. Rules and the LLM use the same catalog.
 
 | Op | Fields | Effect |
 | --- | --- | --- |
@@ -253,7 +253,7 @@ Candidate IDs are fixed by where they come from:
 | ID | Source | Fix |
 | --- | --- | --- |
 | A | rule | Revert: remove the memberships or statements the PR added on the opened paths |
-| B | Claude | A structural fix, such as a new narrower role (`06-agent.md`) |
+| B | The LLM | A structural fix, such as a new narrower role (`06-agent.md`) |
 | C | rule | A `Deny` on the role that grants the data, conditioned on the new principal. Always UNKNOWN by design: we do not model that condition |
 | D | rule | Remove the statement that lets a group or role reach the role on the path |
 | S | rule | Scope down: set a statement on the path that grants both required and dangerous locations to the required ones only |
@@ -268,7 +268,7 @@ Generate only the candidates that apply to the paths in hand; derive names from 
 2. Fewer UNKNOWN steps first.
 3. The smallest change: fewer ops, then fewer permissions removed.
 4. No broad wildcard in an added statement.
-5. Rule candidates before Claude's, then by ID.
+5. Rule candidates before the LLM's, then by ID.
 
 The first `pass` is `recommended`. Jev can veto, never approve: if Jev scores "could this fix break legitimate
 use?" above 0.5, the candidate is labeled "needs a closer look" and cannot be recommended. If nothing passes,

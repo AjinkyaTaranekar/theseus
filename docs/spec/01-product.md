@@ -11,7 +11,7 @@ It reads three sources of truth and reports where they disagree:
 
 | Source | Read from | Example gap |
 | --- | --- | --- |
-| What the PR says | PR title and body, read by Claude | "Your PR says logs. Your change grants the customer database." |
+| What the PR says | PR title and body, read by the LLM | "Your PR says logs. Your change grants the customer database." |
 | What Terraform allows | The Terraform plan JSON and `.tf` files | A grant on a path to sensitive data |
 | What the code calls | Python service code in the repo | A grant no code ever calls: remove it and nothing breaks |
 
@@ -41,7 +41,7 @@ The `public-bucket` fixture is a preset on the Try-it page, not a video scene.
 | Layer | Decides | Never does |
 | --- | --- | --- |
 | A person | Which fix ships | Nothing changes without them |
-| Claude (System 2) | Proposes structural fixes, reads PR intent, writes explanations | Decide what is reachable; call write tools |
+| The LLM (System 2), GLM 5.3 by default | Proposes structural fixes, reads PR intent, writes explanations | Decide what is reachable; call write tools |
 | Jev (System 1) | Fast typed judgments with probabilities: sensitivity, urgency, "could this fix break legitimate use?" | Approve a fix (it can only veto) |
 | The engine and FalkorDB | What is reachable, which requirements hold, which fixes pass | Guess: unsupported rules return UNKNOWN |
 

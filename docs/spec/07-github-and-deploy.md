@@ -106,9 +106,10 @@ both run the same procedures.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `THESEUS_MODE` | `replay` | `replay`, `record` or `live` for model calls |
-| `ANTHROPIC_API_KEY` | | Claude |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | Intent and fixes |
-| `CLAUDE_FAST_MODEL` | `claude-haiku-5-5` | Jev fallback only |
+| `LLM_MODEL` | `openai/zai-org/GLM-5.3` | Intent and fixes, as a LiteLLM model string (`06-agent.md`) |
+| `LLM_FAST_MODEL` | `openai/zai-org/GLM-5.3-Flash` | Jev fallback only |
+| `LLM_API_BASE` | `https://api.inference.crusoecloud.com/v1` | Crusoe's OpenAI-compatible endpoint, or the endpoint of whichever provider `LLM_MODEL` names |
+| `LLM_API_KEY` | | The Crusoe key, or the key of whichever provider `LLM_MODEL` names |
 | `TYPESAFE_API_KEY` | | Jev |
 | `JEV_BASE_URL` | `https://api.typesafe.ai` | Jev |
 | `JEV_MODEL` | `jev-latest` | Jev |

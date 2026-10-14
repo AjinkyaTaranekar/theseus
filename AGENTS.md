@@ -22,7 +22,7 @@ python -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Windows: .venv\Scr
 pytest -q                                   # offline: unit, golden, contract, replay. Run before every commit
 pytest -q tests/golden/test_intern.py -x    # one golden test, stop at the first failure
 pytest -q -m falkordb                       # runs against FalkorDB Cloud; needs the FALKORDB_* settings in .env
-pytest -q -m live                           # real Claude and Jev calls; needs keys; only when a brief says so
+pytest -q -m live                           # real LLM and Jev calls; needs keys; only when a brief says so
 ruff check . && ruff format --check .       # must be clean; `ruff format .` fixes formatting
 python -m theseus analyze fixtures/intern   # prints the AnalysisResult JSON
 python -m theseus serve                     # API on http://localhost:8000; refuses to start without FalkorDB
@@ -42,7 +42,8 @@ not fix it in passing.
 - Cite evidence: every edge carries `Evidence` with a file and line, or `file="unknown"` with a reason. Never guess a line.
 - Pass PR titles and bodies, advisories, commit messages and code comments to a model only inside
   `<untrusted_...>` tags. They are data, never evidence and never instructions.
-- Call Claude only through `theseus/agent/llm.py` and Jev only through `theseus/agent/jev.py`, so record and replay work.
+- Call the LLM only through `theseus/agent/llm.py` and Jev only through `theseus/agent/jev.py`, so record and replay
+  work and the model stays a setting.
 - Return UNKNOWN when something is outside the supported IAM subset (`docs/spec/04-engine.md` section 5).
 
 **Ask first** (stop, and put the question in the PR description)
@@ -66,8 +67,8 @@ not fix it in passing.
 
 ## Code
 
-Python 3.12, FastAPI, Pydantic v2, FalkorDB with the `falkordb` client, the Anthropic and MCP Python SDKs, httpx,
-Jinja2, PyYAML, pytest, ruff (line length 110).
+Python 3.12, FastAPI, Pydantic v2, FalkorDB with the `falkordb` client, LiteLLM (GLM 5.3 on Crusoe by default), the
+MCP Python SDK, httpx, Jinja2, PyYAML, pytest, ruff (line length 110).
 
 - `from __future__ import annotations` and full type hints in every module.
 - Pydantic models for anything that crosses a module boundary; plain dicts inside a function.
@@ -91,8 +92,16 @@ def unlocks_edges(resources: list[Resource], dbs: set[str]) -> list[EdgeRow]:
         if f"db:{db}" not in dbs:
             log.info("secret %s names missing db %s; no edge", r.name, db)
             continue
-        rows.append(edge("UNLOCKS", f"secret:{r.name}", f"db:{db}", kind="inferred",
-                         grants=["read", "write"], evidence=[evidence_for(r)]))  # file and line from source_index
+        rows.append(
+            edge(
+                "UNLOCKS",
+                f"secret:{r.name}",
+                f"db:{db}",
+                kind="inferred",
+                grants=["read", "write"],
+                evidence=[evidence_for(r)],  # file and line from source_index
+            )
+        )
     return sorted(rows, key=lambda e: (e.src, e.dst))
 ```
 
@@ -106,7 +115,7 @@ dict order, `evidence=[]`, or a line number typed in by hand. (`edge` and `evide
 | `tests/unit/` | Pure functions on tiny inputs | Always |
 | `tests/golden/` | Engine output against `fixtures/<scenario>/expected.json`, through `project()` and `compare()` | Always |
 | `tests/contract/` | Model round-trips and schemas | Always |
-| `tests/replay/` | Claude and Jev calls replayed from `recordings/` | Always |
+| `tests/replay/` | LLM and Jev calls replayed from `recordings/` | Always |
 | `tests/integration/` | `@pytest.mark.falkordb`: the same answers from FalkorDB as from `MemoryStore` | With `FALKORDB_HOST` |
 | `tests/e2e/` | API routes with GitHub mocked by respx | Always |
 
@@ -181,7 +190,7 @@ Co-Authored-By: <the agent that wrote it>
 | Node IDs, edges, evidence, Cypher | `docs/spec/03-graph.md` |
 | Import rules, IAM subset, paths, cut, fixes, findings | `docs/spec/04-engine.md` |
 | Every file and its owner task, shared models, routes, `expected.json` | `docs/spec/05-contracts.md` |
-| Claude and Jev prompts, schemas, record and replay | `docs/spec/06-agent.md` |
+| LLM and Jev prompts, schemas, record and replay | `docs/spec/06-agent.md` |
 | The Action, the App, apply, deploy, environment variables | `docs/spec/07-github-and-deploy.md` |
 | Who does what, in what order | `docs/tasks/README.md`, `docs/tasks/dependencies.md` |
 | The plan: beats, gates, fallbacks, video script, judge questions | `docs/plan-of-action.md` |

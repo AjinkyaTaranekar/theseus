@@ -19,7 +19,7 @@ data.
 | Finding | An advisory, such as a compromised GitHub Action | A containment PR and the exact list of secrets to rotate |
 | Scan | `main` | The dangerous paths already there, and grants no code ever calls, each with a proven fix |
 
-The engine decides facts, deterministically, from FalkorDB. Claude proposes and explains fixes; Jev (TypeSafe)
+The engine decides facts, deterministically, from FalkorDB. an LLM (GLM 5.3 through LiteLLM) proposes and explains fixes; Jev (TypeSafe)
 answers fast typed questions, such as how sensitive a resource is; a person approves. Anything outside the
 supported IAM subset is reported as UNKNOWN, never guessed.
 
@@ -61,7 +61,8 @@ Commits and PR titles read `<type>: <Summary>` (`feat`, `fix`, `docs`, `test`, `
 
 ## Stack
 
-Python 3.12, FastAPI, Pydantic v2, FalkorDB, the Anthropic and MCP Python SDKs, Jev over HTTP, pytest and ruff.
+Python 3.12, FastAPI, Pydantic v2, FalkorDB, LiteLLM with GLM 5.3 on Crusoe, the MCP Python SDK, Jev over HTTP,
+pytest and ruff.
 Deployed with Docker Compose and Caddy on one VM.
 
 ## How we use AI

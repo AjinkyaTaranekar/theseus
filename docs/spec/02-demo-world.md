@@ -417,7 +417,7 @@ from `demo-infra/` plus the change below. Humans write `expected.json` from thes
 - **Requirements:** R1 to R17 and the intent requirement I1 all satisfied in head.
 - **Minimum cut for `priya-intern`:** value at least 1,000,000, so not cuttable: every route starts with her
   membership edge, which I1 needs.
-- **Candidates:** A (remove her from the group) fails, breaking I1. B (Claude: a new `intern-onboarding` role that
+- **Candidates:** A (remove her from the group) fails, breaking I1. B (the LLM: a new `intern-onboarding` role that
   reads only app logs and trusts her, plus removing the membership) passes and is recommended. C (a Deny on
   `prod-support` conditioned on her identity) is UNKNOWN. D (remove `AssumeProdSupport`) fails, breaking R1 to R3
   and I1.
@@ -434,7 +434,7 @@ from `demo-infra/` plus the change below. Humans write `expected.json` from thes
   because `billing-job` writes `invoices/*`" (its `CAN` write edge, backed by its `CALLS` edge).
 - **Minimum cut:** value 1, cut on the `entry:internet` CAN edge to invoices.
 - **Candidates:** A (remove `PublicRead`) fails, breaking the intent requirement. S (scope `PublicRead` to
-  `public/*`) passes and is recommended. B (Claude) is expected to pass with the same shape.
+  `public/*`) passes and is recommended. B (the LLM) is expected to pass with the same shape.
 
 ### `compromised-action` (finding mode; Beat 3)
 

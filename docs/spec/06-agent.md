@@ -1,4 +1,4 @@
-# 06. Agent: Claude and Jev
+# 06. Agent: the LLM and Jev
 
 ## Principles
 
@@ -6,20 +6,30 @@
 - The fix agent never sees PR text. It works from structured inputs: the intent, the paths, the cut. That
   keeps prompt injection away from the step that writes fixes.
 - Every model call goes through one wrapper with record and replay, so tests never need the network.
+- The model is configuration. Nothing outside `agent/llm.py` names a provider, so switching models means
+  changing three settings and recording again.
 
 ## The wrapper (`agent/llm.py`, task A1)
 
 | Setting | Value |
 | --- | --- |
-| SDK | Anthropic Python SDK. Check the current docs for tool use and thinking before writing this file |
-| Default model | `claude-opus-5-5` (`CLAUDE_MODEL`) |
-| Fast model | `claude-haiku-5-5` (`CLAUDE_FAST_MODEL`), used only as the Jev fallback |
-| Structured output | A forced tool call: the model must call a `submit_<thing>` tool whose input schema is the output schema. Validate the input with Pydantic before using it |
-| Thinking | Adaptive thinking for the fix agent; none for intent extraction |
+| Library | [LiteLLM](https://docs.litellm.ai/), `litellm.completion` with OpenAI-style `messages`, `tools` and `tool_choice`. Check its current docs for tool calling and exception types before writing this file |
+| Default model | GLM 5.3 on Crusoe: `LLM_MODEL=openai/zai-org/GLM-5.3`, `LLM_API_BASE=https://api.inference.crusoecloud.com/v1`, `LLM_API_KEY` = the Crusoe key. The `openai/` prefix tells LiteLLM the endpoint speaks the OpenAI API |
+| Fast model | GLM 5.3 Flash (`LLM_FAST_MODEL=openai/zai-org/GLM-5.3-Flash`), same endpoint and key, used only as the Jev fallback |
+| Switching | Set all three together, for example `LLM_MODEL=anthropic/claude-opus-5-5`, `LLM_API_BASE=https://api.anthropic.com` and that provider's key in `LLM_API_KEY`. Then record again: the model is part of every recording key |
+| Structured output | A forced tool call: `tool_choice={"type": "function", "function": {"name": "submit_<thing>"}}`, where the tool's parameters are the output schema. Parse the arguments JSON and validate it with Pydantic before using it |
+| Sampling | `temperature=0` on every call. No provider-specific parameters (thinking budgets, reasoning effort): they break switching |
+| Import | Import `litellm` only inside the record and live paths, after setting `LITELLM_LOCAL_MODEL_COST_MAP=True` (otherwise the import downloads a price list) and `litellm.suppress_debug_info = True`. Replay never imports it |
+| Retries | Rate limits, timeouts, 5xx and "No capacity available" (Crusoe returns it as a 503 under load): up to 3 retries with backoff. Authentication and bad requests fail at once |
 | Modes | `THESEUS_MODE=replay` (default in tests: read `recordings/`, fail if missing), `record` (call live and save), `live` (call live, save nothing) |
-| Recording key | `<purpose>-<first 12 hex chars of sha256(canonical JSON of model, system, messages, tools)>` |
-| Recording file | `recordings/claude/<key>.json` holding `{request, response, model, ms}` |
+| Recording key | `<purpose>-<first 12 hex chars of sha256(canonical JSON of model, messages, tools, tool_choice)>` |
+| Recording file | `recordings/llm/<key>.json` holding `{request, response, model, ms}`. `request` never holds the key or the endpoint |
 | Errors | Raise `ModelError` with the purpose and key; never return a half-parsed answer |
+
+**Checked live during prep:** through LiteLLM, GLM 5.3 on Crusoe answered a forced `submit_intent` call with
+an injection attempt in the PR text. It returned only the legitimate grant and set `suspicious`, in 1.5 to 6
+seconds. GLM 5.3 Flash gave the same answer, once it had capacity. The PoC's prompts below were tuned on
+Claude, so A1 and A7 re-run the PoC's checks on GLM at their gates.
 
 ## Intent extraction (`agent/intent.py`, task A1)
 
@@ -90,7 +100,7 @@ replace the rationale with a template sentence built from the ops. The checker's
 <TYPESAFE_API_KEY>` and body `{"model": "jev-latest", "state": "<context>", "questions": {...}}`. The response
 has `model` (for example `jev-1.13.0`) and `answers` keyed by question ID, each either
 `{"type": "noul", "noul": <p>}` (a yes/no probability) or `{"type": "choice", "choice", "confidence", "probabilities"}`.
-Recordings go to `recordings/jev/<key>.json`, with the same modes as Claude.
+Recordings go to `recordings/jev/<key>.json`, with the same modes as the LLM.
 
 | Question | Type | State and instructions | Used for |
 | --- | --- | --- | --- |
@@ -103,7 +113,7 @@ Recordings go to `recordings/jev/<key>.json`, with the same modes as Claude.
 if exposed; confidential = business-sensitive: financial records, invoices, contracts; regulated = personal,
 payment or health data, or credentials and secrets that unlock such data.
 
-**Fallback:** if Jev is unreachable, ask the fast Claude model the same questions with a forced tool call, and
+**Fallback:** if Jev is unreachable, ask the fast model the same questions with a forced tool call, and
 mark every answer `"source": "fallback", "calibrated": false`.
 
 ## Untrusted text
@@ -115,5 +125,5 @@ mark every answer `"source": "fallback", "calibrated": false`.
 
 ## Budget per PR
 
-About 2 Claude calls (intent, fix) and 1 to 2 Jev calls. The PoC measured about 20 seconds, almost all of it
-Claude. Cache Claude's answers by recording key, so re-running an unchanged PR costs nothing.
+About 2 LLM calls (intent, fix) and 1 to 2 Jev calls. The PoC measured about 20 seconds, almost all of it in
+the LLM. Cache the LLM's answers by recording key, so re-running an unchanged PR costs nothing.

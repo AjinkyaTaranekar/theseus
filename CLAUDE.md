@@ -9,7 +9,7 @@
   for approval before editing.
 - `.claude/settings.json` runs `tools/agent_guard.py` before every file edit and blocks writes to `expected.json`
   files and `.env`. If it blocks you, report the difference in the PR; do not work around it with a shell command.
-- Before writing `theseus/agent/llm.py`, read the current Anthropic SDK docs for structured output and tool use.
-  Do not rely on memory for SDK call shapes.
+- Before writing `theseus/agent/llm.py`, read the current LiteLLM docs for tool calling and exception types.
+  Do not rely on memory for call shapes.
 - Run `/memory` once at the start of a session to confirm this file and `AGENTS.md` loaded. Inside `demo-infra/`,
   its own `CLAUDE.md` adds the rules for the demo world.
