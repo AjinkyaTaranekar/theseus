@@ -9,7 +9,7 @@ data.
 ![Theseus flags where what the PR says, what Terraform allows and what the code does disagree](docs/images/three-sources.png)
 
 > **Status:** the plan, the spec, the task briefs and the agent instructions are in place. Product code starts
-> with task F1; progress is on the GitHub board.
+> with task F1; progress is on the [GitHub board](https://github.com/users/AjinkyaTaranekar/projects/3).
 
 ## What it does
 
