@@ -6,6 +6,7 @@
 
 Exit code 1 lists every problem found.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,8 +19,21 @@ TYPES = ("feat", "fix", "docs", "test", "refactor", "chore")
 SUBJECT = re.compile(r"^(?P<type>[a-z]+)(?P<scope>\([^)]*\))?: (?P<summary>.+)$")
 SKIP = re.compile(r"^(Merge |Revert \"|fixup! |squash! )")
 TRAILER = re.compile(r"^[A-Za-z-]+: ")
-NOT_IMPERATIVE_OK = {"embed", "seed", "feed", "need", "shed", "speed", "proceed", "exceed", "succeed",
-                     "bring", "string", "ping", "ring"}
+NOT_IMPERATIVE_OK = {
+    "embed",
+    "seed",
+    "feed",
+    "need",
+    "shed",
+    "speed",
+    "proceed",
+    "exceed",
+    "succeed",
+    "bring",
+    "string",
+    "ping",
+    "ring",
+}
 
 
 def problems(message: str) -> list[str]:
@@ -36,7 +50,9 @@ def problems(message: str) -> list[str]:
     if not m:
         return [f"subject must look like '<type>: <Summary>': {subject!r}"]
     if m["scope"]:
-        out.append(f"drop the scope {m['scope']}; write '<type>: <Summary>' (task IDs change, commits do not)")
+        out.append(
+            f"drop the scope {m['scope']}; write '<type>: <Summary>' (task IDs change, commits do not)"
+        )
     if m["type"] not in TYPES:
         out.append(f"type {m['type']!r} is not one of {', '.join(TYPES)}")
     summary = m["summary"]
@@ -58,15 +74,26 @@ def problems(message: str) -> list[str]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("file", nargs="?", type=Path, help="a commit message file")
     parser.add_argument("--range", help="a git revision range, such as origin/main..HEAD")
     args = parser.parse_args()
     if args.range:
-        shas = subprocess.run(["git", "rev-list", args.range], capture_output=True, text=True,
-                              check=True).stdout.split()
-        messages = {sha[:8]: subprocess.run(["git", "log", "-1", "--format=%B", sha], capture_output=True,
-                                            text=True, encoding="utf-8", check=True).stdout for sha in shas}
+        shas = subprocess.run(
+            ["git", "rev-list", args.range], capture_output=True, text=True, check=True
+        ).stdout.split()
+        messages = {
+            sha[:8]: subprocess.run(
+                ["git", "log", "-1", "--format=%B", sha],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=True,
+            ).stdout
+            for sha in shas
+        }
     elif args.file:
         messages = {"message": args.file.read_text(encoding="utf-8")}
     else:
@@ -77,7 +104,7 @@ def main() -> None:
             failed = True
             print(f"{name}: {p}", file=sys.stderr)
     if failed:
-        print("See AGENTS.md, \"Commits\", and https://cbea.ms/git-commit/", file=sys.stderr)
+        print('See AGENTS.md, "Commits", and https://cbea.ms/git-commit/', file=sys.stderr)
         sys.exit(1)
 
 

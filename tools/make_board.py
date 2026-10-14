@@ -8,6 +8,7 @@ is safe: existing labels, milestones, issues and the project are reused.
     python tools/make_board.py --repo OWNER/theseus --dry-run
     python tools/make_board.py --repo OWNER/theseus --create-repo
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,8 +27,7 @@ HERE = Path(__file__).resolve().parent
 EVENT_START = datetime(2026, 10, 14, 18, 31, tzinfo=timezone.utc)
 
 REPO_DESCRIPTION = (
-    "Theseus: a graph agent that reviews infrastructure changes before merge "
-    "(FalkorDB Graph Hacks, Track 01)"
+    "Theseus: a graph agent that reviews infrastructure changes before merge (FalkorDB Graph Hacks, Track 01)"
 )
 
 # stage -> (milestone title, description). Each milestone ends at its gate.
@@ -36,8 +36,10 @@ STAGES = {
     "Foundation": ("Foundation", "Gate: a demo PR gets a stub comment from the live URL."),
     "Beat 1": ("Beat 1: See it", "Gate 1: the intern PR shows three opened paths and says versus grants."),
     "Beat 2": ("Beat 2: Fix it", "Gate 2: Demo 2 end to end, apply included."),
-    "Beats 3 and 4": ("Beats 3 and 4: Contain it, Nobody breaks",
-                      "Gate 3: the containment PR and the unused-grant fix, with backup clips."),
+    "Beats 3 and 4": (
+        "Beats 3 and 4: Contain it, Nobody breaks",
+        "Gate 3: the containment PR and the unused-grant fix, with backup clips.",
+    ),
     "Ship": ("Ship", "Benchmark, Try-it, README, video, submission."),
 }
 
@@ -102,8 +104,7 @@ class GH:
         if self.dry_run:
             print("  would run: gh " + " ".join(shlex.quote(a) for a in args))
             return ""
-        proc = subprocess.run(["gh", *args], input=stdin, capture_output=True,
-                              text=True, encoding="utf-8")
+        proc = subprocess.run(["gh", *args], input=stdin, capture_output=True, text=True, encoding="utf-8")
         if proc.returncode != 0:
             if may_fail:
                 return ""
@@ -119,14 +120,17 @@ def check_ready(args) -> None:
     if args.dry_run:
         return
     if datetime.now(timezone.utc) < EVENT_START and not args.allow_early:
-        sys.exit("The event has not started, and rule 8 says the repo and its first commit "
-                 "come after it starts. Use --dry-run now, or --allow-early if you are sure.")
+        sys.exit(
+            "The event has not started, and rule 8 says the repo and its first commit "
+            "come after it starts. Use --dry-run now, or --allow-early if you are sure."
+        )
     status = subprocess.run(["gh", "auth", "status"], capture_output=True, text=True)
     if status.returncode != 0:
         sys.exit("gh is not logged in. Run: gh auth login")
     if not args.skip_project and "'project'" not in status.stdout + status.stderr:
-        sys.exit("The gh token lacks the 'project' scope that the board needs. "
-                 "Run: gh auth refresh -s project")
+        sys.exit(
+            "The gh token lacks the 'project' scope that the board needs. Run: gh auth refresh -s project"
+        )
 
 
 def ensure_repo(gh: GH, repo: str, create: bool, visibility: str) -> None:
@@ -135,8 +139,12 @@ def ensure_repo(gh: GH, repo: str, create: bool, visibility: str) -> None:
         if create:
             gh.run("repo", "create", repo, f"--{visibility}", "--description", REPO_DESCRIPTION)
         return
-    found = subprocess.run(["gh", "repo", "view", repo, "--json", "name"],
-                           capture_output=True, text=True).returncode == 0
+    found = (
+        subprocess.run(
+            ["gh", "repo", "view", repo, "--json", "name"], capture_output=True, text=True
+        ).returncode
+        == 0
+    )
     if found:
         print("  exists")
         return
@@ -149,11 +157,31 @@ def ensure_repo(gh: GH, repo: str, create: bool, visibility: str) -> None:
 def ensure_labels(gh: GH, repo: str) -> None:
     print("Labels")
     for lane, (name, color) in LANES.items():
-        gh.run("label", "create", name, "--repo", repo, "--color", color,
-               "--description", f"Lane: {lane}", "--force")
+        gh.run(
+            "label",
+            "create",
+            name,
+            "--repo",
+            repo,
+            "--color",
+            color,
+            "--description",
+            f"Lane: {lane}",
+            "--force",
+        )
     for size, meaning in SIZES.items():
-        gh.run("label", "create", f"size:{size}", "--repo", repo, "--color", "ededed",
-               "--description", f"Size {size}: {meaning}", "--force")
+        gh.run(
+            "label",
+            "create",
+            f"size:{size}",
+            "--repo",
+            repo,
+            "--color",
+            "ededed",
+            "--description",
+            f"Size {size}: {meaning}",
+            "--force",
+        )
     name, color, description = DEMO_LABEL
     gh.run("label", "create", name, "--repo", repo, "--color", color, "--description", description, "--force")
 
@@ -166,8 +194,16 @@ def ensure_milestones(gh: GH, repo: str) -> None:
         if title in titles:
             print(f"  exists: {title}")
             continue
-        gh.run("api", f"repos/{repo}/milestones", "-X", "POST", "-f", f"title={title}",
-               "-f", f"description={description}")
+        gh.run(
+            "api",
+            f"repos/{repo}/milestones",
+            "-X",
+            "POST",
+            "-f",
+            f"title={title}",
+            "-f",
+            f"description={description}",
+        )
 
 
 def branch_name(t: dict) -> str:
@@ -194,31 +230,38 @@ def issue_body(t: dict, issues: dict, repo: str) -> str:
     for dep in split_needs(t["needs"]):
         number = issues.get(dep, (None, ""))[0]
         needs.append(f"#{number} ({dep})" if number else dep)
-    return "\n".join([
-        f"**Task:** {t['task']}",
-        "",
-        f"**Lane:** {t['lane']} | **Size:** {t['size']} ({SIZES[t['size']]}) | "
-        f"**Stage:** {STAGES[t['stage']][0]}",
-        "",
-        f"**Needs first:** {', '.join(needs) if needs else 'nothing'}",
-        "",
-        f"**Done when:** {t['done_when']}",
-        "",
-        f"**Brief:** {brief_link(t, repo)} (files, purpose of each, steps, tests, and the prompt for your agent)",
-        "",
-        "---",
-        f"Claim it: assign yourself and move it to In progress. Branch: `{branch_name(t)}`. "
-        "Every `expected.json` is written by us, never by an agent.",
-        "",
-    ])
+    return "\n".join(
+        [
+            f"**Task:** {t['task']}",
+            "",
+            f"**Lane:** {t['lane']} | **Size:** {t['size']} ({SIZES[t['size']]}) | "
+            f"**Stage:** {STAGES[t['stage']][0]}",
+            "",
+            f"**Needs first:** {', '.join(needs) if needs else 'nothing'}",
+            "",
+            f"**Done when:** {t['done_when']}",
+            "",
+            f"**Brief:** {brief_link(t, repo)} "
+            "(files, purpose of each, steps, tests, and the prompt for your agent)",
+            "",
+            "---",
+            f"Claim it: assign yourself and move it to In progress. Branch: `{branch_name(t)}`. "
+            "Every `expected.json` is written by us, never by an agent.",
+            "",
+        ]
+    )
 
 
 def ensure_issues(gh: GH, repo: str, tasks: list[dict]) -> dict:
     """Returns task ID -> (issue number, issue URL)."""
     print("Issues")
     issues: dict[str, tuple] = {}
-    existing = gh.json("issue", "list", "--repo", repo, "--state", "all", "--limit", "500",
-                       "--json", "number,title,url") or []
+    existing = (
+        gh.json(
+            "issue", "list", "--repo", repo, "--state", "all", "--limit", "500", "--json", "number,title,url"
+        )
+        or []
+    )
     for issue in existing:
         m = TITLE_ID.match(issue["title"])
         if m:
@@ -227,9 +270,21 @@ def ensure_issues(gh: GH, repo: str, tasks: list[dict]) -> dict:
         if t["id"] in issues:
             print(f"  exists: #{issues[t['id']][0]} {t['id']}")
             continue
-        out = gh.run("issue", "create", "--repo", repo, "--title", f"{t['id']}: {t['title']}",
-                     "--body-file", "-", "--label", f"{LANES[t['lane']][0]},size:{t['size']}",
-                     "--milestone", STAGES[t["stage"]][0], stdin=issue_body(t, issues, repo))
+        out = gh.run(
+            "issue",
+            "create",
+            "--repo",
+            repo,
+            "--title",
+            f"{t['id']}: {t['title']}",
+            "--body-file",
+            "-",
+            "--label",
+            f"{LANES[t['lane']][0]},size:{t['size']}",
+            "--milestone",
+            STAGES[t["stage"]][0],
+            stdin=issue_body(t, issues, repo),
+        )
         url = out.strip().splitlines()[-1] if out.strip() else ""
         m = re.search(r"/issues/(\d+)$", url)
         issues[t["id"]] = (int(m.group(1)) if m else None, url)
@@ -239,8 +294,9 @@ def ensure_issues(gh: GH, repo: str, tasks: list[dict]) -> dict:
 
 
 def project_field(gh: GH, number: str, owner: str, name: str):
-    data = gh.json("project", "field-list", number, "--owner", owner, "--format", "json",
-                   "--limit", "50") or {}
+    data = (
+        gh.json("project", "field-list", number, "--owner", owner, "--format", "json", "--limit", "50") or {}
+    )
     return next((f for f in data.get("fields", []) if f.get("name") == name), None)
 
 
@@ -256,8 +312,19 @@ def ensure_project(gh: GH, owner: str, repo: str, title: str, tasks: list[dict],
 
     lane_field = None if gh.dry_run else project_field(gh, number, owner, "Lane")
     if lane_field is None:
-        gh.run("project", "field-create", number, "--owner", owner, "--name", "Lane",
-               "--data-type", "SINGLE_SELECT", "--single-select-options", ",".join(LANES))
+        gh.run(
+            "project",
+            "field-create",
+            number,
+            "--owner",
+            owner,
+            "--name",
+            "Lane",
+            "--data-type",
+            "SINGLE_SELECT",
+            "--single-select-options",
+            ",".join(LANES),
+        )
         lane_field = None if gh.dry_run else project_field(gh, number, owner, "Lane")
     options = {o["name"]: o["id"] for o in (lane_field or {}).get("options", [])}
 
@@ -265,19 +332,35 @@ def ensure_project(gh: GH, owner: str, repo: str, title: str, tasks: list[dict],
         url = issues[t["id"]][1] or f"<issue url for {t['id']}>"
         item = gh.json("project", "item-add", number, "--owner", owner, "--url", url, "--format", "json")
         if item and project_id and lane_field and t["lane"] in options:
-            gh.run("project", "item-edit", "--id", item["id"], "--project-id", project_id,
-                   "--field-id", lane_field["id"], "--single-select-option-id", options[t["lane"]])
+            gh.run(
+                "project",
+                "item-edit",
+                "--id",
+                item["id"],
+                "--project-id",
+                project_id,
+                "--field-id",
+                lane_field["id"],
+                "--single-select-option-id",
+                options[t["lane"]],
+            )
     if project and project.get("url"):
         print(f"  board: {project['url']}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     parser.add_argument("--repo", required=True, help="OWNER/NAME, for example yourname/theseus")
     parser.add_argument("--tasks", type=Path, default=HERE / "tasks.csv")
     parser.add_argument("--create-repo", action="store_true", help="create the repo if it does not exist")
-    parser.add_argument("--visibility", choices=["private", "public"], default="private",
-                        help="for a new repo (make it public before submitting)")
+    parser.add_argument(
+        "--visibility",
+        choices=["private", "public"],
+        default="private",
+        help="for a new repo (make it public before submitting)",
+    )
     parser.add_argument("--project-title", default="Theseus hackathon")
     parser.add_argument("--skip-project", action="store_true", help="labels, milestones and issues only")
     parser.add_argument("--dry-run", action="store_true", help="print what would happen; send nothing")
@@ -287,7 +370,9 @@ def main() -> None:
     if "/" not in args.repo:
         sys.exit("--repo must look like OWNER/NAME")
     tasks = load_tasks(args.tasks)
-    print(f"{len(tasks)} tasks from {args.tasks.name}" + (" (dry run: nothing is sent)" if args.dry_run else ""))
+    print(
+        f"{len(tasks)} tasks from {args.tasks.name}" + (" (dry run: nothing is sent)" if args.dry_run else "")
+    )
     check_ready(args)
 
     gh = GH(args.dry_run)
