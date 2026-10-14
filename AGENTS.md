@@ -184,6 +184,8 @@ Co-Authored-By: <the agent that wrote it>
 | Claude and Jev prompts, schemas, record and replay | `docs/spec/06-agent.md` |
 | The Action, the App, apply, deploy, environment variables | `docs/spec/07-github-and-deploy.md` |
 | Who does what, in what order | `docs/tasks/README.md`, `docs/tasks/dependencies.md` |
+| The plan: beats, gates, fallbacks, video script, judge questions | `docs/plan-of-action.md` |
+| Why we build it: problem, competitors, design choices, roadmap | `docs/project-overview.md` |
 
 When code and spec disagree, the spec wins until both humans change it.
 

@@ -15,7 +15,7 @@ Regenerate it with `python tools/dep_graph.py` whenever `tools/tasks.csv` change
 3. Preview: `python tools/make_board.py --repo OWNER/theseus --dry-run`.
 4. Create the labels (including `demo`), milestones, issues and the project: `python tools/make_board.py --repo OWNER/theseus`.
 5. Start F1 together; it adds the package skeleton. Then F2 and F4 in parallel.
-6. When a task changes, change `tools/tasks.csv`, the brief and the Plan of action together, then re-run `python tools/dep_graph.py`.
+6. When a task changes, change `tools/tasks.csv`, the brief and `docs/plan-of-action.md` together, then re-run `python tools/dep_graph.py`.
 
 ## How to use a brief
 
