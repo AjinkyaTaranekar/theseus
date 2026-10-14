@@ -1,0 +1,5 @@
+# One line ending for everyone, so Windows and Unix clones produce the same diffs
+* text=auto eol=lf
+*.sh text eol=lf
+.githooks/* text eol=lf
+*.png binary
