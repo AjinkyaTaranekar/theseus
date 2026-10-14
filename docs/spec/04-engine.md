@@ -203,14 +203,18 @@ Analyze base and head with the same actors and the same requirements (config plu
 | 1 | Every other edge |
 
 - **Sources:** the actor (PR and scan modes), or every matched workflow (finding mode).
-- **Sinks:** that actor's dangerous targets in the analyzed graph.
+- **Sinks:** that actor's dangerous targets in the analyzed graph, minus any source (FalkorDB requires the
+  two sets not to overlap).
+- **FLOW rows:** one per (source, target) pair over the traversal and grant edges, with capacities summed
+  and `eids` sorted, written by Q_SET_FLOW (`03-graph.md`). A cut `FLOW` edge cuts every edge in its `eids`.
 - **Value at least `BIG`** means no cut keeps every requirement: `cuttable` is false and the agent must design a
   structural fix.
 - **The cut:** after max flow, walk the residual graph from the sources (forward capacity minus flow above zero,
   or flow above zero on a reverse step). The cut is every edge from a reached node to an unreached one. Report
   each with its evidence.
-- `algo.maxFlow` returns flows, not the cut; compute the cut from those flows. If the call is unavailable, run
-  Edmonds-Karp in Python on the same edges and capacities.
+- `algo.maxFlow` returns flows, not the cut, and only for edges that carry flow. Compute the cut from those
+  flows and the `FLOW` capacities; an edge missing from the result has flow 0. If the call fails, run
+  Edmonds-Karp in Python on the same `FLOW` rows.
 
 ## 13. Patch ops (`engine/patch.py`)
 

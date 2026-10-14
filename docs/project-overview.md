@@ -30,9 +30,9 @@ Every claim cites the config line behind it, and a person approves before anythi
 | Entry points | PR mode (a Terraform pull request) and finding mode (a CVE, advisory or scanner report), sharing one engine |
 | Three sources of truth | What the PR says, what Terraform allows, and what the code calls. Every gap between them is a finding |
 | Who decides what | FalkorDB and deterministic code decide what is true. Jev (System 1) ranks and can veto. The LLM (System 2, GLM 5.3 by default) proposes and explains. A person approves |
-| Stack | Python and FastAPI, FalkorDB in Docker on the Oracle VM, a PR comment with Mermaid paths as the main UI, a small Try-it page, a GitHub Action and App on a public demo org |
+| Stack | Python and FastAPI, FalkorDB Cloud, the API on the Oracle VM, a PR comment with Mermaid paths as the main UI, a small Try-it page, a GitHub Action and App on a public demo org |
 | Story | Four beats: the intern PR (see it), its proven fix (fix it), a compromised GitHub Action (contain it), and a grant the code never calls (nobody breaks). The public bucket becomes a Try-it preset |
-| Status | A throwaway PoC passed 5 of 7 feasibility questions. FalkorDB itself has not run yet, so that check (task P1) comes first |
+| Status | A throwaway PoC passed 5 of 7 feasibility questions. Task P1 then ran FalkorDB Cloud: GRAPH.COPY, betweenness and max flow all work, with max flow over one relationship type |
 | Plan | The task board, gates, video script and agent kit: [Plan of action](plan-of-action.md) |
 
 ## What we thought initially
@@ -438,7 +438,7 @@ Each layer has one job and one thing it may never do. That split is what lets th
 
 ## Tech stack and deployment
 
-**The stack is Python with FastAPI, FalkorDB in Docker, a PR comment as the main UI, and a small Try-it page, all on the Oracle VM behind one HTTPS entry point.** FalkorDB itself is never public.
+**The stack is Python with FastAPI, FalkorDB Cloud, a PR comment as the main UI, and a small Try-it page, with the API on the Oracle VM behind one HTTPS entry point.**
 
 ### Python or Spring Boot: Python
 
@@ -458,7 +458,7 @@ We picked Python, and the whole backend uses it.
 | Part | Choice | Why |
 | --- | --- | --- |
 | Backend | Python 3.12, FastAPI, Pydantic | Typed JSON APIs, quickly |
-| Graph database | FalkorDB server (`falkordb/falkordb-server`, [arm64 and amd64 images](https://hub.docker.com/r/falkordb/falkordb-server/tags)) in Docker | Primary database, one graph per state |
+| Graph database | FalkorDB Cloud (FalkorDB 4.22.0); CI uses the matching `falkordb/falkordb:v4.22.0` image | Primary database, one graph per state. Nobody needs Docker on a laptop |
 | Agent | LiteLLM and the MCP Python SDK | One call shape for any model; forced tool calls for structured output |
 | System 1 | TypeSafe Jev Python SDK | Typed judgments with probabilities |
 | IaC input | Terraform CLI in GitHub Actions: `terraform plan`, then `terraform show -json` | Plan JSON has most values resolved. Workflow YAML adds which repos use which Actions. |
@@ -512,11 +512,11 @@ Everything inbound goes through Caddy on port 443. The app only calls out to the
 
 ## What the PoC showed
 
-**A throwaway PoC passed 5 of 7 feasibility questions. FalkorDB itself has not run yet, so that check comes first.** It ran on localhost with hand-built Terraform plans and a 16-node world, and it stays private and out of the repo (rule 8).
+**A throwaway PoC passed 5 of 7 feasibility questions, and task P1 has since answered Q1 on FalkorDB Cloud.** It ran on localhost with hand-built Terraform plans and a 16-node world, and it stays private and out of the repo (rule 8).
 
 | # | Question | Result |
 | --- | --- | --- |
-| Q1 | Does FalkorDB have what we need? | Blocked: no Docker or WSL on the laptop, and the embedded build ships no Windows wheels. Task P1 runs it |
+| Q1 | Does FalkorDB have what we need? | Blocked in the PoC: no Docker or WSL on the laptop. P1 ran it on FalkorDB Cloud 4.22: GRAPH.COPY, betweenness and `algo.maxFlow` work, and max flow gave the expected 2 on a toy graph once every path edge shared one type (`FLOW`) |
 | Q2 | Terraform to graph without an AWS account | Partial: 17 of 17 edges cite file and line, the intern PR opens the 3 expected paths, and a value unknown until apply is flagged, not guessed. The plans were hand-built because Terraform wasn't installed (task P2) |
 | Q3 | Does the minimum cut tell the right story? | Pass, in plain Python: intern max flow 1,000,000; the compromised Action's max flow is 1, cut at docs-site's trust in `github-deploy`; betweenness ranks `prod-support` first |
 | Q4 | Can Claude read a PR's intent? | Pass: 10 of 10 exact, the injection attempt flagged, about 8 seconds a call |
@@ -749,7 +749,7 @@ SubImage's YC-backed round is a signal in our favor: investors already fund grap
 
 ## Open questions
 
-- [ ] Where does FalkorDB run for task P1: Docker Desktop or WSL on the laptop, the Oracle VM over an SSH tunnel, or FalkorDB Cloud?
+- [x] Where does FalkorDB run? FalkorDB Cloud, for development, tests and the deployed API.
 - [ ] Which shape is the Oracle VM: architecture, cores, memory?
 - [x] Which LLM for the hosted app? GLM 5.3 on Crusoe credits, through LiteLLM so it can be switched.
 - [ ] Are a GitHub organization and a domain free under the Theseus name?

@@ -62,10 +62,11 @@ Common properties on every node: `id`, `name` (the human label), `env` (`staging
 | `FOR` | Requirement to Principal | | configured | `theseus.yaml` or the PR's intent |
 | `NEEDS` | Requirement to Resource | `access` | configured | Same |
 | `AFFECTS` | Finding to Action or Workload | | assumed | The advisory |
+| `FLOW` | Node to Node | `eids` (list), `capacity` | internal | Written by the engine before each max-flow call (Q_SET_FLOW): one per (source, target) pair of traversal and grant edges. Never shown, never evidence |
 
 Common properties on every edge: `eid` (`e1`, `e2`, ... stable within a build), `kind` (`configured`,
-`inferred`, `assumed`, `unknown`), `evidence` (JSON string, a list of Evidence objects), `capacity` (int,
-set before each max-flow call, default 1).
+`inferred`, `assumed`, `unknown`), `evidence` (JSON string, a list of Evidence objects). `FLOW` edges carry only `eids` and
+`capacity`.
 
 **Evidence object:** `{"address": "aws_iam_role_policy.prod_support_read", "sid": "ReadDbSecret",
 "file": "terraform/roles.tf", "line": 31, "note": null}`. For workflow edges, `address` is the workflow
@@ -73,7 +74,7 @@ path; for code edges, `address` is the Python file and `sid` is null.
 
 **Traversal and grant edges.** Paths move along `MEMBER_OF`, `CAN_ASSUME`, `TRUSTS` and `RUNS_AS`, and end
 on a grant edge: `CAN`, or `CAN` to a secret followed by `UNLOCKS`. `CALLS`, `REQUESTS`, `HAS_ENV`, `USES`,
-`FOR`, `NEEDS` and `AFFECTS` are never traversed by the path query.
+`FOR`, `NEEDS`, `AFFECTS` and `FLOW` are never traversed by the path query.
 
 ## One graph per state
 
@@ -101,8 +102,8 @@ after the result is posted.
 
 ## Canonical queries (`theseus/graph/queries.py`)
 
-Each one must be verified against the FalkorDB version we run (task P1). The engine filters paths in Python
-afterwards, so the Cypher stays simple.
+Each one ran in task P1 against FalkorDB 4.22.0 on FalkorDB Cloud, on a toy graph with known answers. The
+engine filters paths in Python afterwards, so the Cypher stays simple.
 
 ```cypher
 // Q_PATHS: every route from one actor to a resource. The engine keeps only valid routes (04-engine.md).
@@ -111,24 +112,33 @@ RETURN [rel IN relationships(p) | rel.eid] AS eids
 ```
 
 ```cypher
-// Q_SET_CAPACITY: before each max-flow call
-UNWIND $rows AS r MATCH ()-[e {eid: r.eid}]->() SET e.capacity = r.capacity
+// Q_SET_FLOW: before each max-flow call. One row per (src, dst) pair of traversal and grant edges, with eids
+// sorted and capacities summed (04-engine.md section 12). Replaces every FLOW edge from the last call.
+MATCH ()-[f:FLOW]->() DELETE f
+WITH count(*) AS dropped
+UNWIND $rows AS r
+MATCH (a:Node {id: r.src}), (b:Node {id: r.dst})
+CREATE (a)-[:FLOW {eids: r.eids, capacity: r.capacity}]->(b)
 ```
 
 ```cypher
-// Q_MAXFLOW: sources are the actor(s); sinks are its dangerous targets
+// Q_MAXFLOW: sources are the actor(s); sinks are its dangerous targets, minus any source
 MATCH (s:Node) WHERE s.id IN $sources WITH collect(s) AS ss
 MATCH (t:Node) WHERE t.id IN $sinks WITH ss, collect(t) AS ts
-CALL algo.maxFlow({sourceNodes: ss, targetNodes: ts, capacityProperty: 'capacity',
-                   relationshipTypes: ['MEMBER_OF', 'CAN_ASSUME', 'TRUSTS', 'RUNS_AS', 'CAN', 'UNLOCKS']})
+CALL algo.maxFlow({sourceNodes: ss, targetNodes: ts, capacityProperty: 'capacity', relationshipTypes: ['FLOW']})
 YIELD maxFlow, edges, edgeFlows
-RETURN maxFlow, [e IN edges | e.eid] AS eids, edgeFlows
+RETURN maxFlow, [e IN edges | e.eids] AS eids, edgeFlows
 ```
 
 ```cypher
-// Q_BETWEENNESS: choke points
-CALL algo.betweenness({}) YIELD node, score
-RETURN node.id AS id, score ORDER BY score DESC
+// Q_REL_TYPES: the relationship types this graph has, for Q_BETWEENNESS
+CALL db.relationshipTypes() YIELD relationshipType RETURN relationshipType
+```
+
+```cypher
+// Q_BETWEENNESS: choke points. $types: the traversal and grant types that Q_REL_TYPES returned
+CALL algo.betweenness({relationshipTypes: $types}) YIELD node, score
+RETURN node.id AS id, score ORDER BY score DESC, id
 ```
 
 ```cypher
@@ -152,5 +162,26 @@ MATCH (w:Workload)-[x:CALLS]->(r:Resource)
 RETURN w.id AS workload, r.id AS resource, x.access AS access, x.eid AS eid
 ```
 
-If `algo.maxFlow` is missing or its output is unusable (found in P1 or E4), the engine runs Edmonds-Karp in
-Python on the same edges and capacities, and the README says so.
+### What FalkorDB 4.22 requires (found in P1)
+
+- **`algo.maxFlow` takes exactly one relationship type.** Passing the six path types is an error, and so is
+  leaving `relationshipTypes` out. That is why the engine writes `FLOW` edges (Q_SET_FLOW) and runs max flow
+  over those alone.
+- **No parallel edges of that type.** Two `FLOW` edges between the same ordered pair of nodes fail with "must
+  not contain multi-edges", so Q_SET_FLOW merges them. Edges in opposite directions are fine.
+- **Sources and sinks must not overlap**, or the call fails.
+- **Output:** `maxFlow` is a float. `edges` lists only the edges that carry flow, in no fixed order, and
+  `edgeFlows` matches it item by item. An edge missing from `edges` has flow 0. Sort before using either.
+- **Configuration keys:** `sourceNodes`, `targetNodes`, `capacityProperty`, `relationshipTypes`. An unknown key
+  is an error. `YIELD *` is not supported, so name every output.
+- **`algo.betweenness`** accepts several types, but fails on a type the graph does not have (hence
+  Q_REL_TYPES), and `{}` counts every type, `FLOW` and `CALLS` included. Scores are unnormalized floats.
+- **`GRAPH.COPY`:** `Graph.copy(name)` in the `falkordb` client (1.8.0) took about 100 ms on the toy graph. The
+  copy keeps the `Node(id)` index, and changing it leaves the source untouched.
+- **Latency:** every query took 10 to 20 ms from a laptop to the instance, almost all of it network.
+- **Procedures on the instance:** `algo.AStar`, `algo.BFS`, `algo.HarmonicCentrality`, `algo.MSF`,
+  `algo.SPpaths`, `algo.SSpaths`, `algo.WCC`, `algo.betweenness`, `algo.labelPropagation`, `algo.maxFlow`,
+  `algo.pageRank`.
+
+If `algo.maxFlow` fails on a real graph (task E4), the engine runs Edmonds-Karp in Python on the same `FLOW`
+rows, and the README says so.

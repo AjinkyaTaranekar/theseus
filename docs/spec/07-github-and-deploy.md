@@ -88,8 +88,12 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 FalkorDB Cloud, for development, tests and the deployed API. Nobody needs Docker on a laptop. The app reads
 the instance's connection settings from `.env` (`FALKORDB_*` below). CI runs the `falkordb` marked tests
-against a FalkorDB service container pinned to the version the Cloud instance reports (P1 records it), so
-both run the same procedures.
+against a `falkordb/falkordb:v4.22.0` service container, the version the Cloud instance reports, so both
+run the same procedures. Upgrade both together.
+
+**The instance (P1):** FalkorDB 4.22.0 (graph module version 42200, the enterprise build) on Redis 8.10.2,
+Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username and password. Its
+`algo.maxFlow` takes one relationship type at a time (`03-graph.md`, "What FalkorDB 4.22 requires").
 
 ## Docker Compose (`deploy/docker-compose.yml`, task F3)
 
@@ -115,7 +119,7 @@ both run the same procedures.
 | `JEV_MODEL` | `jev-latest` | Jev |
 | `FALKORDB_HOST`, `FALKORDB_PORT` | `localhost`, `6379` | The FalkorDB Cloud instance |
 | `FALKORDB_USERNAME`, `FALKORDB_PASSWORD` | empty | Its credentials |
-| `FALKORDB_TLS` | `false` | Connect over TLS when the instance requires it (P1 records which) |
+| `FALKORDB_TLS` | `false` | Connect over TLS. Our instance speaks plain TCP, so it stays `false` |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | | The GitHub App |
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
