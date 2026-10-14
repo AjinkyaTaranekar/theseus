@@ -1,0 +1,4 @@
+#!/bin/sh
+# Rejects a commit message that breaks the rules in AGENTS.md ("Commits").
+# Turn it on once per clone: git config core.hooksPath .githooks
+exec python "$(git rev-parse --show-toplevel)/tools/check_commit_msg.py" "$1"
