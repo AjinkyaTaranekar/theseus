@@ -30,6 +30,13 @@ Every other type is skipped and counted by type in the result's `coverage`; it n
   the importer reads count (names, policy documents, trust policies, `role`, `policy_arn`, group lists, tags,
   `environment`, `task_role_arn`, `container_definitions`, `task_definition`, `bucket`); other unknown fields,
   such as a subnet ID, are ignored. Record `{address, field, references}`, taking `references` from `configuration.root_module.resources[].expressions[field].references`.
+- `after_unknown` mirrors the value's shape: a field is unknown only if `true` appears somewhere inside it. A
+  list of `false` (`groups: [false]`) or a block with empty maps (`environment: [{"variables": {}}]`) is known.
+  Found in P1 with Terraform 1.16.6 and AWS provider 6.69.0.
+- `policy` on `aws_s3_bucket` and on `aws_secretsmanager_secret` is a computed attribute that is always unknown
+  at plan. It is not a document Theseus models: bucket policies come from `aws_s3_bucket_policy`, and secret
+  resource policies are out of scope. Never treat it as an unknown policy.
+- A created resource's `arn` is unknown at plan; build it with section 4.
 - When a field is unknown but its reference names another resource's `name` or `id` (for IAM, the name), resolve
   it to that resource's configured name. Otherwise leave it unknown.
 - An IAM policy whose `policy` value is unknown is treated as `Allow * on *` with an unsupported condition, so

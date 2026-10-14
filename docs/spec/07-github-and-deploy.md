@@ -9,7 +9,7 @@ Runs on `pull_request` (`opened`, `synchronize`, `reopened`) with `paths: ["demo
 trigger it. Permissions: `contents: read`, `pull-requests: read`.
 
 1. Check out the head commit, and the base commit into `./base`.
-2. Install Terraform (a pinned version) with `hashicorp/setup-terraform`.
+2. Install Terraform 1.16.6, the version P1 checked, with `hashicorp/setup-terraform`.
 3. For base and head, in `demo-infra/terraform`: `terraform init -backend=false`, `terraform plan -out tfplan`,
    `terraform show -json tfplan > <side>.plan.json`. The provider block's mock credentials and skip flags mean
    no AWS account is needed (task P1 confirms).

@@ -60,7 +60,9 @@ fixture the same way.
   handles unknown values (it reports UNKNOWN); the demo world simply avoids them.
 - **No `data` blocks and no `backend` block.** Data sources call AWS during plan; a backend needs `init`.
   The provider uses mock credentials and skips every AWS call (`skip_credentials_validation`,
-  `skip_requesting_account_id`, `skip_metadata_api_check`), so `terraform plan` runs without an account (task P1).
+  `skip_requesting_account_id`, `skip_metadata_api_check`), so `terraform plan` runs without an account. P1 confirmed
+  it for one resource of every type in this file, with Terraform 1.16.6 and AWS provider 6.69.0; pin
+  `version = "~> 6.69"` in `providers.tf`.
 - **Modeled and not-modeled resources live in different files.** `network.tf` and `platform.tf` hold only types
   Theseus skips, so C1 can add them later without moving a line that an `expected.json` cites.
 - **`theseus_code_path` tag** on every Lambda function and ECS service names its folder under `services/`.
