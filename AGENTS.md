@@ -21,7 +21,7 @@ git config core.hooksPath .githooks        # once per clone: checks every commit
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Windows: .venv\Scripts\pip install -e ".[dev]"
 pytest -q                                   # offline: unit, golden, contract, replay. Run before every commit
 pytest -q tests/golden/test_intern.py -x    # one golden test, stop at the first failure
-pytest -q -m falkordb                       # needs FALKORDB_HOST; start it: docker compose -f deploy/docker-compose.yml --profile dev up -d falkordb
+pytest -q -m falkordb                       # runs against FalkorDB Cloud; needs the FALKORDB_* settings in .env
 pytest -q -m live                           # real Claude and Jev calls; needs keys; only when a brief says so
 ruff check . && ruff format --check .       # must be clean; `ruff format .` fixes formatting
 python -m theseus analyze fixtures/intern   # prints the AnalysisResult JSON

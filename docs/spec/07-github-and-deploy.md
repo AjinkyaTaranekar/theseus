@@ -84,12 +84,18 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 - **Scan issue:** title `Theseus scan: <n> dangerous paths in main`, label `demo`, plus one PR per passing U
   candidate, titled and committed as `fix: Remove unused grant <Sid>`.
 
+## Where FalkorDB runs
+
+FalkorDB Cloud, for development, tests and the deployed API. Nobody needs Docker on a laptop. The app reads
+the instance's connection settings from `.env` (`FALKORDB_*` below). CI runs the `falkordb` marked tests
+against a FalkorDB service container pinned to the version the Cloud instance reports (P1 records it), so
+both run the same procedures.
+
 ## Docker Compose (`deploy/docker-compose.yml`, task F3)
 
 | Service | Image | Notes |
 | --- | --- | --- |
-| `falkordb` | `falkordb/falkordb-server`, the tag confirmed in P1 | Volume for data. No public port. In local dev only, `6379` is published through the `dev` profile |
-| `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`. Depends on `falkordb` |
+| `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`, including the FalkorDB Cloud settings |
 | `caddy` | `caddy:2` | Ports 80 and 443. Caddyfile: `{$DOMAIN} { reverse_proxy api:8000 }` with automatic HTTPS |
 
 `deploy/deploy.sh` connects to the VM over SSH, pulls `main`, runs `docker compose up -d --build`, then checks
@@ -106,7 +112,9 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 | `TYPESAFE_API_KEY` | | Jev |
 | `JEV_BASE_URL` | `https://api.typesafe.ai` | Jev |
 | `JEV_MODEL` | `jev-latest` | Jev |
-| `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_PASSWORD` | `localhost`, `6379`, empty | FalkorDB |
+| `FALKORDB_HOST`, `FALKORDB_PORT` | `localhost`, `6379` | The FalkorDB Cloud instance |
+| `FALKORDB_USERNAME`, `FALKORDB_PASSWORD` | empty | Its credentials |
+| `FALKORDB_TLS` | `false` | Connect over TLS when the instance requires it (P1 records which) |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | | The GitHub App |
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
@@ -115,6 +123,6 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 ## The VM
 
-Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) if the shape allows; otherwise FalkorDB Cloud for the database and
-the VM for the app. Only port 443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
+Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) runs the API and Caddy; FalkorDB is on FalkorDB Cloud. Only port
+443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
 Rate-limit `POST /try/*` to 10 requests a minute per IP.
