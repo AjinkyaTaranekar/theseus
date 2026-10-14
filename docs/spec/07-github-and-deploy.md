@@ -68,7 +68,7 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 2. The commenter must have write or admin permission on the repo; otherwise reply that they cannot.
 3. Load the latest result for that PR and head SHA (cached in memory, keyed by repo, PR and SHA), or re-run the analysis.
 4. The candidate must exist and have verdict `pass`. Otherwise reply with its verdict and reason.
-5. `render_tf` the candidate's ops on the head `.tf` files, check every changed path is under the world root, and
+5. Render the candidate's ops on the head `.tf` files with the IaC adapter (`adapters/terraform/render.py`), check every changed path is under the world root, and
    commit the changed files to the PR branch with the App. The message follows the commit rules in `AGENTS.md`:
    subject `fix: Apply Theseus fix <ID>`, a body naming the paths it closes and the requirements it keeps, and a
    `Requested-by: @<user>` trailer.

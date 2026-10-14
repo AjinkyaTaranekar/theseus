@@ -45,6 +45,9 @@ not fix it in passing.
 - Call the LLM only through `theseus/agent/llm.py` and Jev only through `theseus/agent/jev.py`, so record and replay
   work and the model stays a setting.
 - Return UNKNOWN when something is outside the supported IAM subset (`docs/spec/04-engine.md` section 5).
+- Keep vendor knowledge in its adapter. Anything that names a cloud, an IaC format, a CI system or an SDK goes in
+  `theseus/adapters/<name>/`. Core code reasons on a resource's `category`, never on its kind or IaC type
+  (`docs/spec/08-core-and-adapters.md`).
 
 **Ask first** (stop, and put the question in the PR description)
 - Any change to `theseus/contracts/` outside task F2. After the freeze, contracts only grow: add fields, never
@@ -53,6 +56,7 @@ not fix it in passing.
 - Anything the spec does not settle: a schema field, an edge type, a file name, a rule.
 - Any change to `demo-infra/` outside tasks F4 and C1. It moves line numbers that every `expected.json` cites.
 - Changing which keys a golden test compares.
+- A new edge type, resource category or core node kind, or a new method on an adapter protocol.
 
 **Never**
 - Write or edit `fixtures/*/expected.json` or `bench/cases/*/expected.json`. Humans write the answer key. If your
@@ -64,25 +68,36 @@ not fix it in passing.
 - Hardcode, log or print a secret. Keys come from environment variables through `theseus/config.py`.
 - Copy anything from the `theseus-poc` folder (hackathon rule 8). Its findings are already in `docs/spec/`.
 - Let `MemoryStore` serve the API. It exists for offline tests; the product runs on FalkorDB (rule 3).
+- Import `theseus.adapters` from core code, or one adapter from another, or write `if provider == ...` in core.
+  Only `cli.py` and `api/app.py` pick adapters, and pass them in `Deps`. `tests/unit/test_architecture.py`
+  fails if you do.
 
 ## Code
 
 Python 3.12, FastAPI, Pydantic v2, FalkorDB with the `falkordb` client, LiteLLM (GLM 5.3 on Crusoe by default), the
 MCP Python SDK, httpx, Jinja2, PyYAML, pytest, ruff (line length 110).
 
+**Core and adapters.** Core (`contracts/`, `importer/`, `graph/`, `engine/`, `agent/`, `mcp/`, `api/`) works
+on a neutral graph: principals, resources with a category, and the edge types in `03-graph.md`. Adapters
+(`adapters/terraform/`, `aws/`, `github/`, `python/`) each implement one protocol in
+`contracts/adapters.py` and are the only code that names a vendor. Supporting a second cloud, IaC format, CI
+system or language means a new adapter, never a branch in core. Read `docs/spec/08-core-and-adapters.md`
+before you add a module.
+
 - `from __future__ import annotations` and full type hints in every module.
 - Pydantic models for anything that crosses a module boundary; plain dicts inside a function.
-- `importer/` and `engine/` are pure: no network, no environment reads. The graph store is passed in.
+- `importer/`, `engine/` and `adapters/` are pure: no network, no environment reads. The graph store and the
+  adapters are passed in.
 - Raise a subclass of `TheseusError` (`IngestError`, `PatchError`, `GraphError`, `ModelError`, `GitHubError`).
   Never swallow an exception.
 - One logger per module (`log = logging.getLogger(__name__)`); `print` only in `cli.py`.
 - Node IDs exactly as `docs/spec/03-graph.md` writes them: `user:priya-intern`, `s3://demo-company-files/invoices/`.
 - Docstrings say what a public function returns, not how.
 
-What good looks like:
+What good looks like, in `adapters/aws/resources.py`:
 
 ```python
-def unlocks_edges(resources: list[Resource], dbs: set[str]) -> list[EdgeRow]:
+def unlocks_edges(resources: list[IacResource], dbs: set[str]) -> list[EdgeRow]:
     """UNLOCKS edges from each secret tagged db_instance to that database, sorted by (src, dst)."""
     rows: list[EdgeRow] = []
     for r in resources:
@@ -112,7 +127,7 @@ dict order, `evidence=[]`, or a line number typed in by hand. (`edge` and `evide
 
 | Folder | What it holds | Runs |
 | --- | --- | --- |
-| `tests/unit/` | Pure functions on tiny inputs | Always |
+| `tests/unit/` | Pure functions on tiny inputs; `adapters/<name>/` for each adapter; the architecture rules | Always |
 | `tests/golden/` | Engine output against `fixtures/<scenario>/expected.json`, through `project()` and `compare()` | Always |
 | `tests/contract/` | Model round-trips and schemas | Always |
 | `tests/replay/` | LLM and Jev calls replayed from `recordings/` | Always |
@@ -194,6 +209,7 @@ Co-Authored-By: <the agent that wrote it>
 | The Action, the App, apply, deploy, environment variables | `docs/spec/07-github-and-deploy.md` |
 | Who does what, in what order | `docs/tasks/README.md`, `docs/tasks/dependencies.md` |
 | The plan: beats, gates, fallbacks, video script, judge questions | `docs/plan-of-action.md` |
+| What is core and what is an adapter; adding a cloud, IaC format, CI system or language | `docs/spec/08-core-and-adapters.md` |
 | Why we build it: problem, competitors, design choices, roadmap | `docs/project-overview.md` |
 
 When code and spec disagree, the spec wins until both humans change it.

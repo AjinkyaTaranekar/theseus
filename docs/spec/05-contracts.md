@@ -21,22 +21,38 @@ theseus/                              (repo root)
 │   ├── cli.py                        analyze, finding, scan, serve commands               F1, then E3
 │   ├── config.py                     Settings from environment variables                  F1
 │   ├── errors.py                     TheseusError and its subclasses                      F1
-│   ├── contracts/
-│   │   ├── schema.py                 labels, edge types, ID helpers, BIG, USED            F2
+│   ├── contracts/                    vendor-neutral; a change needs both humans
+│   │   ├── schema.py                 labels, edge types, ID grammar, categories, BIG, USED F2
 │   │   ├── result.py                 shared Pydantic models, AnalysisResult, project()    F2
-│   │   └── engine.py                 Protocols for the engine functions                   F2
-│   ├── importer/
+│   │   ├── engine.py                 Protocols for the engine functions and graph store   F2
+│   │   └── adapters.py               IaC, cloud, CI and code adapter protocols            F2
+│   ├── importer/                     core: compose the adapters into a World and rows
 │   │   ├── world.py                  load a world folder or a fetched commit              E1
-│   │   ├── plan.py                   plan JSON to resources and unknown fields            E1
-│   │   ├── source_index.py           file and line for addresses and Sids                 E1
-│   │   ├── build.py                  resources to nodes and edges (structure)             E1
-│   │   ├── iam.py                    evaluate, trust_kind, glob matching                  E2
-│   │   ├── policies.py               a principal's statements: inline, attached, managed  E2
-│   │   ├── aws_managed.py            the few AWS-managed policies we expand               E2
-│   │   ├── access.py                 CAN and CAN_ASSUME edges, bucket policies            E2
-│   │   ├── workflows.py              workflow YAML: per-job subs, id-token, uses          FM1
-│   │   ├── oidc.py                   OIDC matching and TRUSTS edges                       FM1
-│   │   └── code.py                   Python AST: CALLS, REQUESTS, HAS_ENV                 C2
+│   │   └── build.py                  adapters' rows, requirements, labels, coverage       E1
+│   ├── adapters/                     the only code that names a vendor or a format (08)
+│   │   ├── terraform/
+│   │   │   ├── adapter.py            TerraformAdapter, the IacAdapter                     E1, E9
+│   │   │   ├── plan.py               plan JSON to resources and unknown fields            E1
+│   │   │   ├── source_index.py       file and line for addresses and Sids                 E1
+│   │   │   └── render.py             patch ops as .tf text edits                          E9
+│   │   ├── aws/
+│   │   │   ├── adapter.py            AwsAdapter, the CloudAdapter                         E1, E2, E5, E6, FM1
+│   │   │   ├── kinds.py              resource kinds and categories, modeled types         F2
+│   │   │   ├── ops.py                the patch-op catalog, typed, and its JSON schema     F2
+│   │   │   ├── resources.py          nodes, MEMBER_OF, RUNS_AS, UNLOCKS, HAS_ENV          E1
+│   │   │   ├── iam.py                evaluate, trust_kind, glob matching                  E2
+│   │   │   ├── policies.py           a principal's statements: inline, attached, managed  E2
+│   │   │   ├── managed.py            the few AWS-managed policies we expand               E2
+│   │   │   ├── access.py             CAN and CAN_ASSUME edges, bucket policies            E2
+│   │   │   ├── oidc.py               OIDC trust matching and TRUSTS edges                 FM1
+│   │   │   ├── patch.py              apply ops to resources                               E5
+│   │   │   └── changes.py            a Change to ops                                      E6
+│   │   ├── github/
+│   │   │   ├── adapter.py            GithubAdapter, the CiAdapter                         E1, FM1
+│   │   │   └── workflows.py          workflow YAML: per-job subs, id-token, uses          FM1
+│   │   └── python/
+│   │       ├── adapter.py            PythonAdapter, the CodeAdapter                       E1, C2
+│   │       └── code.py               Python AST: CALLS, REQUESTS, HAS_ENV through boto3   C2
 │   ├── graph/
 │   │   ├── client.py                 FalkorDB connection from Settings                    F3
 │   │   ├── store.py                  GraphStore protocol: FalkorStore, and MemoryStore for offline tests only  E3
@@ -47,10 +63,8 @@ theseus/                              (repo root)
 │   │   ├── analyze.py                paths, coverage, dangerous paths, requirements, diff E3
 │   │   ├── pipeline.py               run_pr, run_finding, run_scan: build AnalysisResult  E3, then A5
 │   │   ├── mincut.py                 capacities, max flow, cut from residual              E4, C3
-│   │   ├── patch.py                  the patch-op catalog on resources                    E5
 │   │   ├── simulate.py               copy, apply delta, re-analyze, verdict               E5
 │   │   ├── candidates.py             rule candidates A, C, D, S and ranking               E6
-│   │   ├── render_tf.py              patch ops as .tf text edits                          E9
 │   │   ├── intent_effect.py          says versus grants, headline                         A3
 │   │   ├── finding.py                blast radius, rotate list, containment K             FM3, FM6
 │   │   ├── staging.py                staging-to-prod findings                             FM4
@@ -93,7 +107,7 @@ All are Pydantic v2 models. Lists are sorted before a result is returned.
 
 | Model | Fields |
 | --- | --- |
-| `Evidence` | `address: str`, `sid: str \| None`, `file: str`, `line: int \| None`, `note: str \| None` |
+| `Evidence` | `address: str`, `part: str \| None` (the piece of the resource that decided it, such as an IAM statement Sid), `file: str`, `line: int \| None`, `note: str \| None` |
 | `NodeRow` | `id: str`, `labels: list[str]`, `props: dict` |
 | `EdgeRow` | `eid: str`, `type: str`, `src: str`, `dst: str`, `kind: str`, `grants: list[str]`, `evidence: list[Evidence]`, `props: dict` |
 | `GraphRows` | `nodes: list[NodeRow]`, `edges: list[EdgeRow]`, `unknowns: list[str]` |
@@ -105,7 +119,7 @@ All are Pydantic v2 models. Lists are sorted before a result is returned.
 | `RequirementStatus` | `id: str`, `status: Literal["satisfied","missing","unknown"]` |
 | `CutEdge` | `eid: str`, `src: str`, `type: str`, `dst: str`, `evidence: str` |
 | `MinCut` | `sources: list[str]`, `sinks: list[str]`, `value: int`, `cuttable: bool`, `cut: list[CutEdge]` |
-| `PatchOp` | `op: str` plus the fields in `04-engine.md` section 13, all optional |
+| `PatchOp` | `provider: str`, `op: str`, `args: dict`. The cloud adapter owns the catalog and validates `args`; AWS's is `04-engine.md` section 13 |
 | `Candidate` | `id: str`, `source: Literal["rule","llm"]`, `title: str`, `ops: list[PatchOp]`, `verdict: Literal["pass","fail","unknown","invalid"]`, `reason: str`, `paths_left: list[str]`, `new_paths: list[str]`, `requirements_broken: list[str]`, `calls_broken: list[str]`, `unknown: list[str]`, `recommended: bool`, `needs_closer_look: bool`, `seconds: float` |
 | `UnusedGrant` | `workload: str`, `resource: str`, `access: str`, `eid: str`, `evidence: str` |
 | `BeyondIntent` | `workload: str`, `resource: str`, `access: str`, `file: str`, `line: int`, `unlocks: list[str]` |
@@ -122,21 +136,42 @@ All are Pydantic v2 models. Lists are sorted before a result is returned.
 
 | Function | Inputs | Output | Module |
 | --- | --- | --- | --- |
-| `load_world` | a world root (`demo-infra/`, a fixture side) or a fetched commit | `World` (resources, skipped types, unknowns, tf files, workflows, code files, config) | `importer/world.py` |
-| `build_rows` | `World`, sensitivity labels | `GraphRows` | `importer/build.py` |
-| `load_graph`, `copy_graph`, `delete_graph`, `apply_delta` | client, graph name, rows | none | `graph/load.py` |
-| `analyze` | client, graph name, rows, requirements, actors | `Analysis` (paths per actor, dangerous paths, requirement statuses) | `engine/analyze.py` |
-| `diff` | base `Analysis`, head `Analysis` | opened, closed, unchanged | `engine/analyze.py` |
-| `min_cut` | client, graph name, rows, `Analysis`, sources, requirements | `MinCut` | `engine/mincut.py` |
-| `apply_ops` | resources, ops, config | patched resources, or `PatchError` | `engine/patch.py` |
-| `simulate` | client, head world and rows, ops, actors, requirements, candidate ID | `Candidate` | `engine/simulate.py` |
-| `rule_candidates`, `rank` | rows, analysis, opened paths, cut | candidate drafts; ranked `Candidate` list | `engine/candidates.py` |
-| `render_tf` | `.tf` file texts, ops | edited file texts, or `PatchError` | `engine/render_tf.py` |
-| `blast_radius`, `rotate_list`, `containment` | client, graph, matched workflows | paths, secret IDs, ops | `engine/finding.py` |
+| `load_world` | a world root (`demo-infra/`, a fixture side, or a fetched commit), its plan output, the adapters | `World` (root, IaC format, resources, unknown fields, skipped types, unknowns, IaC, CI and code files, config) | `importer/world.py` |
+| `build_rows` | `World`, sensitivity labels, the adapters | `GraphRows` | `importer/build.py` |
+| `load_graph`, `copy_graph`, `delete_graph`, `apply_delta` | store, graph name, rows or a `GraphDelta` | none | `graph/load.py` |
+| `analyze` | store, graph name, rows, requirements, actors | `Analysis` (paths per actor, dangerous paths, requirement statuses) | `engine/analyze.py` |
+| `diff` | base `Analysis`, head `Analysis` | `PathDiff`: opened, closed, unchanged | `engine/analyze.py` |
+| `min_cut` | store, graph name, rows, `Analysis`, sources, requirements | `MinCut` | `engine/mincut.py` |
+| `simulate` | store, head graph, world and rows, a `CandidateDraft`, actors, requirements, the adapters | `Candidate` | `engine/simulate.py` |
+| `rule_candidates`, `rank` | rows, analysis, opened paths, cut; candidates and Jev's break scores | `Change`s by candidate ID; ranked `Candidate` list | `engine/candidates.py` |
+| `blast_radius`, `rotate_list`, `containment` | store, graph, rows, matched workflows | paths; secret IDs (category `secret`); `Change`s | `engine/finding.py` |
 | `staging_to_prod` | `Analysis`, rows | `StagingToProd` list | `engine/staging.py` (task FM4) |
-| `unused_grants`, `use_beyond_intent` | client, graph, rows (base and head for the second) | lists | `engine/usage.py` |
-| `choke_points` | client, graph | `ChokePoint` list | `graph/algos.py` |
-| `run_pr`, `run_finding`, `run_scan` | worlds, PR text or advisory, `Deps` (client, LLM, Jev, settings) | `AnalysisResult` | `engine/pipeline.py` |
+| `unused_grants`, `use_beyond_intent` | store, graph, rows (base and head for the second) | lists | `engine/usage.py` |
+| `choke_points` | store, graph | `ChokePoint` list | `graph/algos.py` |
+| `run_pr`, `run_finding`, `run_scan` | worlds, PR text or advisory, `Deps` (store, adapters, LLM, Jev, settings) | `AnalysisResult` | `engine/pipeline.py` |
+
+Applying ops and writing them back as text are adapter methods, not engine functions: `CloudAdapter.apply_ops`
+and `IacAdapter.render`, below.
+
+## Adapter protocols (`contracts/adapters.py`)
+
+Rules in `08-core-and-adapters.md`. Core calls these through `Deps.adapters`; only `cli.py`, `api/app.py` and tests
+build them.
+
+| Protocol | v1 | Methods | Tasks |
+| --- | --- | --- | --- |
+| `IacAdapter` | `TerraformAdapter` | `read(root, plan) -> IacRead` (resources, unknown fields, files); `locate(files, address, part) -> Evidence`; `render(files, ops) -> files` | E1, E9 |
+| `CloudAdapter` | `AwsAdapter` | `name`, `modeled_types`, `resource_kinds` (kind to category); `rows(resources, identities, locate) -> GraphRows`; `ops_for(change, rows, resources) -> ops`; `apply_ops(resources, ops) -> resources`; `ops_schema()` | E1, E2, E5, E6, FM1 |
+| `CiAdapter` | `GithubAdapter` | `read(files) -> CiRead` (Workflow and Action nodes, `USES` edges, each workflow's `CiIdentity`) | E1, FM1 |
+| `CodeAdapter` | `PythonAdapter` | `read(files, rows, resources) -> CodeRead` (`CALLS`, `REQUESTS`, `HAS_ENV` edges, unknowns, calls skipped) | E1, C2 |
+
+| Type | Fields |
+| --- | --- |
+| `IacResource` | `address`, `type`, `name`, `provider`, `values: dict` |
+| `UnknownField` | `address`, `field`, `references: list[str]` |
+| `CiIdentity` | `workflow` (node ID), `issuer`, `subjects: list[str]` |
+| `Change` | `kind: Literal["remove_edge","narrow_grant","restrict_trust","deny_principal"]`, `eid`, `values: list[str]` |
+| `Adapters` | `iac`, `cloud`, `ci`, `code` |
 
 ## MCP tools (`mcp/tools.py`)
 

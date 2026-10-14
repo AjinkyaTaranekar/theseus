@@ -690,7 +690,7 @@ Everything above the dashed line is in the submission. Everything below it appea
 | 16 | **Where to add a region:** where should a new server go, and what must move with it? | SPpaths with latency weights | Latency follows the dependency chain, not the server | 2 | Phase 5 |
 | 17 | **Role cleanup:** which roles are really the same role? | CDLP communities | Suggests merges from what roles actually reach | 1 | Phase 5 |
 | 18 | **Attacker's cheapest route:** which path is easiest to exploit? | SPpaths with difficulty weights | Ranks paths by effort, not just by count | 0.5 | Phase 5 |
-| 19 | **Wider coverage:** GCP, Azure, more code languages, a FalkorDB backend for Cartography | A mapping module per cloud | Plan JSON has the same shape on every cloud | Ongoing | Phase 5 |
+| 19 | **Wider coverage:** GCP, Azure, more code languages, a FalkorDB backend for Cartography | A new adapter per cloud, IaC format or language behind the protocols in `contracts/adapters.py`; the engine does not change ([spec 08](spec/08-core-and-adapters.md)) | Plan JSON has the same shape on every cloud | Ongoing | Phase 5 |
 
 ### How the new ideas work
 

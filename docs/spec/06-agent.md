@@ -68,7 +68,8 @@ the minimum cut (value, cuttable, cut edges).
 `check_requirements` and `simulate_fix`, at most 8 calls. It finishes by calling `submit_fix`.
 
 **Output schema (`submit_fix`):** `rationale` (string, at most 3 sentences, citing evidence IDs like `E3`),
-`ops` (list of patch ops, `04-engine.md` section 13).
+`ops` (patch ops `{provider, op, args}`, validated against the cloud adapter's `ops_schema()`; for AWS, the
+catalog in `04-engine.md` section 13). The tool schema comes from the adapter, so the prompt names no op.
 
 **System prompt (the PoC's, plus the new-role instruction the PoC showed we need):**
 

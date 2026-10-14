@@ -12,6 +12,7 @@ Beat 3 starts from a compromised Action and turns on one loose trust, `repo:demo
 
 ## Read first
 
+- [08-core-and-adapters.md](../spec/08-core-and-adapters.md): what is core, what is an adapter, and the protocol you implement
 - [04-engine.md: 6. Edge derivation (importer/build.py and friends)](../spec/04-engine.md#6-edge-derivation-importerbuildpy-and-friends)
 - [03-graph.md: Labels and properties](../spec/03-graph.md#labels-and-properties)
 - [02-demo-world.md: Workflows in demo-infra/workflows/demo-org/](../spec/02-demo-world.md#workflows-in-demo-infraworkflowsdemo-org)
@@ -20,11 +21,10 @@ Beat 3 starts from a compromised Action and turns on one loose trust, `repo:demo
 
 | File | Action | Purpose |
 | --- | --- | --- |
-| `theseus/importer/workflows.py` | create | `parse_workflow(org, repo, file, text) -> WorkflowInfo` and the rows it adds; a job with `environment` presents only the environment `sub`. PyYAML reads the `on:` key as `True`; handle both |
-| `theseus/importer/oidc.py` | create | `oidc_statements(trust)`, `oidc_allows(statement, sub, aud)` returning `yes`, `yes-any-repo`, `no` or `unknown` (uses `iam.glob_match`), and `TRUSTS` derivation |
-| `theseus/importer/build.py` | change | Call the workflows hook when workflows are present |
-| `tests/unit/importer/test_workflows.py` | create | The four demo workflows: exact `subs`, `id_token`, `uses` with line numbers |
-| `tests/unit/importer/test_oidc.py` | create | `repo:demo-org/*` accepts the docs-site PR token; `terraform-apply`'s pinned environment `sub` refuses it and accepts deploy's apply job; an unknown condition key is unknown; `lint.yml` and `ci.yml` without `id-token` get no edge |
+| `theseus/adapters/github/workflows.py` | create | `parse_workflow(org, repo, file, text)`: Workflow and Action nodes, `USES` edges, and a `CiIdentity` (issuer `https://token.actions.githubusercontent.com`, subjects = the `subs`); `GithubAdapter.read` returns them as a `CiRead`; a job with `environment` presents only the environment `sub`. PyYAML reads the `on:` key as `True`; handle both |
+| `theseus/adapters/aws/oidc.py` | create | `oidc_statements(trust)`, `oidc_allows(statement, sub, aud)` returning `yes`, `yes-any-repo`, `no` or `unknown` (uses `iam.glob_match`), and `TRUSTS` derivation from the `CiIdentity` list; `AwsAdapter.rows` adds the edges |
+| `tests/unit/adapters/github/test_workflows.py` | create | The four demo workflows: exact `subs`, `id_token`, `uses` with line numbers |
+| `tests/unit/adapters/aws/test_oidc.py` | create | `repo:demo-org/*` accepts the docs-site PR token; `terraform-apply`'s pinned environment `sub` refuses it and accepts deploy's apply job; an unknown condition key is unknown; `lint.yml` and `ci.yml` without `id-token` get no edge |
 
 ## Steps
 

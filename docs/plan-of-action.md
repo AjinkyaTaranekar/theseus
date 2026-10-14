@@ -130,15 +130,15 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 | Task | Creates | Changes |
 | --- | --- | --- |
-| E1 Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `plan.py`, `source_index.py`, `build.py`, `tests/unit/importer/` | none |
-| E2 IAM: statements, matching, CAN and CAN\_ASSUME | `theseus/importer/iam.py`, `policies.py`, `aws_managed.py`, `access.py`, `tests/unit/importer/test_iam.py`, `test_policies.py`, `test_access.py` | none |
-| E3 Graph load, path diff and required access | `theseus/graph/store.py`, `load.py`, `queries.py`, `theseus/engine/analyze.py`, `pipeline.py`, `tests/golden/test_intern.py`, `test_main.py`, `tests/integration/test_store_parity.py` | `theseus/importer/build.py`, `theseus/cli.py` |
+| E1 Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `build.py`, `theseus/adapters/terraform/plan.py`, `source_index.py`, `adapter.py`, `theseus/adapters/aws/resources.py`, `adapter.py`, `tests/unit/importer/`, `tests/unit/adapters/` | none |
+| E2 IAM: statements, matching, CAN and CAN\_ASSUME | `theseus/adapters/aws/iam.py`, `policies.py`, `managed.py`, `access.py`, `tests/unit/adapters/aws/test_iam.py`, `test_policies.py`, `test_access.py` | `theseus/adapters/aws/adapter.py` |
+| E3 Graph load, path diff and required access | `theseus/graph/store.py`, `load.py`, `queries.py`, `theseus/engine/analyze.py`, `pipeline.py`, `tests/golden/test_intern.py`, `test_main.py`, `tests/integration/test_store_parity.py` | `theseus/cli.py` |
 | A1 LLM intent extraction | `theseus/agent/llm.py`, `intent.py`, `tests/replay/intents.yaml`, `recordings/llm/intent-*.json`, `tests/replay/test_intent.py` | none |
 | A2 Jev: sensitivity labels and advisory urgency | `theseus/agent/jev.py`, `sensitivity.py`, `tests/replay/test_sensitivity.py`, `test_triage.py` | none |
 | A3 Says versus grants | `theseus/engine/intent_effect.py`, `tests/unit/test_intent_effect.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
 | A4 PR comment: paths, fix table, trace and coverage | `theseus/agent/templates/comment.md`, `theseus/agent/render.py`, `tests/unit/test_render.py` | none |
 | A5 Real analyze behind the Action | `tests/e2e/test_analyze_route.py` | `theseus/importer/world.py`, `theseus/api/routes.py` |
-| FM1 CI in the graph: workflows and OIDC trust | `theseus/importer/workflows.py`, `oidc.py`, `tests/unit/importer/test_workflows.py`, `test_oidc.py` | `theseus/importer/build.py` |
+| FM1 CI in the graph: workflows and OIDC trust | `theseus/adapters/github/workflows.py`, `theseus/adapters/aws/oidc.py`, `tests/unit/adapters/github/test_workflows.py`, `tests/unit/adapters/aws/test_oidc.py` | `theseus/adapters/github/adapter.py`, `theseus/adapters/aws/adapter.py` |
 | C1 Demo backend: service code and platform resources | `demo-infra/services/` (six services, 17 modules), `demo-infra/terraform/network.tf`, `platform.tf` | `tools/make_fixture.py`, `fixtures/*/` |
 
 **Beat 2: Fix it**
@@ -146,13 +146,13 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | Task | Creates | Changes |
 | --- | --- | --- |
 | E4 Minimum cut with MaxFlow | `theseus/engine/mincut.py`, `theseus/graph/algos.py`, `tests/unit/test_mincut.py`, `tests/golden/test_mincut_fixtures.py` | `theseus/engine/pipeline.py` |
-| E5 Simulator on GRAPH.COPY | `theseus/engine/patch.py`, `simulate.py`, `tests/unit/test_patch.py`, `tests/golden/test_simulate_intern.py` | `theseus/graph/load.py` |
-| E6 Rule-based fixes and ranking | `theseus/engine/candidates.py`, `tests/golden/test_public_bucket.py`, `tests/unit/test_ranking.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
-| E9 Terraform patch renderer | `theseus/engine/render_tf.py`, `tests/unit/render_tf/` | none |
+| E5 Simulator on GRAPH.COPY | `theseus/adapters/aws/patch.py`, `theseus/engine/simulate.py`, `tests/unit/adapters/aws/test_patch.py`, `tests/golden/test_simulate_intern.py` | `theseus/graph/load.py` |
+| E6 Rule-based fixes and ranking | `theseus/engine/candidates.py`, `theseus/adapters/aws/changes.py`, `tests/unit/adapters/aws/test_changes.py`, `tests/golden/test_public_bucket.py`, `tests/unit/test_ranking.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
+| E9 Terraform patch renderer | `theseus/adapters/terraform/render.py`, `tests/unit/adapters/terraform/render/` | `theseus/adapters/terraform/adapter.py` |
 | A6 MCP server and tool trace | `theseus/mcp/tools.py`, `server.py`, `theseus/agent/trace.py`, `.mcp.json`, `tests/unit/test_mcp_tools.py`, `test_trace.py` | none |
 | A7 LLM fix agent | `theseus/agent/fixer.py`, `evidence.py`, `recordings/llm/fix-*.json`, `tests/replay/test_fixer.py` | none |
 | A9 /theseus apply command | `theseus/api/webhooks.py`, `tests/unit/test_webhooks.py` | `theseus/api/github.py`, `theseus/api/routes.py` |
-| C2 Python code reader | `theseus/importer/code.py`, `tests/unit/importer/test_code.py` | `theseus/importer/build.py` |
+| C2 Python code reader | `theseus/adapters/python/code.py`, `tests/unit/adapters/python/test_code.py` | `theseus/adapters/python/adapter.py` |
 | FM3 Finding mode: blast radius and rotate list | `theseus/engine/finding.py`, `tests/golden/test_compromised_action.py` | `theseus/engine/pipeline.py`, `theseus/api/routes.py`, `theseus/cli.py` |
 | FM4 Finding extras: choke points, staging to prod, urgency | `theseus/engine/staging.py` | `theseus/graph/algos.py`, `theseus/engine/pipeline.py`, `tests/golden/test_compromised_action.py`, `tests/golden/test_intern.py` |
 
@@ -286,13 +286,14 @@ Small tasks that edit the same files became one agent session each, as long as t
 
 ## Contracts and repo layout
 
-**Task F2 freezes these seven contracts, and every other task plugs into them.** The first name in the last column writes the contract; the second reviews it.
+**Task F2 freezes these eight contracts, and every other task plugs into them.** The first name in the last column writes the contract; the second reviews it.
 
 | Contract | File | What it pins down | Writes, reviews |
 | --- | --- | --- | --- |
 | Graph schema | `contracts/schema.py` | Node labels and IDs, edge types (including `USES`, `CALLS`, `REQUESTS`, `HAS_ENV`), edge kinds, the `env` tag, the evidence object, the capacities `BIG` and `USED` (spec: `03-graph.md`) | A, B |
 | Shared models | `contracts/result.py` | Every model that crosses a module boundary, including `AnalysisResult`, plus `project()` and `compare()` for golden tests (spec: `05-contracts.md`) | A, B |
-| Engine functions | `contracts/engine.py` | The graph-store protocol and the signatures of `load_world`, `build_rows`, `analyze`, `diff`, `min_cut`, `simulate`, `rank`, `render_tf`, `run_pr`, `run_finding`, `run_scan` | A, B |
+| Engine functions | `contracts/engine.py` | The graph-store protocol and the signatures of `load_world`, `build_rows`, `analyze`, `diff`, `min_cut`, `simulate`, `rank`, `run_pr`, `run_finding`, `run_scan` | A, B |
+| Adapter protocols | `contracts/adapters.py` | The IaC, cloud, CI and code protocols; `IacResource`, `CiIdentity` and `Change`; the patch-op envelope. Vendor names live only in `adapters/` (spec: `08-core-and-adapters.md`) | A, B |
 | Fixture format | `fixtures/<scenario>/` | `scenario.yaml`, `base/` and `head/` trees, both plans, `pr.md` or `advisory.json`, and `expected.json` (only compared fields, written by us) | A, B |
 | MCP tools | `mcp/tools.py` | Ten tools in one registry, used by the MCP server and the fix agent | B, A |
 | API | `api/routes.py` | `/health`, `/analyze`, `/finding`, `/scan`, `/apply`, `/webhooks/github`, `/graphs`, `/try` | B, A |
@@ -302,12 +303,17 @@ Small tasks that edit the same files became one agent session each, as long as t
 theseus/            repo root; every file and its owner task is in docs/spec/05-contracts.md
   AGENTS.md, CLAUDE.md, .claude/settings.json, AI_USE.md, README.md, pyproject.toml, .env.example
   theseus/
-    contracts/   schema, result, engine                                                   F2
-    importer/    world, plan, source_index, build (E1); iam, policies, aws_managed, access (E2);
-                 workflows, oidc (FM1); code (C2)
+    contracts/   schema, result, engine, adapters: vendor-neutral                         F2
+    importer/    world, build (E1): compose the adapters into a World and its rows
+    adapters/    everything that names a vendor or a format (docs/spec/08-core-and-adapters.md)
+      terraform/ plan, source_index, adapter (E1); render (E9)
+      aws/       kinds, ops (F2); resources, adapter (E1); iam, policies, managed, access (E2);
+                 oidc (FM1); patch (E5); changes (E6)
+      github/    workflows, adapter (FM1)
+      python/    code, adapter (C2)
     graph/       client (F3); store, load, queries (E3); algos (E4, FM4)
-    engine/      analyze, pipeline (E3); mincut (E4, C3); patch, simulate (E5); candidates (E6);
-                 render_tf (E9); intent_effect (A3); finding (FM3, FM6); staging (FM4); usage (C3, C4)
+    engine/      analyze, pipeline (E3); mincut (E4, C3); simulate (E5); candidates (E6);
+                 intent_effect (A3); finding (FM3, FM6); staging (FM4); usage (C3, C4)
     agent/       llm, intent (A1); jev, sensitivity (A2); trace (A6); fixer, evidence (A7); render, templates (A4)
     mcp/         tools, server (A6)
     api/         app, stub, routes (F3); github (F7, A9); webhooks (A9)
