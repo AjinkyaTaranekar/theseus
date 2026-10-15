@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from theseus.agent.intent import Vocabulary, extract_intent
+from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm
 from theseus.config import get_settings
 
@@ -50,6 +51,12 @@ def llm() -> Llm:
     return Llm(get_settings())
 
 
+@pytest.fixture(scope="module")
+def jev(llm: Llm) -> Jev:
+    """Jev's steering check, replayed like the LLM; it can make an intent suspicious, never clear it."""
+    return Jev(get_settings(), llm=llm)
+
+
 def test_the_cases_cover_the_messy_ones() -> None:
     assert len(CASES) == 31
     assert len({c["id"] for c in CASES}) == len(CASES)
@@ -69,8 +76,8 @@ def test_every_gold_grant_uses_the_vocabulary() -> None:
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])
-def test_intent_matches_the_gold_answer(case: dict[str, Any], llm: Llm) -> None:
-    intent = extract_intent(case["title"], body_of(case), VOCAB, llm=llm, template=TEMPLATE)
+def test_intent_matches_the_gold_answer(case: dict[str, Any], llm: Llm, jev: Jev) -> None:
+    intent = extract_intent(case["title"], body_of(case), VOCAB, llm=llm, jev=jev, template=TEMPLATE)
     got = sorted((g.principal, g.access, g.resource) for g in intent.grants)
     want = sorted(tuple(g) for g in case["grants"])
     assert got == want, f"{case['id']}: purpose was {intent.purpose!r}"

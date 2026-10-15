@@ -9,6 +9,7 @@ from typing import Any, Protocol
 
 from pydantic import Field, ValidationError
 
+from theseus.agent.jev import JevAnswer
 from theseus.agent.llm import LlmReply, untrusted
 from theseus.agent.pr_text import PrText, prepare
 from theseus.contracts.result import Contract, Grant, GraphRows, Intent, Requirement
@@ -24,6 +25,8 @@ _MARKDOWN = re.compile(r"[`*#>|<~]|[][]")
 
 PURPOSE = "intent"
 PURPOSE_MAX = 160
+# Jev's probability that the PR text steers the review, at or above which the intent is suspicious.
+STEERING_THRESHOLD = 0.5
 
 SYSTEM_PROMPT = "\n".join(
     [
@@ -119,6 +122,10 @@ class Vocabulary(Contract):
     targets: list[str] = Field(default_factory=list)
 
 
+class SteeringJudge(Protocol):
+    def steering(self, pull_request: dict[str, Any]) -> JevAnswer: ...
+
+
 class LlmCaller(Protocol):
     def call(
         self,
@@ -137,11 +144,15 @@ def vocabulary(rows: GraphRows) -> Vocabulary:
     return Vocabulary(principals=sorted(principals), targets=sorted(targets))
 
 
+def pull_request(pr: PrText) -> dict[str, Any]:
+    """The PR as get_pull_request returns it, and as Jev reads it: title, body and hidden text."""
+    return {"title": pr.title, "body": pr.visible, "hidden": pr.hidden}
+
+
 def messages_for(pr: PrText, vocab: Vocabulary) -> list[dict[str, Any]]:
     """The system prompt and the vocabulary, then the PR as the result of a get_pull_request call:
     JSON-encoded and fenced as untrusted, so it arrives as data from a tool, never as a request."""
     request = "Vocabulary:\n" + json.dumps(vocab.model_dump(), separators=(",", ":"))
-    pull_request = {"title": pr.title, "body": pr.visible, "hidden": pr.hidden}
     call = {
         "id": "get_pull_request",
         "type": "function",
@@ -154,7 +165,9 @@ def messages_for(pr: PrText, vocab: Vocabulary) -> list[dict[str, Any]]:
         {
             "role": "tool",
             "tool_call_id": call["id"],
-            "content": untrusted("untrusted_pr_text", json.dumps(pull_request, ensure_ascii=False, indent=2)),
+            "content": untrusted(
+                "untrusted_pr_text", json.dumps(pull_request(pr), ensure_ascii=False, indent=2)
+            ),
         },
     ]
 
@@ -171,13 +184,19 @@ def plain_purpose(text: str) -> str:
 
 
 def extract_intent(
-    pr_title: str, pr_body: str | None, vocab: Vocabulary, *, llm: LlmCaller, template: str = ""
+    pr_title: str,
+    pr_body: str | None,
+    vocab: Vocabulary,
+    *,
+    llm: LlmCaller,
+    jev: SteeringJudge | None = None,
+    template: str = "",
 ) -> Intent:
     """The access the PR asks for, on vocabulary IDs only, grants sorted. ModelError on a bad answer.
 
     `template` is the repo's PR template, whose own comments and lines are boilerplate. A PR with no text at
-    all is not sent: it states nothing. A flag from the screen makes the intent suspicious whatever the model
-    answers.
+    all is not sent: it states nothing. A flag from the screen, or Jev rating the text as steering the review,
+    makes the intent suspicious whatever the model answers; neither can clear it.
     """
     pr = prepare(pr_title, pr_body, template)
     if pr.masked:
@@ -191,9 +210,14 @@ def extract_intent(
         raise ModelError(f"{PURPOSE} ({reply.key}): the answer does not fit submit_intent: {e}") from e
     if pr.flags:
         log.warning("intent %s: the screen flagged %s", reply.key, "; ".join(pr.flags))
+    steers = False
+    if jev is not None:
+        answer = jev.steering(pull_request(pr))
+        steers = (answer.noul or 0.0) >= STEERING_THRESHOLD
+        log.info("intent %s: Jev rates steering at %.3f (%s)", reply.key, answer.noul or 0.0, answer.source)
     update: dict[str, Any] = {
         "purpose": plain_purpose(intent.purpose),
-        "suspicious": intent.suspicious or bool(pr.flags),
+        "suspicious": intent.suspicious or bool(pr.flags) or steers,
     }
     if not intent.stated:
         if intent.grants:
