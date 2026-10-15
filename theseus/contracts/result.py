@@ -252,6 +252,13 @@ class Timings(Contract):
     total_ms: int = 0
 
 
+class NodeInfo(Contract):
+    """What the comment needs to name a node in plain words: the resource's category and its data class."""
+
+    category: Category | None = None
+    sensitivity: Sensitivity | None = None
+
+
 class Coverage(Contract):
     resources: int = 0
     modeled: int = 0
@@ -287,6 +294,8 @@ class AnalysisResult(Contract):
     coverage: Coverage = Field(default_factory=Coverage)
     # The models that answered, such as {"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}: shown, not compared.
     models: dict[str, str] = Field(default_factory=dict)
+    # Every node on a listed path, for plain names in the comment: shown, not compared.
+    nodes: dict[str, NodeInfo] = Field(default_factory=dict)
 
 
 # Golden tests ---------------------------------------------------------------------------------------------

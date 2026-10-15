@@ -16,6 +16,7 @@ from theseus.contracts.result import (
     Grant,
     Intent,
     MinCut,
+    NodeInfo,
     NodeRow,
     PatchOp,
     PathRecord,
@@ -187,6 +188,13 @@ def test_analysis_result_round_trips_through_json() -> None:
     result = intern_result()
     again = AnalysisResult.model_validate_json(result.model_dump_json())
     assert again == result
+
+
+def test_node_info_round_trips_and_is_never_compared() -> None:
+    nodes = {"db:customer-db": NodeInfo(category="database", sensitivity="regulated")}
+    result = intern_result().model_copy(update={"nodes": nodes})
+    assert AnalysisResult.model_validate_json(result.model_dump_json()).nodes == nodes
+    assert "nodes" not in project(result)
 
 
 def test_the_model_versions_round_trip_and_are_never_compared() -> None:
