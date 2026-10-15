@@ -20,7 +20,8 @@ loop() {
   while true; do
     echo "$(date -u +%FT%TZ) starting theseus serve at $(git rev-parse --short HEAD)" >> "$LOG"
     .venv/bin/python -m theseus serve >> "$LOG" 2>&1
-    echo "$(date -u +%FT%TZ) theseus serve exited with $?; restarting in 5 s" >> "$LOG"
+    status=$?  # before the $(date) below, which would reset $?
+    echo "$(date -u +%FT%TZ) theseus serve exited with $status; restarting in 5 s" >> "$LOG"
     sleep 5
   done
 }
