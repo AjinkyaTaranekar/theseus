@@ -12,10 +12,10 @@ def test_every_aws_kind_maps_to_a_neutral_category() -> None:
     assert set(kinds.RESOURCE_KINDS.values()) <= set(RESOURCE_CATEGORIES)
 
 
-def test_modeled_types_are_the_twenty_in_spec_04() -> None:
-    assert len(kinds.MODELED_TYPES) == 20
+def test_modeled_types_are_the_iam_types_plus_the_catalog() -> None:
+    assert len(kinds.MODELED_TYPES) == 34
     assert "aws_ecs_service" in kinds.MODELED_TYPES
-    assert "aws_sqs_queue" not in kinds.MODELED_TYPES
+    assert "aws_glue_catalog_table" not in kinds.MODELED_TYPES
 
 
 def test_s3_ids_are_locations() -> None:

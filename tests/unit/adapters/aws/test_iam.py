@@ -6,8 +6,8 @@ import json
 
 import pytest
 
+from theseus.adapters.aws.catalog import load_catalog
 from theseus.adapters.aws.iam import (
-    ACTION_GRANTS,
     ASSUME,
     PolicyStatement,
     evaluate,
@@ -148,34 +148,30 @@ def test_an_unreadable_policy_is_an_ingest_error() -> None:
 # Modeled actions ------------------------------------------------------------------------------------------
 
 
-def test_modeled_actions_and_the_access_they_grant() -> None:
-    assert ACTION_GRANTS["s3"] == {
-        "s3:GetObject": "read",
-        "s3:PutObject": "write",
-        "s3:DeleteObject": "write",
-    }
-    assert ACTION_GRANTS["secret"] == {"secretsmanager:GetSecretValue": "read"}
-    reads = {a for a, g in ACTION_GRANTS["dynamodb"].items() if g == "read"}
-    writes = {a for a, g in ACTION_GRANTS["dynamodb"].items() if g == "write"}
-    assert reads == {"dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:Scan"}
-    assert writes == {
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:BatchWriteItem",
-    }
+def test_assume_is_the_sts_action() -> None:
     assert ASSUME == "sts:AssumeRole"
-    assert "db" not in ACTION_GRANTS
 
 
 @pytest.mark.parametrize(
-    "action", ["dynamodb:Describe*", "dynamodb:CreateTable", "iam:*", "s3:ListBucket", "s3:PutBucket*"]
+    "action",
+    [
+        "dynamodb:Describe*",
+        "dynamodb:CreateTable",
+        "iam:*",
+        "s3:ListBucket",
+        "s3:PutBucket*",
+        "logs:Describe*",
+    ],
 )
 def test_control_plane_actions_grant_nothing_modeled(action: str) -> None:
     stmts = policy(stmt(action=action))
-    for kind, arn in (("s3", INVOICES), ("secret", SECRET), ("dynamodb", TABLE)):
-        for modeled in ACTION_GRANTS[kind]:
-            assert evaluate(stmts, modeled, arn).result == "none", (action, modeled)
+    for entry in load_catalog().data:
+        arn = entry.resource_arn(
+            {"name": "x", "bucket": "b", "prefix": "p/"}, {"account": ACCOUNT, "region": "eu-west-1"}
+        )
+        for modeled in entry.actions():
+            for target in modeled.arns_for(arn):
+                assert evaluate(stmts, modeled.action, target).result == "none", (action, modeled.action)
 
 
 def test_a_table_index_does_not_reach_the_table() -> None:

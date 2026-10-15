@@ -70,6 +70,8 @@ def resource(node: str, category: str, arn: str) -> NodeRow:
 
 
 TABLE = f"arn:aws:dynamodb:{REGION}:{ACCOUNT}:table/demo-orders"
+LOG_GROUP = f"arn:aws:logs:{REGION}:{ACCOUNT}:log-group:/aws/lambda/billing-job"
+PARAM = f"arn:aws:ssm:{REGION}:{ACCOUNT}:parameter/prod/db-password"
 NODES = [
     *(principal("user", u) for u in ("sam-support", "priya-intern", "auditor")),
     *(principal("group", g) for g in ("support-engineers", "data-analysts")),
@@ -86,18 +88,21 @@ NODES = [
         )
     ),
     NodeRow(id="entry:internet", labels=["Node", "Principal", "Entry"], name="internet"),
-    resource("s3://demo-app-logs/", "object_store", "arn:aws:s3:::demo-app-logs/x"),
+    resource("s3://demo-app-logs/", "ObjectStorage", "arn:aws:s3:::demo-app-logs/x"),
     resource(
-        "s3://demo-company-files/invoices/", "object_store", "arn:aws:s3:::demo-company-files/invoices/x"
+        "s3://demo-company-files/invoices/", "ObjectStorage", "arn:aws:s3:::demo-company-files/invoices/x"
     ),
-    resource("s3://demo-company-files/public/", "object_store", "arn:aws:s3:::demo-company-files/public/x"),
+    resource("s3://demo-company-files/public/", "ObjectStorage", "arn:aws:s3:::demo-company-files/public/x"),
     resource(
         "secret:prod-db-credentials",
-        "secret",
+        "Secret",
         f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:prod-db-credentials-AbCdEf",
     ),
-    resource("dynamodb:demo-orders", "table", TABLE),
-    resource("db:customer-db", "database", f"arn:aws:rds:{REGION}:{ACCOUNT}:db:customer-db"),
+    resource("dynamodb:demo-orders", "Database", TABLE),
+    resource("db:customer-db", "Database", f"arn:aws:rds:{REGION}:{ACCOUNT}:db:customer-db"),
+    resource("ssm-parameter:/prod/db-password", "Secret", PARAM),
+    resource("log-group:/aws/lambda/billing-job", "LogStore", LOG_GROUP),
+    *(principal("role", r) for r in ("config-reader", "log-shipper", "log-reader", "log-reader-both")),
 ]
 RESOURCES = [
     res(
@@ -204,6 +209,35 @@ RESOURCES = [
     ),
     res("aws_iam_role.shadow", name="shadow", assume_role_policy=trust_account()),
     res("aws_iam_role_policy.shadow", name="shadow", role="shadow"),
+    res(
+        "aws_iam_role_policy.config_reader",
+        name="config-reader",
+        role="config-reader",
+        policy=doc(
+            allow("ReadProdParams", "ssm:GetParameter", f"arn:aws:ssm:{REGION}:{ACCOUNT}:parameter/prod/*")
+        ),
+    ),
+    res(
+        "aws_iam_role_policy_attachment.log_shipper_logs",
+        role="log-shipper",
+        policy_arn="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole",
+    ),
+    res(
+        "aws_iam_role_policy.log_reader",
+        name="log-reader",
+        role="log-reader",
+        policy=doc(allow("ReadOneGroup", "logs:FilterLogEvents", f"{LOG_GROUP}:*")),
+    ),
+    res(
+        "aws_iam_role_policy.log_reader_both",
+        name="log-reader-both",
+        role="log-reader-both",
+        policy=doc(
+            allow(
+                "ReadOneGroup", ["logs:FilterLogEvents", "logs:GetLogEvents"], [LOG_GROUP, f"{LOG_GROUP}:*"]
+            )
+        ),
+    ),
     res(
         "aws_s3_bucket_policy.company_files_public",
         bucket="demo-company-files",
@@ -345,3 +379,29 @@ def test_a_permissions_boundary_makes_the_principal_s_access_unknown() -> None:
 def test_every_edge_is_can_or_can_assume_with_a_placeholder_eid(edges: dict) -> None:
     assert {t for t, _, _ in edges} == {"CAN", "CAN_ASSUME"}
     assert all(e.eid == "" for e in edges.values())
+
+
+def test_an_ssm_parameter_is_read_like_a_secret(edges: dict) -> None:
+    assert summary(edges, "role:config-reader") == {
+        ("CAN", "ssm-parameter:/prod/db-password"): ("configured", ["read"])
+    }
+
+
+def test_the_lambda_basic_policy_writes_every_log_group(edges: dict) -> None:
+    assert summary(edges, "role:log-shipper") == {
+        ("CAN", "log-group:/aws/lambda/billing-job"): ("configured", ["write"])
+    }
+    [ev] = edges[("CAN", "role:log-shipper", "log-group:/aws/lambda/billing-job")].evidence
+    assert ev.note == "AWS-managed AWSLambdaBasicExecutionRole"
+
+
+def test_a_log_group_named_in_only_one_form_is_unknown(edges: dict) -> None:
+    """`log-group:NAME:*` matches one ARN form AWS may check but not the other, so the answer is unknown."""
+    assert summary(edges, "role:log-reader") == {
+        ("CAN", "log-group:/aws/lambda/billing-job"): ("unknown", ["read"])
+    }
+
+
+def test_a_log_group_named_in_both_forms_is_read(edges: dict) -> None:
+    got = summary(edges, "role:log-reader-both")
+    assert got == {("CAN", "log-group:/aws/lambda/billing-job"): ("configured", ["read"])}

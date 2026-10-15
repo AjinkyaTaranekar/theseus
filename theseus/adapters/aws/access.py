@@ -7,7 +7,8 @@ import logging
 from collections.abc import Iterable
 from typing import Any
 
-from theseus.adapters.aws.iam import ACTION_GRANTS, ASSUME, PolicyStatement, evaluate, statements, trust_kind
+from theseus.adapters.aws.catalog import CatalogAction, load_catalog
+from theseus.adapters.aws.iam import ASSUME, Decision, PolicyStatement, evaluate, statements, trust_kind
 from theseus.adapters.aws.policies import iam_name, statements_for
 from theseus.contracts.adapters import IacResource, Locate
 from theseus.contracts.result import EdgeRow, Evidence, NodeRow
@@ -39,18 +40,28 @@ def _evidence(pairs: Pairs, chosen: Iterable[PolicyStatement]) -> list[Evidence]
     return sorted(seen.values(), key=lambda e: (e.file, e.line or 0, e.address, e.part or "", e.note or ""))
 
 
+def _decide(stmts: list[PolicyStatement], action: CatalogAction, node_arn: str) -> Decision:
+    """The decision for one catalog action. When AWS may check more than one ARN form and the forms disagree,
+    the answer is unknown."""
+    decisions = [evaluate(stmts, action.action, arn) for arn in action.arns_for(node_arn)]
+    if len({d.result for d in decisions}) == 1:
+        return decisions[0]
+    involved = [s for d in decisions for s in d.statements]
+    return Decision(result="unknown", statements=[s for s in stmts if s in involved])
+
+
 def _can(src: str, target: NodeRow, pairs: Pairs) -> EdgeRow | None:
-    """One CAN edge from `src` to `target`, merging every modeled action that is allowed or unknown."""
-    kind = parse_id(target.id)[0]
+    """One CAN edge from `src` to `target`, merging every catalog action that is allowed or unknown."""
+    entry = load_catalog().by_kind[parse_id(target.id)[0]]
     arn = _prop(target, "arn_pattern")
     stmts = [s for s, _ in pairs]
     grants: set[str] = set()
     unknown = False
     deciding: list[PolicyStatement] = []
-    for action, access in ACTION_GRANTS[kind].items():
-        decision = evaluate(stmts, action, arn)
+    for action in entry.actions():
+        decision = _decide(stmts, action, arn)
         if decision.result in ("allow", "unknown"):
-            grants.add(access)
+            grants.add(action.access)
             unknown = unknown or decision.result == "unknown"
             deciding += decision.statements
     if not grants:
@@ -144,7 +155,8 @@ def derive_access_edges(
     account = str(config["account"])
     ordered = sorted(nodes, key=lambda n: n.id)
     principals = [n for n in ordered if parse_id(n.id)[0] in PRINCIPALS]
-    targets = [n for n in ordered if parse_id(n.id)[0] in ACTION_GRANTS]
+    reachable = {d.kind for d in load_catalog().data if d.actions()}
+    targets = [n for n in ordered if parse_id(n.id)[0] in reachable]
     roles = [n for n in principals if parse_id(n.id)[0] == "role"]
 
     held = {n.id: statements_for(*parse_id(n.id), resources, account, locate) for n in principals}

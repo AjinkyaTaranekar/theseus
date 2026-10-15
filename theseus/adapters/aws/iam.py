@@ -22,23 +22,6 @@ log = logging.getLogger(__name__)
 ASSUME = "sts:AssumeRole"
 UNKNOWN_POLICY = "unknown policy"
 
-# Modeled actions by AWS resource kind, and the access each grants. Nothing else grants access to data:
-# s3:ListBucket lists keys without reading them, and control-plane actions change infrastructure, not data.
-ACTION_GRANTS: dict[str, dict[str, str]] = {
-    "s3": {"s3:GetObject": "read", "s3:PutObject": "write", "s3:DeleteObject": "write"},
-    "secret": {"secretsmanager:GetSecretValue": "read"},
-    "dynamodb": {
-        "dynamodb:GetItem": "read",
-        "dynamodb:BatchGetItem": "read",
-        "dynamodb:Query": "read",
-        "dynamodb:Scan": "read",
-        "dynamodb:PutItem": "write",
-        "dynamodb:UpdateItem": "write",
-        "dynamodb:DeleteItem": "write",
-        "dynamodb:BatchWriteItem": "write",
-    },
-}
-
 
 class PolicyStatement(Contract):
     """One statement, normalized: lists everywhere, principals by type ("*" for anyone), and every reason the

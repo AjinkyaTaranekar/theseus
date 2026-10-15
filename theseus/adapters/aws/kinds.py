@@ -1,23 +1,22 @@
-"""AWS resource kinds and the Terraform resource types the AWS adapter models (04-engine.md section 1)."""
+"""AWS resource kinds and the Terraform resource types the AWS adapter models (04-engine.md section 1).
+
+Data resources and workloads come from the catalog (catalog.yaml); IAM resources are structural, and the
+adapter reads them to build principals and their edges.
+"""
 
 from __future__ import annotations
 
 from typing import Final
 
+from theseus.adapters.aws.catalog import load_catalog
 from theseus.contracts.schema import location_id
 
 PROVIDER: Final = "aws"
 
 # Resource kind (the node ID prefix) -> its neutral category. The engine only ever sees the category.
-RESOURCE_KINDS: Final[dict[str, str]] = {
-    "s3": "object_store",
-    "secret": "secret",
-    "db": "database",
-    "dynamodb": "table",
-}
+RESOURCE_KINDS: Final[dict[str, str]] = {d.kind: d.category for d in load_catalog().data}
 
-# Every other resource type is skipped and counted by type in the result's coverage.
-MODELED_TYPES: Final = frozenset(
+STRUCTURAL_TYPES: Final = frozenset(
     {
         "aws_iam_user",
         "aws_iam_group",
@@ -31,16 +30,12 @@ MODELED_TYPES: Final = frozenset(
         "aws_iam_group_policy_attachment",
         "aws_iam_role_policy_attachment",
         "aws_iam_openid_connect_provider",
-        "aws_s3_bucket",
         "aws_s3_bucket_policy",
-        "aws_secretsmanager_secret",
-        "aws_db_instance",
-        "aws_dynamodb_table",
-        "aws_lambda_function",
-        "aws_ecs_task_definition",
-        "aws_ecs_service",
     }
 )
+
+# Every other resource type is skipped and counted by type in the result's coverage.
+MODELED_TYPES: Final = STRUCTURAL_TYPES | load_catalog().types
 
 
 def s3_id(bucket: str, prefix: str = "") -> str:
