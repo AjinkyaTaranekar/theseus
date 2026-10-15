@@ -20,6 +20,7 @@ import httpx
 from pydantic import Field
 
 from theseus.agent.llm import LlmReply, recording_key, untrusted
+from theseus.agent.screen import mask_secrets, normalize
 from theseus.config import Settings
 from theseus.contracts.result import Contract, Sensitivity
 from theseus.errors import ModelError
@@ -179,9 +180,18 @@ class Jev:
         return {r[0]: self._labels[r] for r in resources}
 
     def urgency(self, finding_summary: str, blast_summary: str) -> JevAnswer:
-        """How likely the finding is urgent. Its text is untrusted; the blast radius is the engine's."""
+        """How likely the finding is urgent. Its text is untrusted, so it is normalized and its secrets are
+        masked before Jev, the fallback model or a recording sees it; the blast radius is the engine's."""
+        advisory, _, flags = normalize(finding_summary)
+        advisory, masked = mask_secrets(advisory)
+        if masked or flags:
+            log.warning(
+                "urgency: masked %s; removed %s",
+                ", ".join(masked) or "nothing",
+                ", ".join(flags) or "nothing",
+            )
         state = (
-            untrusted("untrusted_advisory", finding_summary)
+            untrusted("untrusted_advisory", advisory)
             + "\n\nBlast radius, computed by the graph engine:\n"
             + blast_summary
         )

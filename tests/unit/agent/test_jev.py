@@ -195,3 +195,38 @@ def test_urgency_fences_the_advisory_and_not_the_blast_radius(tmp_path: Path) ->
     state = server.bodies[0]["state"]
     assert state.index("Advisory text") < state.index("</untrusted_advisory>")
     assert state.index("</untrusted_advisory>") < state.index("Reaches db:customer-db")
+
+
+# Built by concatenation so this file holds nothing a secret scanner would stop.
+PASSWORD = "hunter2!x-" + "Q7" * 4
+TOKEN = "ghp_" + "a1" * 18
+ADVISORY = (
+    f"Leaked in the build log: password: {PASSWORD} and"
+    f" {TOKEN[:6]}{chr(0x200B)}{TOKEN[6:]}, split by a zero-width space."
+)
+
+
+def assert_masked(text: str) -> None:
+    assert "[masked password]" in text and "[masked GitHub token]" in text
+    assert PASSWORD not in text and TOKEN not in text and TOKEN[6:] not in text
+
+
+def test_urgency_masks_secrets_in_the_advisory_inside_its_fence(tmp_path: Path) -> None:
+    server = Server(answers(urgent={"type": "noul", "noul": 0.8}))
+    jev, _ = make("record", tmp_path, server)
+    jev.urgency(ADVISORY, "Reaches db:customer-db")
+    state = server.bodies[0]["state"]
+    assert_masked(state)
+    fence = state.index("</untrusted_advisory>")
+    assert state.index("[masked password]") < fence < state.index("Reaches db:customer-db")
+    [path] = tmp_path.glob("urgency-*.json")
+    assert_masked(path.read_text(encoding="utf-8"))
+
+
+def test_urgency_masks_secrets_before_the_fallback_model_and_its_recording(tmp_path: Path) -> None:
+    llm = FakeLlm({"q1": 0.3})
+    jev, _ = make("record", tmp_path, Server(), llm, key=None)
+    assert jev.urgency(ADVISORY, "Reaches db:customer-db").source == "fallback"
+    assert_masked(json.dumps(llm.seen))
+    [path] = tmp_path.glob("urgency-*.json")
+    assert_masked(path.read_text(encoding="utf-8"))
