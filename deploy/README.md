@@ -56,6 +56,35 @@ The API will not start without FalkorDB: startup connects and fails if it cannot
 Cloud stops answering later. So a failed deploy can also mean the database is down: check
 `docker compose -f deploy/docker-compose.yml logs api`.
 
+## The GitHub App
+
+The App posts the comment and the `Theseus` check, and re-runs a review on `/theseus review` or Re-run
+(`docs/spec/07-github-and-deploy.md`, "The GitHub App"). Its settings live in
+[`github-app-manifest.json`](github-app-manifest.json). Register it once the API answers on `https://<DOMAIN>`:
+
+1. **Register.** Run `python tools/github_app.py form --domain <DOMAIN>`, open the page it writes, and click
+   the button. GitHub shows the settings from the manifest. If the name `Theseus` is taken, pick another;
+   the check is still called `Theseus`. Click **Create GitHub App**.
+2. **Save its credentials, within an hour.** GitHub sends you to the repo page with `?code=...` in the
+   address bar. Run `python tools/github_app.py convert <code> --out <folder outside the repo>`. It writes
+   `theseus.private-key.pem` and `github-app.env` there, readable only by you, and prints no secret.
+3. **Install it on this repo only.** On the App's page: **Install App**, your account, **Only select
+   repositories**, `theseus`.
+4. **Give the VM the key and the settings.**
+   - Copy the key to `~/theseus/secrets/theseus.private-key.pem` on the VM. The container runs as user
+     10001, so run `sudo chown 10001 ~/theseus/secrets/theseus.private-key.pem` and
+     `sudo chmod 400 ~/theseus/secrets/theseus.private-key.pem`.
+   - Add the three lines of `github-app.env` to `~/theseus/.env`, plus `THESEUS_REPOS=<owner>/theseus` and
+     `THESEUS_TOKEN=<a long random string>` (`openssl rand -hex 32`).
+   - Restart: `docker compose -f deploy/docker-compose.yml up -d`.
+5. **Tell the Action where to send reviews.** In the repo: `gh variable set THESEUS_URL --body https://<DOMAIN>`
+   and `gh secret set THESEUS_TOKEN` (paste the same token).
+6. **Try it.** Open a PR from `demo/trial-1` that edits a comment in `demo-infra/terraform/people.tf`, with
+   label `demo`. Theseus's comment and the `Theseus` check should appear. Comment `/theseus review` and click
+   **Re-run** on the check: each starts a new run of the Theseus workflow.
+7. **Block merges on it.** Settings, **Rules**, **Rulesets**, **New branch ruleset**: target `main`, turn on
+   **Require status checks to pass**, add `Theseus`, and set its source to the App. Both of you agree first.
+
 ## Rotating a secret
 
 Edit `~/theseus/.env` on the VM, then `docker compose -f deploy/docker-compose.yml up -d`. Compose recreates

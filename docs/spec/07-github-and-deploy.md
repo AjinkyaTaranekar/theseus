@@ -15,12 +15,17 @@ time: `concurrency: theseus-<PR number>` with `cancel-in-progress`. Permissions:
 3. For base and head, in `demo-infra/terraform`: `terraform init -backend=false`, `terraform plan -out tfplan`,
    `terraform show -json tfplan > <side>.plan.json`. The provider block's mock credentials and skip flags mean
    no AWS account is needed (task P1 confirms).
-4. Run Checkov on `demo-infra/terraform/` (a pinned version) and keep its JSON summary.
+4. Run Checkov 3.3.29 on `demo-infra/terraform/` and keep its JSON summary.
 5. `POST $THESEUS_URL/analyze` with the repo, PR number, both SHAs, title, body, both plans and the Checkov
    summary, and the header `X-Theseus-Token: ${{ secrets.THESEUS_TOKEN }}`.
 
 **Never put `${{ github.event.pull_request.title }}` or `.body` inside a `run:` script.** Pass them through
-`env:` and read them as variables. Inlining them lets a PR title inject shell commands.
+`env:` and read them as variables. Inlining them lets a PR title inject shell commands. No `run:` step uses
+`${{ }}` at all, and a unit test checks it.
+
+**Planning runs the PR's own Terraform,** and a `data "external"` block would run a program during the plan. So
+`tools/plan.sh` comes from the base commit, never the PR, and only the last step, which sends the request, can
+read `THESEUS_TOKEN`.
 
 The backend, not the Action, posts the comment and the check, using the GitHub App. Commits made with the
 Action's `GITHUB_TOKEN` would not trigger a new run; commits made by the App do.
@@ -47,7 +52,10 @@ the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs through
 only files under the world root. The backend checks each path before committing and refuses the whole commit
 otherwise. The App can write to the product code in principle; this rule is why it never does.
 
-**The comment** is created once and then edited in place. Find it by the marker `<!-- theseus:pr-comment -->`.
+**The comment** is created once and then edited in place. Find it by the marker `<!-- theseus:pr-comment -->`,
+in a comment the App itself wrote: a person who pastes the marker into their own comment never gets it edited.
+A review of a commit that is no longer the PR's head (a re-run of an old run) updates that commit's check but
+leaves the comment to the newer run.
 Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terraform/roles.tf#L31`).
 
 **The check run** is named `Theseus`. Conclusion: `success` when nothing opened and no use beyond intent;
@@ -67,6 +75,14 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 | A PR changes nothing under `demo-infra/` | The App (`pull_request`) | No review: a `success` check, "Nothing under demo-infra changed" |
 | A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
 | A push to `main` | The App (`push`) | A scan of `main` |
+
+**Re-running** repeats the newest Theseus workflow run for the PR's head commit, so the plans are made
+again. If that run is still going, nothing more starts. A check on a PR that changes nothing under the world
+root has no run to repeat; Re-run posts its `success` check again.
+
+**Webhooks** are checked against `GITHUB_WEBHOOK_SECRET` (`X-Hub-Signature-256`) before anything in them is
+read, and an event from a repo outside `THESEUS_REPOS` is refused. Registering the App, installing it and
+setting its secrets: `deploy/README.md`, "The GitHub App", from `deploy/github-app-manifest.json`.
 
 **Requesting a review from the App is not relied on.** GitHub documents review requests for people and teams,
 not Apps. F7 tests it once the App exists; if GitHub allows it, the App treats a `review_requested` event that
