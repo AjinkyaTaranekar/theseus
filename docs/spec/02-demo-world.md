@@ -160,7 +160,7 @@ requirement looks wrong.
 | App logs | `s3://demo-app-logs/` | Expected Jev class `internal` |
 | Invoices | `s3://demo-company-files/invoices/` | Expected `confidential` |
 | Public files | `s3://demo-company-files/public/` | Expected `public` |
-| Raw exports | `s3://demo-data-lake/raw/` | Order exports with customer names and addresses. Expected `regulated` |
+| Raw exports | `s3://demo-data-lake/raw/` | Order exports with customer names and addresses. Override `regulated` in `theseus.yaml`: from the name alone Jev rates it `internal` |
 | Curated data | `s3://demo-data-lake/curated/` | Daily aggregates, no personal data. Expected `internal` |
 | Terraform state | `s3://demo-terraform-state/` | Override `regulated` in `theseus.yaml`: state files hold every secret value Terraform has seen |
 | DB secret | `secret:prod-db-credentials` | Credentials of the app's database user. Tag `db_instance = customer-db`. Expected `regulated` |
@@ -346,6 +346,7 @@ data_locations:
   - {id: "s3://demo-terraform-state/", bucket: demo-terraform-state, prefix: ""}
 sensitive_overrides:             # node ID -> class; a person's override always beats Jev
   "s3://demo-terraform-state/": regulated
+  "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
 environments:                    # anything not listed is prod
   staging:
     - workflow:demo-org/docs-site/preview.yml
