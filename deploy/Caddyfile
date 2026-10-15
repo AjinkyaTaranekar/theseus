@@ -1,0 +1,6 @@
+# DOMAIN comes from .env. Caddy gets and renews the certificate itself; port 80 answers the ACME challenge and
+# redirects everything else to HTTPS.
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:8000
+}

@@ -1,0 +1,16 @@
+# Secrets and local state never enter the image.
+.env
+.env.*
+!.env.example
+*.pem
+.git
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.ruff_cache
+*.egg-info
+.claude
+.code-review-graph
+bench
+docs
