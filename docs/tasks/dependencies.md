@@ -34,7 +34,7 @@ flowchart TD
   E1["E1: Importer: plan, structure, workloads and coverage"]:::b1
   E2["E2: IAM: statements, matching, CAN and CAN_ASSUME"]:::b1
   E3["E3: Graph load, path diff and required access"]:::b1
-  A1["A1: Claude intent extraction"]:::b1
+  A1["A1: LLM intent extraction"]:::b1
   A2["A2: Jev: sensitivity labels and advisory urgency"]:::b1
   A3["A3: Says versus grants"]:::b1
   A4["A4: PR comment: paths, fix table, trace and coverage"]:::b1
@@ -47,7 +47,7 @@ flowchart TD
   E6["E6: Rule-based fixes and ranking"]:::b2
   E9["E9: Terraform patch renderer"]:::b2
   A6["A6: MCP server and tool trace"]:::b2
-  A7["A7: Claude fix agent"]:::b2
+  A7["A7: LLM fix agent"]:::b2
   A9["A9: /theseus apply command"]:::b2
   C2["C2: Python code reader"]:::b2
   FM3["FM3: Finding mode: blast radius and rotate list"]:::b2

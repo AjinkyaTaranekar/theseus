@@ -33,7 +33,7 @@ Assume every judge runs a large engineering org and has lived through this probl
 | How accurate is it? | Measured on about 20 PRs against Checkov, misses included. We wrote the PRs ourselves and say so | The benchmark table |
 | Does it scale? | One graph per state in FalkorDB; candidate fixes run on graph copies | Timings on a large generated graph |
 | What access does it need? | The repo and the plan JSON the CI already produces. It holds no cloud credentials | The architecture slide and the README |
-| Why two models, and why Jev? | Jev makes fast typed judgments with probabilities, such as whether a resource is sensitive: 30 of 30 resource names right in the PoC, about a third of a second per call. Claude proposes and explains. Neither decides facts | Jev's numbers in the README |
+| Why two models, and why Jev? | Jev makes fast typed judgments with probabilities, such as whether a resource is sensitive: 30 of 30 resource names right in the PoC, about a third of a second per call. The LLM (GLM 5.3 through LiteLLM) proposes and explains. Neither decides facts | Jev's numbers in the README |
 | Who writes the required access? | A short `theseus.yaml` today. The code-aware graph can draft it from what the code calls, and a person prunes it | The yaml in the demo repo |
 | Does passing the required-access check mean nothing breaks? | No: the declared needs still hold within the supported model. Beat 4 adds the code's own calls as evidence | Beat 4 |
 | Who would buy this? | Platform teams who own the fix. It complements SubImage or Wiz; its edge is fixes that keep the app working | One honest slide, no market-size numbers |
@@ -46,7 +46,7 @@ Assume every judge runs a large engineering org and has lived through this probl
 | --- | --- | --- |
 | Multi-hop reasoning | Intern to group to role to bucket and secret to database; Action to workflow to OIDC role to database | 1, 3 |
 | Graph queries and algorithms as agent tools | Path queries, MaxFlow, betweenness and BFS, each wrapped as an MCP tool | 2, 3, 4 |
-| Tool selection through MCP | Claude chooses among blast radius, minimum cut, simulate and code-use tools, and the tool trace is shown | 2, 3, 4 |
+| Tool selection through MCP | The LLM chooses among blast radius, minimum cut, simulate and code-use tools, and the tool trace is shown | 2, 3, 4 |
 | Actions based on what the graph shows | A PR comment, a committed fix, a containment PR, a rotation list | All |
 | Explainable results | Every step cites a file and line, and each fix says why it passed or failed | All |
 
@@ -93,7 +93,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | File | What it gives the agent |
 | --- | --- |
 | `AGENTS.md` (`CLAUDE.md` imports it) | Commands first, then Always, Ask first and Never boundaries, code conventions with one example, tests, the definition of done, the commit and pull request rules, where to look, and the start prompt. Codex reads it directly and Claude Code through CLAUDE.md, where a hook blocks writes to expected.json and .env. demo-infra/AGENTS.md adds the demo world's own rules |
-| `docs/spec/` (7 files) | What Theseus does; the demo world with every name and the five scenarios' expected outcomes; the graph schema and canonical Cypher; every engine rule; the full file skeleton and shared models; Claude and Jev prompts; GitHub and deployment |
+| `docs/spec/` (7 files) | What Theseus does; the demo world with every name and the five scenarios' expected outcomes; the graph schema and canonical Cypher; every engine rule; the full file skeleton and shared models; LLM and Jev prompts; GitHub and deployment |
 | `docs/tasks/<ID>.md` (31 briefs) | The feature, why it matters, the spec sections to read, each file to create or change and its purpose, steps, done when, out of scope, and the prompt to paste |
 | `docs/tasks/README.md` | Every task by stage, with the files it creates and what it achieves; how to set up the board; which IDs were merged and why |
 | `docs/tasks/human-tasks.md` | The 13 tasks only people do: prep checks, expected.json, the three gates, the video and the submission |
@@ -107,10 +107,10 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 - Every name in the demo world (about 110 resources and six services), from Terraform addresses to statement Sids, and each scenario's expected outcome. The world lives in demo-infra/ in this repo; demo PRs change only that folder, and the App may write only there.
 - The IAM subset, and that everything outside it is UNKNOWN.
 - Capacities: 1,000,000 for required routes and non-permission edges, 1,000 for grants the code uses, 1 otherwise.
-- Candidate IDs: A revert, B Claude, C conditional Deny, D cut the shared hop, S scope down, K containment, U unused grant.
+- Candidate IDs: A revert, B the LLM, C conditional Deny, D cut the shared hop, S scope down, K containment, U unused grant.
 - `expected.json` holds only the compared fields, and only people write it.
 - An in-memory graph store exists for offline tests only; the product refuses to run without FalkorDB (rule 3).
-- Every Claude call goes through one wrapper with record and replay; the fix agent never sees PR text.
+- Every LLM call goes through one wrapper with record and replay; the fix agent never sees PR text.
 
 ### What each stage builds
 
@@ -133,7 +133,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | E1 Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `plan.py`, `source_index.py`, `build.py`, `tests/unit/importer/` | none |
 | E2 IAM: statements, matching, CAN and CAN\_ASSUME | `theseus/importer/iam.py`, `policies.py`, `aws_managed.py`, `access.py`, `tests/unit/importer/test_iam.py`, `test_policies.py`, `test_access.py` | none |
 | E3 Graph load, path diff and required access | `theseus/graph/store.py`, `load.py`, `queries.py`, `theseus/engine/analyze.py`, `pipeline.py`, `tests/golden/test_intern.py`, `test_main.py`, `tests/integration/test_store_parity.py` | `theseus/importer/build.py`, `theseus/cli.py` |
-| A1 Claude intent extraction | `theseus/agent/llm.py`, `intent.py`, `tests/replay/intents.yaml`, `recordings/claude/intent-*.json`, `tests/replay/test_intent.py` | none |
+| A1 LLM intent extraction | `theseus/agent/llm.py`, `intent.py`, `tests/replay/intents.yaml`, `recordings/llm/intent-*.json`, `tests/replay/test_intent.py` | none |
 | A2 Jev: sensitivity labels and advisory urgency | `theseus/agent/jev.py`, `sensitivity.py`, `tests/replay/test_sensitivity.py`, `test_triage.py` | none |
 | A3 Says versus grants | `theseus/engine/intent_effect.py`, `tests/unit/test_intent_effect.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
 | A4 PR comment: paths, fix table, trace and coverage | `theseus/agent/templates/comment.md`, `theseus/agent/render.py`, `tests/unit/test_render.py` | none |
@@ -150,7 +150,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | E6 Rule-based fixes and ranking | `theseus/engine/candidates.py`, `tests/golden/test_public_bucket.py`, `tests/unit/test_ranking.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
 | E9 Terraform patch renderer | `theseus/engine/render_tf.py`, `tests/unit/render_tf/` | none |
 | A6 MCP server and tool trace | `theseus/mcp/tools.py`, `server.py`, `theseus/agent/trace.py`, `.mcp.json`, `tests/unit/test_mcp_tools.py`, `test_trace.py` | none |
-| A7 Claude fix agent | `theseus/agent/fixer.py`, `evidence.py`, `recordings/claude/fix-*.json`, `tests/replay/test_fixer.py` | none |
+| A7 LLM fix agent | `theseus/agent/fixer.py`, `evidence.py`, `recordings/llm/fix-*.json`, `tests/replay/test_fixer.py` | none |
 | A9 /theseus apply command | `theseus/api/webhooks.py`, `tests/unit/test_webhooks.py` | `theseus/api/github.py`, `theseus/api/routes.py` |
 | C2 Python code reader | `theseus/importer/code.py`, `tests/unit/importer/test_code.py` | `theseus/importer/build.py` |
 | FM3 Finding mode: blast radius and rotate list | `theseus/engine/finding.py`, `tests/golden/test_compromised_action.py` | `theseus/engine/pipeline.py`, `theseus/api/routes.py`, `theseus/cli.py` |
@@ -205,7 +205,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | E1 | Importer: plan, structure, workloads and coverage | Engine | F2, F4 | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 10 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | L |
 | E2 | IAM: statements, matching, CAN and CAN\_ASSUME | Engine | F2 | All unit tests pass, including attached and shared managed policies | L |
 | E3 | Graph load, path diff and required access | Engine | E1, E2, F3, F5 | `analyze` on the intern fixture matches `expected.json` for opened, closed and R1 to R17 | M |
-| A1 | Claude intent extraction | Agent and GitHub | F2 | Replay tests pass on 10 PR texts | M |
+| A1 | LLM intent extraction | Agent and GitHub | F2 | Replay tests pass on 10 PR texts | M |
 | A2 | Jev: sensitivity labels and advisory urgency | Agent and GitHub | F2 | Every demo resource is rated and cached | M |
 | A3 | Says versus grants | Agent and GitHub | E3, A1 | The intern headline names `customer-db` | S |
 | A4 | PR comment: paths, fix table, trace and coverage | Agent and GitHub | F2 | Renders from every `expected.json` | L |
@@ -222,8 +222,8 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | E5 | Simulator on GRAPH.COPY | Engine | E3 | Each candidate gets a verdict | M |
 | E6 | Rule-based fixes and ranking | Engine | E5 | For the intern: A fails, C is UNKNOWN, D fails | M |
 | E9 | Terraform patch renderer | Engine | F2, F4 | Every op renders and the result parses | M |
-| A6 | MCP server and tool trace | Agent and GitHub | F2 | Claude lists and calls every tool on the fixtures | M |
-| A7 | Claude fix agent | Agent and GitHub | E5, A6 | Fix B verified | M |
+| A6 | MCP server and tool trace | Agent and GitHub | F2 | Claude Code lists and calls every tool on the fixtures | M |
+| A7 | LLM fix agent | Agent and GitHub | E5, A6 | Fix B verified | M |
 | A9 | /theseus apply command | Agent and GitHub | F7, E9 | On a `demo/` PR, `/theseus apply <ID>` commits the rendered fix and the Action re-runs | M |
 | C2 | Python code reader | Code-aware | F2, C1 | Every call in the backend becomes an edge, a counted skip or an unknown | L |
 | FM3 | Finding mode: blast radius and rotate list | Finding mode | FM1, E3 | The five-hop trace to `customer-db` | M |
@@ -314,7 +314,7 @@ theseus/            repo root; every file and its owner task is in docs/spec/05-
     web/         the Try-it page (S4)
   demo-infra/    the synthetic world: terraform/, services/, workflows/, theseus.yaml (F4, C1)
   fixtures/      five scenarios generated by make_fixture.py; expected.json by people (F4, F5)
-  recordings/    recorded Claude and Jev replies (A1, A2, A7)
+  recordings/    recorded LLM and Jev replies (A1, A2, A7)
   tests/         unit, golden, contract, replay, integration, e2e
   bench/         benchmark and timings (S2)
   deploy/        Dockerfile, docker-compose.yml, Caddyfile, deploy.sh (F3)
@@ -353,8 +353,8 @@ A sample `expected.json` for the intern scenario. It holds only the fields we co
 | Unit | IAM matching: wildcards, Deny precedence, `NotAction` returning UNKNOWN, OIDC `sub` matching. The code extractor on each call pattern | Every commit | A |
 | Golden fixtures | Engine output against `expected.json` for each scenario and each benchmark PR | Every commit | A |
 | Contract | Results from the stub and from the real engine both validate against the schema | Every commit | Both |
-| Agent replay | Recorded Claude replies replayed. The evidence checker rejects unknown IDs, and an injected instruction in PR text is flagged | Every commit | B |
-| Live model | A few real Claude and Jev calls on the scenarios | At every gate | B |
+| Agent replay | Recorded LLM replies replayed. The evidence checker rejects unknown IDs, and an injected instruction in PR text is flagged | Every commit | B |
+| Live model | A few real LLM and Jev calls on the scenarios | At every gate | B |
 | End to end | A real demo/ PR in this repo: comment, check, apply, re-run | At every gate | Both |
 | Deploy smoke | Health endpoint up, FalkorDB reachable, Try-it renders | After every deploy | B |
 | Benchmark | About 20 PRs: Theseus against Checkov, plus timings | Once E3 passes, and again before the video | A |
@@ -405,7 +405,7 @@ A sample `expected.json` for the intern scenario. It holds only the fields we co
 | 6: only public, synthetic or own data | Invented names only, never a teammate's or an employer's. The compromised Action is a fixture advisory, and we never run a real tampered Action. No real secrets in the demo org |
 | 8: main coding and design start after the event begins | The PoC stays private and is never copied into the repo. The first commit landed after the event started. The repo, with this plan, stays private until we submit. The agent kit (specs and task briefs, no code) was written before the event as notes, and the README says so |
 | 10: repo, README with setup and graph model, the Cypher and algorithms used, video, live deployment or local setup, track named | Tasks S5 to S7. The README's queries-and-algorithms section is written first, not left for the end |
-| FAQ: a live deployment is preferred | The Try-it page runs the real engine and FalkorDB live and caches only Claude's text, so it is genuinely live and still cheap |
+| FAQ: a live deployment is preferred | The Try-it page runs the real engine and FalkorDB live and caches only the LLM's text, so it is genuinely live and still cheap |
 | 11 to 13: disclose AI use, every member can explain the code, not entirely AI-generated | `AI_USE.md`, the evening walkthroughs, every `expected.json` written by us, and real commits from both of us |
 | 1, 4, 7, 9, 15 to 18 | IP ownership agreed in writing (P6), and Cartography, SubImage and AWS research credited in the README |
 
@@ -419,7 +419,7 @@ A sample `expected.json` for the intern scenario. It holds only the fields we co
 | --- | --- | --- |
 | 0:00 to 0:15 | The intern PR: "Add Priya to support-engineers so she can read prod logs", with Checkov passing | "This PR passes every check we have." |
 | 0:15 to 0:40 | Theseus's PR comment: intent versus effect, and a Mermaid path to the customer database, each step with its file and line | "Your PR says logs. Your change grants the customer database." |
-| 0:40 to 1:05 | The MaxFlow result, the fix table, Claude's `intern-onboarding` role verified, the Deny option shown as UNKNOWN | "The math rules out deleting a permission. The agent designs a new role, and the graph proves it." |
+| 0:40 to 1:05 | The MaxFlow result, the fix table, the LLM's `intern-onboarding` role verified, the Deny option shown as UNKNOWN | "The math rules out deleting a permission. The agent designs a new role, and the graph proves it." |
 | 1:05 to 1:20 | A reviewer types `/theseus apply B`, the commit lands, the check turns green | "Nothing changes until a person says so." |
 | 1:20 to 1:50 | The compromised-Action advisory, the trace through the staging workflow, the containment PR and the list of secrets to rotate | "A compromised Action, a few hops from your database. One PR contains it, and you rotate only what it could reach." |
 | 1:50 to 2:15 | `support-portal`'s role can read the database secret, but its code never asks for it, so the cut lands on that grant | "Your code never uses this grant. Remove it, and nothing breaks." |

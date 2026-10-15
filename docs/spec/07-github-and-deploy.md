@@ -84,12 +84,22 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 - **Scan issue:** title `Theseus scan: <n> dangerous paths in main`, label `demo`, plus one PR per passing U
   candidate, titled and committed as `fix: Remove unused grant <Sid>`.
 
+## Where FalkorDB runs
+
+FalkorDB Cloud, for development, tests and the deployed API. Nobody needs Docker on a laptop. The app reads
+the instance's connection settings from `.env` (`FALKORDB_*` below). CI runs the `falkordb` marked tests
+against a `falkordb/falkordb:v4.22.0` service container, the version the Cloud instance reports, so both
+run the same procedures. Upgrade both together.
+
+**The instance (P1):** FalkorDB 4.22.0 (graph module version 42200, the enterprise build) on Redis 8.10.2,
+Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username and password. Its
+`algo.maxFlow` takes one relationship type at a time (`03-graph.md`, "What FalkorDB 4.22 requires").
+
 ## Docker Compose (`deploy/docker-compose.yml`, task F3)
 
 | Service | Image | Notes |
 | --- | --- | --- |
-| `falkordb` | `falkordb/falkordb-server`, the tag confirmed in P1 | Volume for data. No public port. In local dev only, `6379` is published through the `dev` profile |
-| `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`. Depends on `falkordb` |
+| `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`, including the FalkorDB Cloud settings |
 | `caddy` | `caddy:2` | Ports 80 and 443. Caddyfile: `{$DOMAIN} { reverse_proxy api:8000 }` with automatic HTTPS |
 
 `deploy/deploy.sh` connects to the VM over SSH, pulls `main`, runs `docker compose up -d --build`, then checks
@@ -100,13 +110,16 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `THESEUS_MODE` | `replay` | `replay`, `record` or `live` for model calls |
-| `ANTHROPIC_API_KEY` | | Claude |
-| `CLAUDE_MODEL` | `claude-opus-5-5` | Intent and fixes |
-| `CLAUDE_FAST_MODEL` | `claude-haiku-5-5` | Jev fallback only |
+| `LLM_MODEL` | `openai/zai-org/GLM-5.3` | Intent and fixes, as a LiteLLM model string (`06-agent.md`) |
+| `LLM_FAST_MODEL` | `openai/zai-org/GLM-5.3-Flash` | Jev fallback only |
+| `LLM_API_BASE` | `https://api.inference.crusoecloud.com/v1` | Crusoe's OpenAI-compatible endpoint, or the endpoint of whichever provider `LLM_MODEL` names |
+| `LLM_API_KEY` | | The Crusoe key, or the key of whichever provider `LLM_MODEL` names |
 | `TYPESAFE_API_KEY` | | Jev |
 | `JEV_BASE_URL` | `https://api.typesafe.ai` | Jev |
 | `JEV_MODEL` | `jev-latest` | Jev |
-| `FALKORDB_HOST`, `FALKORDB_PORT`, `FALKORDB_PASSWORD` | `localhost`, `6379`, empty | FalkorDB |
+| `FALKORDB_HOST`, `FALKORDB_PORT` | `localhost`, `6379` | The FalkorDB Cloud instance |
+| `FALKORDB_USERNAME`, `FALKORDB_PASSWORD` | empty | Its credentials |
+| `FALKORDB_TLS` | `false` | Connect over TLS. Our instance speaks plain TCP, so it stays `false` |
 | `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`, `GITHUB_WEBHOOK_SECRET` | | The GitHub App |
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
@@ -115,6 +128,6 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 ## The VM
 
-Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) if the shape allows; otherwise FalkorDB Cloud for the database and
-the VM for the app. Only port 443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
+Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) runs the API and Caddy; FalkorDB is on FalkorDB Cloud. Only port
+443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
 Rate-limit `POST /try/*` to 10 requests a minute per IP.

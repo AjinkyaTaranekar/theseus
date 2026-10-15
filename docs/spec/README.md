@@ -10,7 +10,7 @@ Task briefs in `docs/tasks/` point to the exact sections each task needs.
 | [03-graph.md](03-graph.md) | Node IDs, labels, properties, edge types, evidence, one graph per state, the canonical Cypher | Importer, graph layer, engine |
 | [04-engine.md](04-engine.md) | Import rules, the IAM subset, edge derivation, paths, requirements, diff, capacities, the minimum cut, patch ops, simulation, verdicts, ranking, findings, usage | Engine and importer tasks |
 | [05-contracts.md](05-contracts.md) | Module layout, the shared models, engine functions, MCP tools, API routes, the PR comment, `expected.json` | Every task |
-| [06-agent.md](06-agent.md) | Claude and Jev: schemas, prompts, record and replay, the evidence checker, untrusted text | Agent tasks |
+| [06-agent.md](06-agent.md) | The LLM and Jev: schemas, prompts, record and replay, the evidence checker, untrusted text | Agent tasks |
 | [07-github-and-deploy.md](07-github-and-deploy.md) | The GitHub Action and App, the apply command, Docker Compose, Caddy, environment variables | GitHub and deploy tasks |
 
 ## Decisions already made
@@ -20,6 +20,6 @@ Task briefs in `docs/tasks/` point to the exact sections each task needs.
   that change only `demo-infra/`, and the App may write only there. No GitHub org is needed.
 - Python 3.12, FastAPI, Pydantic v2, FalkorDB.
 - One FalkorDB graph per state; candidate fixes run on `GRAPH.COPY` copies.
-- The engine decides facts; Claude proposes and explains; Jev answers typed questions; a person approves.
+- The engine decides facts; the LLM proposes and explains; Jev answers typed questions; a person approves.
 - UNKNOWN is a real answer. Anything outside the supported IAM subset returns UNKNOWN, never a guess.
 - Findings from the throwaway PoC are written into these files. Its code is never copied (rule 8).

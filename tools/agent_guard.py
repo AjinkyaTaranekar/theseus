@@ -4,6 +4,7 @@
 Wired in .claude/settings.json for Edit, Write, MultiEdit and NotebookEdit. Exit code 2 blocks the call and
 shows the message to the agent. Shell commands are not covered; AGENTS.md and CODEOWNERS cover those.
 """
+
 from __future__ import annotations
 
 import json
@@ -12,9 +13,10 @@ import sys
 from fnmatch import fnmatch
 from pathlib import Path
 
+ANSWER_KEY = "Humans write every expected.json (AGENTS.md, Never). Report the difference instead."
 PROTECTED = {
-    "fixtures/*/expected.json": "Humans write every expected.json (AGENTS.md, Never). Report the difference instead.",
-    "bench/cases/*/expected.json": "Humans write every expected.json (AGENTS.md, Never). Report the difference instead.",
+    "fixtures/*/expected.json": ANSWER_KEY,
+    "bench/cases/*/expected.json": ANSWER_KEY,
     ".env": "Secrets live in .env and are never written by an agent. Use .env.example for variable names.",
 }
 

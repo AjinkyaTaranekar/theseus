@@ -203,18 +203,22 @@ Analyze base and head with the same actors and the same requirements (config plu
 | 1 | Every other edge |
 
 - **Sources:** the actor (PR and scan modes), or every matched workflow (finding mode).
-- **Sinks:** that actor's dangerous targets in the analyzed graph.
+- **Sinks:** that actor's dangerous targets in the analyzed graph, minus any source (FalkorDB requires the
+  two sets not to overlap).
+- **FLOW rows:** one per (source, target) pair over the traversal and grant edges, with capacities summed
+  and `eids` sorted, written by Q_SET_FLOW (`03-graph.md`). A cut `FLOW` edge cuts every edge in its `eids`.
 - **Value at least `BIG`** means no cut keeps every requirement: `cuttable` is false and the agent must design a
   structural fix.
 - **The cut:** after max flow, walk the residual graph from the sources (forward capacity minus flow above zero,
   or flow above zero on a reverse step). The cut is every edge from a reached node to an unreached one. Report
   each with its evidence.
-- `algo.maxFlow` returns flows, not the cut; compute the cut from those flows. If the call is unavailable, run
-  Edmonds-Karp in Python on the same edges and capacities.
+- `algo.maxFlow` returns flows, not the cut, and only for edges that carry flow. Compute the cut from those
+  flows and the `FLOW` capacities; an edge missing from the result has flow 0. If the call fails, run
+  Edmonds-Karp in Python on the same `FLOW` rows.
 
 ## 13. Patch ops (`engine/patch.py`)
 
-Candidate fixes are lists of ops applied to a copy of the head resources. Rules and Claude use the same catalog.
+Candidate fixes are lists of ops applied to a copy of the head resources. Rules and the LLM use the same catalog.
 
 | Op | Fields | Effect |
 | --- | --- | --- |
@@ -253,7 +257,7 @@ Candidate IDs are fixed by where they come from:
 | ID | Source | Fix |
 | --- | --- | --- |
 | A | rule | Revert: remove the memberships or statements the PR added on the opened paths |
-| B | Claude | A structural fix, such as a new narrower role (`06-agent.md`) |
+| B | The LLM | A structural fix, such as a new narrower role (`06-agent.md`) |
 | C | rule | A `Deny` on the role that grants the data, conditioned on the new principal. Always UNKNOWN by design: we do not model that condition |
 | D | rule | Remove the statement that lets a group or role reach the role on the path |
 | S | rule | Scope down: set a statement on the path that grants both required and dangerous locations to the required ones only |
@@ -268,7 +272,7 @@ Generate only the candidates that apply to the paths in hand; derive names from 
 2. Fewer UNKNOWN steps first.
 3. The smallest change: fewer ops, then fewer permissions removed.
 4. No broad wildcard in an added statement.
-5. Rule candidates before Claude's, then by ID.
+5. Rule candidates before the LLM's, then by ID.
 
 The first `pass` is `recommended`. Jev can veto, never approve: if Jev scores "could this fix break legitimate
 use?" above 0.5, the candidate is labeled "needs a closer look" and cannot be recommended. If nothing passes,

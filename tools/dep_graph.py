@@ -7,6 +7,7 @@ tasks by size).
 
     python tools/dep_graph.py
 """
+
 from __future__ import annotations
 
 import csv
@@ -32,7 +33,9 @@ def main() -> None:
     rows = list(csv.DictReader((HERE / "tasks.csv").open(encoding="utf-8")))
     ids = [r["id"] for r in rows]
     by_id = {r["id"]: r for r in rows}
-    needs = {t: [n.strip() for n in re.split(r"[,;]", by_id[t]["needs"]) if TASK_ID.match(n.strip())] for t in ids}
+    needs = {
+        t: [n.strip() for n in re.split(r"[,;]", by_id[t]["needs"]) if TASK_ID.match(n.strip())] for t in ids
+    }
 
     @lru_cache(None)
     def ancestors(t: str) -> frozenset[str]:
@@ -41,7 +44,9 @@ def main() -> None:
             out |= {d} | ancestors(d)
         return frozenset(out)
 
-    reduced = {t: [d for d in needs[t] if not any(d in ancestors(o) for o in needs[t] if o != d)] for t in ids}
+    reduced = {
+        t: [d for d in needs[t] if not any(d in ancestors(o) for o in needs[t] if o != d)] for t in ids
+    }
 
     @lru_cache(None)
     def finish(t: str) -> int:
@@ -51,7 +56,7 @@ def main() -> None:
     while needs[chain[-1]]:
         chain.append(max(needs[chain[-1]], key=finish))
     chain.reverse()
-    critical = set(zip(chain, chain[1:]))
+    critical = set(zip(chain, chain[1:], strict=False))
     starts = [t for t in ids if not needs[t]]
 
     lines = ["flowchart TD"]

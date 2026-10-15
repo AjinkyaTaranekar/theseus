@@ -29,10 +29,10 @@ Every claim cites the config line behind it, and a person approves before anythi
 | Focus | The step after a risk is found: choosing a fix, before merge. Finding attack paths alone already exists in other tools |
 | Entry points | PR mode (a Terraform pull request) and finding mode (a CVE, advisory or scanner report), sharing one engine |
 | Three sources of truth | What the PR says, what Terraform allows, and what the code calls. Every gap between them is a finding |
-| Who decides what | FalkorDB and deterministic code decide what is true. Jev (System 1) ranks and can veto. Claude (System 2) proposes and explains. A person approves |
-| Stack | Python and FastAPI, FalkorDB in Docker on the Oracle VM, a PR comment with Mermaid paths as the main UI, a small Try-it page, a GitHub Action and App on a public demo org |
+| Who decides what | FalkorDB and deterministic code decide what is true. Jev (System 1) ranks and can veto. The LLM (System 2, GLM 5.3 by default) proposes and explains. A person approves |
+| Stack | Python and FastAPI, FalkorDB Cloud, the API on the Oracle VM, a PR comment with Mermaid paths as the main UI, a small Try-it page, a GitHub Action and App on a public demo org |
 | Story | Four beats: the intern PR (see it), its proven fix (fix it), a compromised GitHub Action (contain it), and a grant the code never calls (nobody breaks). The public bucket becomes a Try-it preset |
-| Status | A throwaway PoC passed 5 of 7 feasibility questions. FalkorDB itself has not run yet, so that check (task P1) comes first |
+| Status | A throwaway PoC passed 5 of 7 feasibility questions. Task P1 then ran FalkorDB Cloud: GRAPH.COPY, betweenness and max flow all work, with max flow over one relationship type |
 | Plan | The task board, gates, video script and agent kit: [Plan of action](plan-of-action.md) |
 
 ## What we thought initially
@@ -63,7 +63,7 @@ Together those form a path: external input, then S3, then Lambda, then IAM role,
 1. **From scanning a whole cloud to analyzing a change.** A pull request is the moment someone decides, and the change is small enough to explain.
 2. **From finding paths to choosing a fix.** Each candidate fix is tested for two things: does it close the dangerous path, and does the app keep the access it declared it needs?
 3. **Finding mode added.** When a scanner, or a model like [Claude Mythos Preview](https://www.anthropic.com/glasswing), reports a vulnerable component, Theseus assumes that component is compromised. It maps what an attacker could reach from there and runs the same fix comparison.
-4. **System 1 and System 2 added.** Fast typed judgments come from Jev, reasoning and explanation from Claude, and facts from the graph.
+4. **System 1 and System 2 added.** Fast typed judgments come from Jev, reasoning and explanation from an LLM, and facts from the graph.
 
 The goal: **make a security change easier to assess before someone applies it.**
 
@@ -118,7 +118,7 @@ Before we submit, check that the GitHub organization, a domain and the trademark
 | Candidate fix | Dangerous paths | Required access | Verdict |
 | --- | --- | --- | --- |
 | A: remove her from the group | Closed | Fails: she can no longer read `app-logs` | Too blunt |
-| B: a new `intern-onboarding` role that reads only `app-logs` (proposed by Claude) | Closed | Kept, for her and for the support team | Recommended |
+| B: a new `intern-onboarding` role that reads only `app-logs` (proposed by the LLM) | Closed | Kept, for her and for the support team | Recommended |
 | C: a Deny on invoices and the secret, conditioned on her user name | Closed only if the condition holds | Kept | UNKNOWN: we don't model that condition key, so a person must look closer |
 | D: stop `support-engineers` assuming `prod-support` | Closed | Fails for every support engineer | Rejected |
 
@@ -166,7 +166,7 @@ Beats 1 to 3 cover the left edge. Beat 4 adds the code box and the two gaps that
 2. **Proves the fix.** `algo.maxFlow` finds the fewest changes that close every route. Each candidate is checked on its own graph copy against dangerous paths, second routes and required access.
 3. **Reads intent.** It compares what the PR says with what the change grants.
 4. **One path across domains.** GitHub OIDC trust, IAM, a secret and the database it unlocks sit on one path, and Beat 4 adds the app code.
-5. **Facts stay deterministic.** Jev and Claude suggest, the graph engine decides what is reachable, and a person approves.
+5. **Facts stay deterministic.** Jev and the LLM suggest, the graph engine decides what is reachable, and a person approves.
 
 It shows evidence and unknowns, and a person approves before anything is applied. We will re-check each tool's current features before submission and keep the table above honest.
 
@@ -234,17 +234,17 @@ Mythos Preview is not generally available. Theseus treats its reports like any s
 
 ![How Theseus works: three inputs, one graph per state, one human decision](images/end-to-end-flow.png)
 
-Jev and Claude sit beside the engine, not above it. They rank, propose and explain, while the engine's queries on FalkorDB decide what is true. Only a person's approval lets the agent commit.
+Jev and the LLM sit beside the engine, not above it. They rank, propose and explain, while the engine's queries on FalkorDB decide what is true. Only a person's approval lets the agent commit.
 
 | Step | Who does it | What happens |
 | --- | --- | --- |
 | 1. Ingest | Deterministic code | Plan JSON, `theseus.yaml`, workflow files, app code and findings become nodes and edges. Every edge keeps the file and line it came from. |
 | 2. Analyze | FalkorDB and the engine | Path queries, the base-against-head diff, the minimum-cut search (algo.maxFlow), the required-access check, and UNKNOWN for unsupported rules |
 | 3. Triage | Jev (System 1) | Rates sensitivity for untagged resources, the urgency of a finding, and whether a permission is likely needed even though it isn't declared |
-| 4. Propose | Claude (System 2) and rule-based generators | Candidate fixes written as Terraform patches. Rule-based ones: remove, scope down, add deny. Claude adds structural ones that rules can't invent, such as a new, narrower role. |
+| 4. Propose | The LLM (System 2) and rule-based generators | Candidate fixes written as Terraform patches. Rule-based ones: remove, scope down, add deny. The LLM adds structural ones that rules can't invent, such as a new, narrower role. |
 | 5. Simulate | The engine | `GRAPH.COPY` the head graph, apply the patch, re-run every query |
 | 6. Rank and gate | The engine, plus a Jev veto | Fixed rules, listed below the flowchart |
-| 7. Explain | Claude | Writes the evidence card. Every sentence cites evidence IDs, and a checker rejects any ID that doesn't exist. |
+| 7. Explain | The LLM | Writes the evidence card. Every sentence cites evidence IDs, and a checker rejects any ID that doesn't exist. |
 | 8. Decide | A person | Picks a fix with a PR command, or rejects all of them |
 | 9. Act | The agent | Commits the fix or opens a PR, then Theseus re-runs and updates the check |
 
@@ -394,7 +394,7 @@ The path diff runs query 1 on the base graph and on the head graph. The engine t
 
 ## System 1 and System 2
 
-**Jev makes fast typed judgments where no rule can decide. Claude proposes fixes and explains them. Neither decides what is true or what ships.** The graph and the engine own the facts, and a person owns the decision.
+**Jev makes fast typed judgments where no rule can decide. The LLM proposes fixes and explains them. Neither decides what is true or what ships.** The graph and the engine own the facts, and a person owns the decision.
 
 ![Who decides what: 4 layers, authority at the top, facts at the bottom](images/who-decides.png)
 
@@ -407,7 +407,7 @@ Each layer has one job and one thing it may never do. That split is what lets th
 - **Interface:** you send a state and a set of typed questions: choice, score, or yes/no.
 - **Access:** `POST https://api.typesafe.ai/v1/systemone` with model route `jev-latest`. Python and JavaScript SDKs exist. Access is through a waitlist.
 - **Vendor-reported figures:** 70 to 500 ms latency, $0.042 per million input tokens, and about 68% agreement on TypeSafe's own four-workflow benchmark. That is close to mid-tier LLMs and below the top ones.
-- **No written reasoning:** it gives none. That suits us, because Claude writes the explanations.
+- **No written reasoning:** it gives none. That suits us, because the LLM writes the explanations.
 
 **Measured in our PoC:** `jev-1.13.0` rated 30 of 30 resource names correctly (Brier score 0.021). It judged 9 of 10 PR diffs against their stated purpose (Brier 0.081), catching all 5 over-grants; the one miss was a false alarm. A call with 10 questions took about 0.34 seconds. The sets are small, so we re-measure on the hackathon fixtures. Since the PoC, Jev decides sensitivity instead of a keyword list.
 
@@ -418,18 +418,18 @@ Each layer has one job and one thing it may never do. That split is what lets th
 | Is this permission likely used even though it isn't declared? | Yes or no | Action, resource, workload name, code hints | Warns before a fix removes it, and asks the developer to declare it | A false alarm costs one click. A miss is a known gap, listed on the card. |
 | Could this fix break legitimate use? | Score 0 to 1 | The patch, the requirements, earlier warnings | Above the threshold, the fix is labeled "needs a closer look" and is never the default | It can only block. The engine's checks still run. |
 
-**Fallback:** if Jev is unavailable during the event, Claude Haiku 5.5 (`claude-haiku-5-5`) answers the same typed questions with a JSON schema. Those scores are labeled "not calibrated".
+**Fallback:** if Jev is unavailable during the event, GLM 5.3 Flash answers the same typed questions with a forced tool call. Those scores are labeled "not calibrated".
 
 **In the pitch:** Jev appears with its measured numbers, re-measured on the hackathon fixtures.
 
-### System 2: Claude
+### System 2: an LLM through LiteLLM
 
 | Setting | Choice |
 | --- | --- |
-| Default model | Claude Opus 5.5 (`claude-opus-5-5`) for proposing fixes and writing evidence cards. Quality matters, and volume is a few calls per PR. |
-| Cheaper option | Claude Sonnet 5.5 (`claude-sonnet-5-5`), chosen in config |
-| Access | An Anthropic API key in the hosted app. `claude -p` on a Claude Code login is for local development only, because a public app should not run on a personal login. |
-| Other providers | The provider is configurable. Crusoe-hosted open models can swap in. A local Ollama model is too slow on the VM's two ARM cores. |
+| Default model | GLM 5.3 (`zai-org/GLM-5.3`) on Crusoe's OpenAI-compatible API, for reading PR intent, proposing fixes and writing evidence cards. We have Crusoe credits, and in a first check it handled a forced tool call with an injection attempt correctly. |
+| Fast model | GLM 5.3 Flash (`zai-org/GLM-5.3-Flash`), used only when Jev is down |
+| Access | Every call goes through LiteLLM in one wrapper. The model, endpoint and key are three settings, so Claude, GPT or another open model is a config change plus new recordings. |
+| Other providers | A local Ollama model is too slow on the VM's two ARM cores. |
 | Tools (MCP), read-only | `diff_paths`, `blast_radius`, `check_requirements`, `choke_points`, `explain_path`, min\_cut, shortest\_route, unused\_grants, secrets\_reachable |
 | Tools (MCP), sandboxed | `simulate_fix` creates a candidate graph and never touches the repository |
 | Not given to the model | `post_comment`, `commit_fix`, `open_pr`. The app runs these only after a person's command. |
@@ -438,7 +438,7 @@ Each layer has one job and one thing it may never do. That split is what lets th
 
 ## Tech stack and deployment
 
-**The stack is Python with FastAPI, FalkorDB in Docker, a PR comment as the main UI, and a small Try-it page, all on the Oracle VM behind one HTTPS entry point.** FalkorDB itself is never public.
+**The stack is Python with FastAPI, FalkorDB Cloud, a PR comment as the main UI, and a small Try-it page, with the API on the Oracle VM behind one HTTPS entry point.**
 
 ### Python or Spring Boot: Python
 
@@ -446,7 +446,7 @@ Each layer has one job and one thing it may never do. That split is what lets th
 | --- | --- | --- |
 | FalkorDB client | `falkordb` package, including `copy()` for `GRAPH.COPY` | JFalkorDB, also official |
 | Jev | Python SDK | No SDK, raw HTTP |
-| Claude and MCP | Official Python SDKs for both | Official Java SDK |
+| LLM and MCP | LiteLLM for every provider, and the official MCP SDK | One SDK per provider |
 | IaC and IAM helpers | Checkov and policyuniverse (expands IAM wildcard actions) are Python | Few |
 | Code to write in four days | Less: JSON in, JSON out | More: DTOs, configuration, wiring |
 | Memory on the VM | Light | The JVM is heavier, but fits in 12 GB |
@@ -458,8 +458,8 @@ We picked Python, and the whole backend uses it.
 | Part | Choice | Why |
 | --- | --- | --- |
 | Backend | Python 3.12, FastAPI, Pydantic | Typed JSON APIs, quickly |
-| Graph database | FalkorDB server (`falkordb/falkordb-server`, [arm64 and amd64 images](https://hub.docker.com/r/falkordb/falkordb-server/tags)) in Docker | Primary database, one graph per state |
-| Agent | Anthropic Python SDK and MCP Python SDK | Tool choice and structured output |
+| Graph database | FalkorDB Cloud (FalkorDB 4.22.0); CI uses the matching `falkordb/falkordb:v4.22.0` image | Primary database, one graph per state. Nobody needs Docker on a laptop |
+| Agent | LiteLLM and the MCP Python SDK | One call shape for any model; forced tool calls for structured output |
 | System 1 | TypeSafe Jev Python SDK | Typed judgments with probabilities |
 | IaC input | Terraform CLI in GitHub Actions: `terraform plan`, then `terraform show -json` | Plan JSON has most values resolved. Workflow YAML adds which repos use which Actions. |
 | Frontend | The PR comment, with a Mermaid diagram of each path, plus one small static Try-it page using Cytoscape.js | Judges see the product where developers would. GitHub renders Mermaid in comments. |
@@ -473,7 +473,7 @@ We picked Python, and the whole backend uses it.
 
 ![Deployment: one public port, everything else private or outbound](images/deployment.png)
 
-Everything inbound goes through Caddy on port 443. The app only calls out to Claude, Jev, GitHub and Slack, and FalkorDB never gets a public port.
+Everything inbound goes through Caddy on port 443. The app only calls out to the LLM provider (Crusoe), Jev, GitHub and Slack, and FalkorDB never gets a public port.
 
 - **Check the VM first:** `uname -m` (`aarch64` means an Ampere A1 shape), `nproc`, `free -h`, `df -h`.
 - **Capacity:** [Oracle's Always Free Ampere A1 allowance](https://docs.oracle.com/en-us/iaas/Content/FreeTier/resourceref.htm) is now 2 OCPUs and 12 GB. That runs FalkorDB, the backend and the UI, but not a local LLM.
@@ -494,13 +494,14 @@ Everything inbound goes through Caddy on port 443. The app only calls out to Cla
 | Second routes | Blocking one edge may leave another way in | Re-run the full analysis on every candidate graph. Never just delete an edge from the picture. |
 | Requirements can be incomplete or wrong | A fix can pass every declared check and still break something real | Requirements are explicit inputs. Jev flags permissions that look used but aren't declared. The card says passing is not a guarantee. |
 | Graph states getting mixed | A candidate result could leak into the base | One graph per state through `GRAPH.COPY`. Never overwrite the base, and every result can be rebuilt from its inputs. |
-| The LLM invents permissions or conclusions | A wrong claim in a security review is worse than none | Claude only proposes patches and explains engine output. The checker rejects unknown evidence IDs, and write tools are never given to the model. |
+| The LLM invents permissions or conclusions | A wrong claim in a security review is worse than none | The LLM only proposes patches and explains engine output. The checker rejects unknown evidence IDs, and write tools are never given to the model. |
 | Injected instructions in finding or commit text | Text from outside could try to steer the agent | Outside text is passed as data, scanned and flagged, and never counts as evidence |
-| Jev is measured only on small sets | Access works, but the PoC measured it on 30 names and 10 diffs | Re-measure on the hackathon fixtures, and fall back to Haiku with labeled scores if Jev is down. |
+| Jev is measured only on small sets | Access works, but the PoC measured it on 30 names and 10 diffs | Re-measure on the hackathon fixtures, and fall back to GLM 5.3 Flash with labeled scores if Jev is down. |
+| The PoC's prompts were tuned on Claude | GLM 5.3 may read intent or design fixes less well | A1 and A7 re-run the PoC's 10 intents and the intern fix on GLM before their gates. If it falls short, switching models is a config change. |
 | `terraform plan` wants provider credentials | The demo repo has no real AWS account behind it | Run plan with the AWS provider's credential checks turned off (verify in the spike). Fallback: committed plan JSON fixtures. |
 | Oracle VM capacity and idle reclaim | 2 OCPUs and 12 GB on Always Free, or 1 GB on the micro shape | Check the shape first. Use FalkorDB Cloud if the VM is small, and run no local LLM. |
 | Event rules | Main coding and design must start after the event begins, and AI assistant use must be disclosed | Before the event, only notes, graph sketches, diagrams and a throwaway spike. The README discloses the AI tools used. |
-| Public demo security | A public Claude-backed endpoint can be abused | Only the web app is public. Rate-limit the API, scope the GitHub token to the demo repo, and keep no cloud credentials. |
+| Public demo security | A public LLM-backed endpoint can be abused | Only the web app is public. Rate-limit the API, scope the GitHub token to the demo repo, and keep no cloud credentials. |
 | Four days | Broad integrations eat the whole event | Build in story order with gates, as the [Plan of action](plan-of-action.md) lays out. A GitHub App scoped to this repo is in scope; real AWS accounts are not. |
 | Linters and AWS checks already catch simple cases | Checkov flags a public bucket or a wildcard, so a demo built on those looks staged | Lead with changes that pass them: group membership, role chains, OIDC trust. Show Checkov's result next to ours. |
 | ARNs unknown until apply | For new resources, the plan leaves computed values such as arn unknown | Resolve references from the plan's configuration section, or give demo resources explicit names. Test on day 1. |
@@ -511,11 +512,11 @@ Everything inbound goes through Caddy on port 443. The app only calls out to Cla
 
 ## What the PoC showed
 
-**A throwaway PoC passed 5 of 7 feasibility questions. FalkorDB itself has not run yet, so that check comes first.** It ran on localhost with hand-built Terraform plans and a 16-node world, and it stays private and out of the repo (rule 8).
+**A throwaway PoC passed 5 of 7 feasibility questions, and task P1 has since answered Q1 on FalkorDB Cloud.** It ran on localhost with hand-built Terraform plans and a 16-node world, and it stays private and out of the repo (rule 8).
 
 | # | Question | Result |
 | --- | --- | --- |
-| Q1 | Does FalkorDB have what we need? | Blocked: no Docker or WSL on the laptop, and the embedded build ships no Windows wheels. Task P1 runs it |
+| Q1 | Does FalkorDB have what we need? | Blocked in the PoC: no Docker or WSL on the laptop. P1 ran it on FalkorDB Cloud 4.22: GRAPH.COPY, betweenness and `algo.maxFlow` work, and max flow gave the expected 2 on a toy graph once every path edge shared one type (`FLOW`) |
 | Q2 | Terraform to graph without an AWS account | Partial: 17 of 17 edges cite file and line, the intern PR opens the 3 expected paths, and a value unknown until apply is flagged, not guessed. The plans were hand-built because Terraform wasn't installed (task P2) |
 | Q3 | Does the minimum cut tell the right story? | Pass, in plain Python: intern max flow 1,000,000; the compromised Action's max flow is 1, cut at docs-site's trust in `github-deploy`; betweenness ranks `prod-support` first |
 | Q4 | Can Claude read a PR's intent? | Pass: 10 of 10 exact, the injection attempt flagged, about 8 seconds a call |
@@ -523,6 +524,8 @@ Everything inbound goes through Caddy on port 443. The app only calls out to Cla
 | Q6 | Does Jev earn its place? | Pass: 30 of 30 resource names, 9 of 10 diffs, about 0.34 seconds a call |
 | Q7 | Is it fast enough for a PR check? | Pass: about 20 seconds per PR, almost all of it Claude |
 
+- **The PoC ran on Claude.** The product uses GLM 5.3 through LiteLLM, so Q4, Q5 and Q7 are re-measured on GLM
+  (tasks A1 and A7).
 - **Claude never designed a new role on its own.** It removed Priya from the group and granted direct log access instead, so the fix prompt must ask for a new role (task A7).
 - **The graph found two risks already in `main`:** the infra deploy workflow can read invoices, and the docs-site preview can reach customer-db.
 - **Terraform plan output has no line numbers.** The importer scans the `.tf` files, so the repo must be checked out next to the plan.
@@ -558,7 +561,7 @@ What else will land:
 2. **FalkorDB doing visible work:** base, head, fix A and fix B graphs side by side.
 3. **The blunt fix failing on screen:** removing the intern from the group closes the paths and breaks her onboarding.
 4. **An honest UNKNOWN** for a statement with a condition we don't model.
-5. **System 1 and System 2 shown separately:** Jev's scores with probabilities, Claude's proposals with citations, and the engine's verdict.
+5. **System 1 and System 2 shown separately:** Jev's scores with probabilities, the LLM's proposals with citations, and the engine's verdict.
 6. **Real GitHub:** judges can open the public demo repo and read Theseus's comments on real PRs.
 7. **Measured numbers:** seconds per PR analysis, paths checked, candidates tested. Measured, never estimated.
 8. **A complete submission:** public repo, README with the graph model and Cypher queries, demo video, live URL, AI-use disclosure, and a blog post for the side prize.
@@ -613,7 +616,7 @@ What else will land:
 | Checkov and AWS checks | Checkov passes. AWS's policy checks have no changed policy to check. | The risk sits between resources |
 | Theseus | Three paths opened: `app-logs` (needed), `invoices`, and `prod-db-credentials`, which unlocks the customer database three hops away | Multi-hop reasoning, every step citing its file and line |
 | Minimum cut | `algo.maxFlow` shows no single permission can be cut without breaking someone's required access | The algorithm decides, not a rule of thumb |
-| The agent's fix | Claude proposes an `intern-onboarding` role that reads only `app-logs`. The engine confirms every path closed and every requirement kept. The Deny-with-condition option shows UNKNOWN. | System 2 invents what rules can't, and the engine verifies it |
+| The agent's fix | The LLM proposes an `intern-onboarding` role that reads only `app-logs`. The engine confirms every path closed and every requirement kept. The Deny-with-condition option shows UNKNOWN. | System 2 invents what rules can't, and the engine verifies it |
 | Approval | A reviewer types `/theseus apply B`. The agent commits, Theseus re-runs, and the check turns green. | It acts, and only after a person approves |
 
 ![Beats 1 and 2: base, PR head and the agent's fix for the intern](images/intern-before-after.png)
@@ -651,7 +654,7 @@ Show these, briefly:
 
 ### Make it hands-on
 
-- **A "Try it" page on the live site:** judges pick one of the prepared changes, including the public bucket, and watch Theseus analyze it. It runs the real engine and FalkorDB live and caches only Claude's text, so it needs no GitHub access and stays cheap.
+- **A "Try it" page on the live site:** judges pick one of the prepared changes, including the public bucket, and watch Theseus analyze it. It runs the real engine and FalkorDB live and caches only the LLM's text, so it needs no GitHub access and stays cheap.
 - **The public demo org keeps the real PRs and Theseus's comments,** so judges can inspect them after the video.
 - **A recorded backup video,** in case the live demo fails during judging.
 
@@ -671,7 +674,7 @@ Everything above the dashed line is in the submission. Everything below it appea
 | --- | --- | --- | --- | --- | --- |
 | 1 | **PR path diff:** what does this PR open or close? | BFS paths on base and head graphs | A path diff before merge; others run on the live account | Planned | Phase 1 |
 | 2 | **Smallest proven fix:** which fix closes every route and keeps required access? | MaxFlow, plus `GRAPH.COPY` per candidate | Fixes tested on graph copies; others list remediation | Planned | Phase 1 |
-| 3 | **Intent versus effect:** does the change match what the PR says? | Claude intent plus required-access check | No tool we checked compares stated purpose with effect | Planned | Phase 1 |
+| 3 | **Intent versus effect:** does the change match what the PR says? | LLM intent plus required-access check | No tool we checked compares stated purpose with effect | Planned | Phase 1 |
 | 4 | **Finding mode:** what can a compromised Action reach? | BFS from the finding, betweenness for the choke point | GitHub OIDC trust, IAM, secrets and databases on one path | Planned | Phase 2 |
 | 5 | **Rotate exactly these:** which secrets were exposed? | BFS from the workflow to secret nodes | Turns "rotate everything" into a short list | 0.1 | Phase 2 |
 | 6 | **Fix that breaks nobody:** which grant can go without anyone noticing? | MaxFlow with capacity set by usage | Access Analyzer lists unused access; we pick the unused grant on the path to sensitive data | 0.5 | Phase 3 |
@@ -746,9 +749,9 @@ SubImage's YC-backed round is a signal in our favor: investors already fund grap
 
 ## Open questions
 
-- [ ] Where does FalkorDB run for task P1: Docker Desktop or WSL on the laptop, the Oracle VM over an SSH tunnel, or FalkorDB Cloud?
+- [x] Where does FalkorDB run? FalkorDB Cloud, for development, tests and the deployed API.
 - [ ] Which shape is the Oracle VM: architecture, cores, memory?
-- [ ] Which Claude API key for the hosted app, and what monthly spending cap?
+- [x] Which LLM for the hosted app? GLM 5.3 on Crusoe credits, through LiteLLM so it can be switched.
 - [ ] Are a GitHub organization and a domain free under the Theseus name?
 - [ ] Does `terraform plan` run in GitHub Actions with no AWS account at all? (task P2)
 - [ ] Exactly which IAM services and actions are in the v1 subset? The working list: S3, DynamoDB, Secrets Manager, KMS and `sts:AssumeRole`.
