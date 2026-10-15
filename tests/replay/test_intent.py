@@ -25,9 +25,17 @@ CASES: list[dict[str, Any]] = DATA["cases"]
 
 
 def body_of(case: dict[str, Any]) -> str | None:
-    """The case's body, or the repo's PR template with each named section filled in."""
+    """The case's body, or the repo's PR template with each named section filled in. `padding` repeats a
+    sentence up to GitHub's body limit before the rest; `smuggled` is appended in invisible tag characters."""
     if "template_sections" not in case:
-        return case["body"]
+        body = case["body"]
+        if "padding" in case:
+            pad = case["padding"]
+            body += "\n\n" + pad["repeat"] * pad["times"] + "\n\n" + pad["then"]
+            assert len(body) <= 65_536, f"{case['id']}: longer than GitHub allows"
+        if "smuggled" in case:
+            body += "".join(chr(0xE0000 + ord(c)) for c in case["smuggled"])
+        return body
     body = TEMPLATE
     for heading, text in case["template_sections"].items():
         marker = f"## {heading}\n"
@@ -43,9 +51,9 @@ def llm() -> Llm:
 
 
 def test_the_cases_cover_the_messy_ones() -> None:
-    assert len(CASES) == 17
+    assert len(CASES) == 31
     assert len({c["id"] for c in CASES}) == len(CASES)
-    assert sum(1 for c in CASES if c["suspicious"]) == 2
+    assert sum(1 for c in CASES if c["suspicious"]) == 14
     assert sum(1 for c in CASES if c.get("stated") is False) == 2
     assert sum(1 for c in CASES if "template_sections" in c) == 2
 
