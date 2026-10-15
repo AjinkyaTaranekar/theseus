@@ -23,7 +23,7 @@
 | Retries | Rate limits, timeouts, 5xx and "No capacity available" (Crusoe returns it as a 503 under load): up to 3 retries with backoff. Authentication and bad requests fail at once |
 | Modes | `THESEUS_MODE=replay` (default in tests: read `recordings/`, fail if missing), `record` (call live and save), `live` (call live, save nothing) |
 | Recording key | `<purpose>-<first 12 hex chars of sha256(canonical JSON of model, messages, tools, tool_choice)>` |
-| Recording file | `recordings/llm/<key>.json` holding `{request, response, model, ms}`. `request` never holds the key or the endpoint |
+| Recording file | `recordings/llm/<key>.json` holding `{request, response, model, ms}`. `request` never holds the key or the endpoint. `response` is the provider-neutral part of the reply: `content`, `tool_calls` (`name`, `arguments` as JSON text), `finish_reason`, `usage` |
 | Errors | Raise `ModelError` with the purpose and key; never return a half-parsed answer |
 
 **Checked live during prep:** through LiteLLM, GLM 5.3 on Crusoe answered a forced `submit_intent` call with
