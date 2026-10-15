@@ -18,6 +18,7 @@ from theseus.contracts.result import (
     AnalysisResult,
     BeyondIntent,
     Candidate,
+    CandidateSource,
     ChokePoint,
     Contract,
     EdgeRow,
@@ -48,6 +49,18 @@ class World(Contract):
     ci_files: dict[str, str] = Field(default_factory=dict)
     code_files: dict[str, str] = Field(default_factory=dict)
     config: dict[str, Any] = Field(default_factory=dict)
+
+
+class GraphState(Contract):
+    """One state loaded as one graph: its name in the store, the world it came from, and its rows.
+
+    Engine functions take a GraphState instead of a graph name, a world and rows separately, so the three
+    can never come from different states.
+    """
+
+    name: str
+    world: World
+    rows: GraphRows
 
 
 class Analysis(Contract):
@@ -97,11 +110,20 @@ class FlowResult(Contract):
     flows: list[EdgeFlow] = Field(default_factory=list)
 
 
-class CandidateDraft(Contract):
-    """A fix before simulation. Rules and the LLM both produce these."""
+class RuleFix(Contract):
+    """A rule's fix in graph terms, before the cloud adapter turns its changes into ops."""
 
     id: str
-    source: str
+    title: str
+    changes: list[Change]
+
+
+class CandidateDraft(Contract):
+    """A fix before simulation: a RuleFix after `ops_for`, the LLM's ops, or a person's."""
+
+    id: str
+    source: CandidateSource
+    proposed_by: str
     title: str
     ops: list[PatchOp] = Field(default_factory=list)
 
@@ -210,9 +232,9 @@ class BuildRows(Protocol):
 
 
 class LoadGraph(Protocol):
-    """`graph/load.py: load_graph` (E3)."""
+    """`graph/load.py: load_graph` (E3). Loads the state's rows into the graph its name names."""
 
-    def __call__(self, store: GraphStore, graph: str, rows: GraphRows) -> None: ...
+    def __call__(self, store: GraphStore, state: GraphState) -> None: ...
 
 
 class CopyGraph(Protocol):
@@ -224,25 +246,28 @@ class CopyGraph(Protocol):
 class DeleteGraph(Protocol):
     """`graph/load.py: delete_graph` (E3)."""
 
-    def __call__(self, store: GraphStore, graph: str) -> None: ...
+    def __call__(self, store: GraphStore, name: str) -> None: ...
+
+
+class MakeDelta(Protocol):
+    """`graph/load.py: delta` (E5)."""
+
+    def __call__(self, old: GraphRows, new: GraphRows) -> GraphDelta:
+        """What turns `old` into `new`, comparing nodes by ID and edges by (src, type, dst)."""
+        ...
 
 
 class ApplyDelta(Protocol):
-    """`graph/load.py: apply_delta` (E3)."""
+    """`graph/load.py: apply_delta` (E5)."""
 
-    def __call__(self, store: GraphStore, graph: str, delta: GraphDelta) -> None: ...
+    def __call__(self, store: GraphStore, name: str, delta: GraphDelta) -> None: ...
 
 
 class Analyze(Protocol):
     """`engine/analyze.py: analyze` (E3)."""
 
     def __call__(
-        self,
-        store: GraphStore,
-        graph: str,
-        rows: GraphRows,
-        requirements: list[Requirement],
-        actors: list[str],
+        self, store: GraphStore, state: GraphState, requirements: list[Requirement], actors: list[str]
     ) -> Analysis:
         """Valid paths per actor, the dangerous ones, and each requirement's status."""
         ...
@@ -260,8 +285,7 @@ class MinCutFn(Protocol):
     def __call__(
         self,
         store: GraphStore,
-        graph: str,
-        rows: GraphRows,
+        state: GraphState,
         analysis: Analysis,
         sources: list[str],
         requirements: list[Requirement],
@@ -276,9 +300,7 @@ class Simulate(Protocol):
     def __call__(
         self,
         store: GraphStore,
-        head_graph: str,
-        head_world: World,
-        head_rows: GraphRows,
+        head: GraphState,
         draft: CandidateDraft,
         actors: list[str],
         requirements: list[Requirement],
@@ -292,9 +314,9 @@ class RuleCandidates(Protocol):
     """`engine/candidates.py: rule_candidates` (E6)."""
 
     def __call__(
-        self, rows: GraphRows, analysis: Analysis, opened: list[PathRecord], cut: MinCut | None
-    ) -> dict[str, list[Change]]:
-        """The changes rules A, C, D and S want, by candidate ID. The cloud adapter turns them into ops."""
+        self, state: GraphState, analysis: Analysis, opened: list[PathRecord], cut: MinCut | None
+    ) -> list[RuleFix]:
+        """Rules A, C, D and S that apply to these paths, sorted by ID."""
         ...
 
 
@@ -309,51 +331,51 @@ class Rank(Protocol):
 class BlastRadius(Protocol):
     """`engine/finding.py: blast_radius` (FM3)."""
 
-    def __call__(
-        self, store: GraphStore, graph: str, rows: GraphRows, workflows: list[str]
-    ) -> list[PathRecord]: ...
+    def __call__(self, store: GraphStore, state: GraphState, workflows: list[str]) -> list[PathRecord]: ...
 
 
 class RotateList(Protocol):
     """`engine/finding.py: rotate_list` (FM3)."""
 
-    def __call__(self, store: GraphStore, graph: str, rows: GraphRows, workflows: list[str]) -> list[str]:
-        """Every secret the workflows can reach, sorted."""
+    def __call__(self, store: GraphStore, state: GraphState, workflows: list[str]) -> list[str]:
+        """Every reachable resource whose category is `secret`, sorted."""
         ...
 
 
 class Containment(Protocol):
     """`engine/finding.py: containment` (FM3, FM6)."""
 
-    def __call__(self, store: GraphStore, graph: str, rows: GraphRows, workflows: list[str]) -> list[Change]:
-        """Candidate K: restrict the cut trust to the subjects whose requirements need it."""
+    def __call__(
+        self, state: GraphState, analysis: Analysis, cut: MinCut, requirements: list[Requirement]
+    ) -> RuleFix | None:
+        """Candidate K: restrict the cut trust to the subjects whose requirements need it, if one is cut."""
         ...
 
 
 class StagingToProdFn(Protocol):
     """`engine/staging.py: staging_to_prod` (FM4)."""
 
-    def __call__(self, analysis: Analysis, rows: GraphRows) -> list[StagingToProd]: ...
+    def __call__(self, analysis: Analysis, state: GraphState) -> list[StagingToProd]: ...
 
 
 class UnusedGrants(Protocol):
     """`engine/usage.py: unused_grants` (C3)."""
 
-    def __call__(self, store: GraphStore, graph: str, rows: GraphRows) -> list[UnusedGrant]: ...
+    def __call__(self, store: GraphStore, state: GraphState) -> list[UnusedGrant]: ...
 
 
 class UseBeyondIntent(Protocol):
     """`engine/usage.py: use_beyond_intent` (C4)."""
 
     def __call__(
-        self, base_rows: GraphRows, head_rows: GraphRows, requirements: list[Requirement]
+        self, base: GraphState, head: GraphState, requirements: list[Requirement]
     ) -> list[BeyondIntent]: ...
 
 
 class ChokePoints(Protocol):
     """`graph/algos.py: choke_points` (FM4)."""
 
-    def __call__(self, store: GraphStore, graph: str) -> list[ChokePoint]: ...
+    def __call__(self, store: GraphStore, state: GraphState) -> list[ChokePoint]: ...
 
 
 class RunPr(Protocol):

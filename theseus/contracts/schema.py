@@ -61,8 +61,10 @@ BIG: Final = 1_000_000
 USED: Final = 1_000
 MAX_PATH_EDGES: Final = 7
 
-# Candidate IDs, fixed by where a fix comes from (04-engine.md section 15).
+# Candidate IDs (04-engine.md section 15): one letter per rule and for the LLM, then H1, H2, ... for fixes
+# people propose, numbered in the order they arrive.
 CANDIDATE_IDS: Final = ("A", "B", "C", "D", "S", "K", "U")
+_HUMAN_ID = re.compile(r"^H[1-9][0-9]*$")
 
 _KIND = re.compile(r"^[a-z][a-z0-9-]*$")
 
@@ -87,6 +89,18 @@ def parse_id(node: str) -> tuple[str, str]:
     if not sep or not _KIND.match(kind) or not rest:
         raise GraphError(f"not a node ID: {node!r}")
     return kind, rest
+
+
+def is_candidate_id(candidate: str) -> bool:
+    """Whether `candidate` is a fixed candidate ID or a person's (`H1`, `H2`, ...)."""
+    return candidate in CANDIDATE_IDS or bool(_HUMAN_ID.match(candidate))
+
+
+def human_candidate_id(n: int) -> str:
+    """The ID of the n-th fix people proposed on a PR, from 1."""
+    if n < 1:
+        raise GraphError(f"human candidates are numbered from 1, got {n}")
+    return f"H{n}"
 
 
 def labels_for(kind: str) -> list[str]:

@@ -77,3 +77,17 @@ def test_constants_match_the_spec() -> None:
     assert (schema.BIG, schema.USED, schema.MAX_PATH_EDGES) == (1_000_000, 1_000, 7)
     assert schema.CANDIDATE_IDS == ("A", "B", "C", "D", "S", "K", "U")
     assert schema.RESOURCE_CATEGORIES == ("object_store", "secret", "database", "table")
+
+
+@pytest.mark.parametrize(
+    ("candidate", "ok"),
+    [("A", True), ("U", True), ("H1", True), ("H12", True), ("H0", False), ("Z", False), ("h1", False)],
+)
+def test_candidate_ids_are_fixed_letters_or_numbered_human_fixes(candidate: str, ok: bool) -> None:
+    assert schema.is_candidate_id(candidate) is ok
+
+
+def test_human_candidates_are_numbered_from_one() -> None:
+    assert schema.human_candidate_id(1) == "H1"
+    with pytest.raises(GraphError):
+        schema.human_candidate_id(0)

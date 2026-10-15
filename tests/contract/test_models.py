@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import json
+from typing import get_args
 
 import pytest
 from pydantic import ValidationError
 
+from theseus.contracts import result, schema
 from theseus.contracts.result import (
     AnalysisResult,
     Candidate,
     CutEdge,
+    EdgeRow,
     Evidence,
     Grant,
     Intent,
     MinCut,
+    NodeRow,
     PatchOp,
     PathRecord,
     PathStep,
@@ -35,10 +39,10 @@ ROUTE = [
 def intern_result() -> AnalysisResult:
     """A hand-built PR-mode result shaped like the intern scenario."""
     steps = [
-        PathStep(src=ROUTE[0], edge="MEMBER_OF", dst=ROUTE[1], evidence="E1"),
-        PathStep(src=ROUTE[1], edge="CAN_ASSUME", dst=ROUTE[2], evidence="E2"),
-        PathStep(src=ROUTE[2], edge="CAN", dst=ROUTE[3], evidence="E3"),
-        PathStep(src=ROUTE[3], edge="UNLOCKS", dst=ROUTE[4], evidence="E4"),
+        PathStep(src=ROUTE[0], type="MEMBER_OF", dst=ROUTE[1], evidence="E1"),
+        PathStep(src=ROUTE[1], type="CAN_ASSUME", dst=ROUTE[2], evidence="E2"),
+        PathStep(src=ROUTE[2], type="CAN", dst=ROUTE[3], evidence="E3"),
+        PathStep(src=ROUTE[3], type="UNLOCKS", dst=ROUTE[4], evidence="E4"),
     ]
     return AnalysisResult(
         scenario="intern",
@@ -79,6 +83,7 @@ def intern_result() -> AnalysisResult:
             Candidate(
                 id="B",
                 source="llm",
+                proposed_by="openai/zai-org/GLM-5.3",
                 title="A new intern-onboarding role that reads only app-logs",
                 ops=[
                     PatchOp(
@@ -91,7 +96,22 @@ def intern_result() -> AnalysisResult:
                 reason="Every dangerous path closed; every requirement kept.",
                 recommended=True,
             ),
-            Candidate(id="A", source="rule", title="Revert", verdict="fail", reason="Breaks I1."),
+            Candidate(
+                id="A",
+                source="rule",
+                proposed_by="theseus",
+                title="Revert",
+                verdict="fail",
+                reason="Breaks I1.",
+            ),
+            Candidate(
+                id="H1",
+                source="human",
+                proposed_by="sakshichitnis27",
+                title="Remove the ReadDbSecret statement",
+                verdict="fail",
+                reason="Breaks R3.",
+            ),
         ],
         rotate=["secret:prod-db-credentials"],
         unused_grants=[
@@ -151,7 +171,7 @@ EXPECTED_PROJECTION = {
         "cuttable": False,
         "cut": [["group:support-engineers", "CAN_ASSUME", "role:prod-support"]],
     },
-    "candidates": {"A": "fail", "B": "pass"},
+    "candidates": {"A": "fail", "B": "pass", "H1": "fail"},
     "recommended": "B",
     "rotate": ["secret:prod-db-credentials"],
     "unused_grants": [["workload:billing-api", "dynamodb:demo-orders", "write"]],
@@ -167,15 +187,56 @@ def test_analysis_result_round_trips_through_json() -> None:
 
 
 def test_path_step_serializes_as_from_and_to() -> None:
-    step = PathStep(src="user:a", edge="MEMBER_OF", dst="group:b", evidence="E1")
+    step = PathStep(src="user:a", type="MEMBER_OF", dst="group:b", evidence="E1")
     dumped = json.loads(step.model_dump_json())
-    assert dumped == {"from": "user:a", "edge": "MEMBER_OF", "to": "group:b", "evidence": "E1"}
+    assert dumped == {"from": "user:a", "type": "MEMBER_OF", "to": "group:b", "evidence": "E1"}
     assert PathStep.model_validate(dumped) == step
     assert step.model_dump()["from"] == "user:a"
 
 
 def test_route_is_every_node_in_order() -> None:
     assert intern_result().opened[0].route == ROUTE
+
+
+@pytest.mark.parametrize(
+    ("alias", "constant"),
+    [
+        (result.Access, schema.ACCESS),
+        (result.EdgeKind, schema.EDGE_KINDS),
+        (result.EdgeType, schema.EDGE_TYPES),
+        (result.Category, schema.RESOURCE_CATEGORIES),
+        (result.Sensitivity, schema.SENSITIVITY),
+    ],
+)
+def test_closed_sets_match_the_schema(alias: object, constant: tuple[str, ...]) -> None:
+    assert get_args(alias) == constant
+
+
+def test_a_resource_node_carries_typed_core_fields() -> None:
+    node = NodeRow(
+        id="secret:prod-db-credentials",
+        labels=["Node", "Resource"],
+        name="prod-db-credentials",
+        category="secret",
+        provider="example",
+        sensitivity="regulated",
+        sensitive=True,
+        sensitivity_source="jev",
+        props={"arn_pattern": "kept by the adapter"},
+    )
+    assert node.env == "prod"
+    assert NodeRow.model_validate_json(node.model_dump_json()) == node
+    with pytest.raises(ValidationError):
+        NodeRow(id="x:y", labels=["Node", "Resource"], name="y", category="bucket")
+
+
+def test_an_unknown_edge_type_or_kind_is_rejected() -> None:
+    with pytest.raises(ValidationError):
+        EdgeRow(eid="e1", type="FOLLOWS", src="a:b", dst="c:d", kind="configured")
+    with pytest.raises(ValidationError):
+        EdgeRow(eid="e1", type="CAN", src="a:b", dst="c:d", kind="probable")
+    with pytest.raises(ValidationError):
+        PathStep(src="a:b", type="FLOW", dst="c:d", evidence="E1")
 
 
 def test_unknown_fields_are_rejected() -> None:
@@ -257,3 +318,10 @@ def test_compare_accepts_a_lower_bound_on_the_cut_value() -> None:
 
 def test_compare_reports_a_key_the_result_lacks() -> None:
     assert compare({"mode": "pr"}, {"rotate": []}) == ["rotate: missing from the result"]
+
+
+def test_a_candidate_says_who_proposed_it() -> None:
+    human = intern_result().candidates[2]
+    assert (human.id, human.source, human.proposed_by) == ("H1", "human", "sakshichitnis27")
+    with pytest.raises(ValidationError):
+        Candidate(id="A", source="rule", title="Revert", verdict="fail")

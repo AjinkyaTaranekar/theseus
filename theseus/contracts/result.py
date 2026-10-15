@@ -10,8 +10,30 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Closed sets, the same in every cloud. tests/contract/test_models.py keeps them equal to schema.py.
 Access = Literal["read", "write", "assume"]
 Verdict = Literal["pass", "fail", "unknown", "invalid"]
+EdgeKind = Literal["configured", "inferred", "assumed", "unknown"]
+EdgeType = Literal[
+    "MEMBER_OF",
+    "CAN_ASSUME",
+    "TRUSTS",
+    "RUNS_AS",
+    "CAN",
+    "UNLOCKS",
+    "USES",
+    "CALLS",
+    "REQUESTS",
+    "HAS_ENV",
+    "FOR",
+    "NEEDS",
+    "AFFECTS",
+]
+Category = Literal["object_store", "secret", "database", "table"]
+Sensitivity = Literal["public", "internal", "confidential", "regulated"]
+SensitivitySource = Literal["jev", "human", "unclassified"]
+Env = Literal["staging", "prod"]
+CandidateSource = Literal["rule", "llm", "human"]
 
 
 class Contract(BaseModel):
@@ -35,17 +57,34 @@ class Evidence(Contract):
 
 
 class NodeRow(Contract):
+    """One node. The typed fields are common to every kind; `category`, `provider` and the sensitivity
+    fields are set on Resource nodes only. `props` holds the per-kind properties in 03-graph.md, such as a
+    Workflow's `subs`, which core may read, and properties marked for one adapter, which core never reads.
+    """
+
     id: str
     labels: list[str]
+    name: str
+    env: Env = "prod"
+    category: Category | None = None
+    provider: str | None = None
+    sensitivity: Sensitivity | None = None
+    sensitive: bool = False
+    sensitivity_source: SensitivitySource | None = None
     props: dict[str, Any] = Field(default_factory=dict)
 
 
 class EdgeRow(Contract):
+    """One edge. `eid` is stable within one build only; across builds an edge is (src, type, dst).
+
+    `props` holds the per-type properties in 03-graph.md, such as `version` on USES or `access` on CALLS.
+    """
+
     eid: str
-    type: str
+    type: EdgeType
     src: str
     dst: str
-    kind: str
+    kind: EdgeKind
     grants: list[str] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     props: dict[str, Any] = Field(default_factory=dict)
@@ -78,10 +117,10 @@ class Intent(Contract):
 
 
 class PathStep(Contract):
-    """One hop. `edge` is the edge type: an edge is unique by (src, type, dst); eids change per build."""
+    """One hop, named by (src, type, dst) so it means the same in every build of the graph."""
 
     src: str = Field(alias="from")
-    edge: str
+    type: EdgeType
     dst: str = Field(alias="to")
     evidence: str
 
@@ -90,11 +129,11 @@ class PathRecord(Contract):
     id: str
     actor: str
     target: str
-    grants: list[str]
+    grants: list[Access]
     steps: list[PathStep]
     unknown: bool = False
     inferred: bool = False
-    sensitivity: str | None = None
+    sensitivity: Sensitivity | None = None
 
     @property
     def route(self) -> list[str]:
@@ -108,9 +147,11 @@ class RequirementStatus(Contract):
 
 
 class CutEdge(Contract):
+    """A cut edge. `eid` refers to the analyzed graph, for the same run's Changes."""
+
     eid: str
     src: str
-    type: str
+    type: EdgeType
     dst: str
     evidence: str
 
@@ -136,8 +177,13 @@ class PatchOp(Contract):
 
 
 class Candidate(Contract):
+    """A verified fix. `proposed_by` says who wrote it: "theseus" for a rule, the model string for the LLM,
+    or the login of the person who proposed it. Who approved it is recorded when it is applied.
+    """
+
     id: str
-    source: Literal["rule", "llm"]
+    source: CandidateSource
+    proposed_by: str
     title: str
     ops: list[PatchOp] = Field(default_factory=list)
     verdict: Verdict
@@ -155,7 +201,7 @@ class Candidate(Contract):
 class UnusedGrant(Contract):
     workload: str
     resource: str
-    access: str
+    access: Access
     eid: str
     evidence: str
 
@@ -163,7 +209,7 @@ class UnusedGrant(Contract):
 class BeyondIntent(Contract):
     workload: str
     resource: str
-    access: str
+    access: Access
     file: str
     line: int
     unlocks: list[str] = Field(default_factory=list)
