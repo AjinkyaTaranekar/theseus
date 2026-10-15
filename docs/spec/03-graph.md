@@ -50,8 +50,8 @@ the catalog; and a resource's category, so `MATCH (n:Database)` reads the same a
 
 Common properties on every node, typed fields on `NodeRow`: `id`, `name` (the human label), `env` (`staging`
 or `prod`), and for `Resource` nodes: `category`, `provider`, `sensitivity` (`public`, `internal`,
-`confidential`, `regulated` or null), `sensitive` (bool), `sensitivity_source` (`jev`, `human` or
-`unclassified`). The per-kind properties in the table above go in `NodeRow.props`. Properties marked AWS are
+`confidential`, `regulated` or null), `sensitive` (bool), `sensitivity_source` (`jev`,
+`fallback`, `human` or `unclassified`). The per-kind properties in the table above go in `NodeRow.props`. Properties marked AWS are
 set by the AWS adapter for its own use; core code never reads them, and reasons on `category`, never on
 `kind`.
 

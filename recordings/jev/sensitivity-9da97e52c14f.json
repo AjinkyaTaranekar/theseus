@@ -1,0 +1,252 @@
+{
+  "answers": {
+    "db:customer-db": {
+      "calibrated": true,
+      "choice": "regulated",
+      "confidence": 0.93,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.05,
+        "internal": 0.0,
+        "public": 0.0,
+        "regulated": 0.95
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "dynamodb:demo-orders": {
+      "calibrated": true,
+      "choice": "confidential",
+      "confidence": 0.45,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.59,
+        "internal": 0.25,
+        "public": 0.08,
+        "regulated": 0.08
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-app-logs/": {
+      "calibrated": true,
+      "choice": "internal",
+      "confidence": 0.85,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.01,
+        "internal": 0.89,
+        "public": 0.1,
+        "regulated": 0.0
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-company-files/invoices/": {
+      "calibrated": true,
+      "choice": "confidential",
+      "confidence": 1.0,
+      "noul": null,
+      "probabilities": {
+        "confidential": 1.0,
+        "internal": 0.0,
+        "public": 0.0,
+        "regulated": 0.0
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-company-files/public/": {
+      "calibrated": true,
+      "choice": "public",
+      "confidence": 0.99,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.0,
+        "internal": 0.01,
+        "public": 0.99,
+        "regulated": 0.0
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-data-lake/curated/": {
+      "calibrated": true,
+      "choice": "internal",
+      "confidence": 0.63,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.06,
+        "internal": 0.72,
+        "public": 0.21,
+        "regulated": 0.01
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-data-lake/raw/": {
+      "calibrated": true,
+      "choice": "internal",
+      "confidence": 0.64,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.03,
+        "internal": 0.73,
+        "public": 0.23,
+        "regulated": 0.01
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "s3://demo-terraform-state/": {
+      "calibrated": true,
+      "choice": "internal",
+      "confidence": 0.52,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.1,
+        "internal": 0.64,
+        "public": 0.13,
+        "regulated": 0.13
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "secret:payments-api-key": {
+      "calibrated": true,
+      "choice": "regulated",
+      "confidence": 1.0,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.0,
+        "internal": 0.0,
+        "public": 0.0,
+        "regulated": 1.0
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "secret:prod-db-credentials": {
+      "calibrated": true,
+      "choice": "regulated",
+      "confidence": 1.0,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.0,
+        "internal": 0.0,
+        "public": 0.0,
+        "regulated": 1.0
+      },
+      "source": "jev",
+      "type": "choice"
+    }
+  },
+  "model": "jev-1.13.0",
+  "ms": 329,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "db:customer-db": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the database 'customer-db'?",
+        "type": "choice"
+      },
+      "dynamodb:demo-orders": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the database table 'demo-orders'?",
+        "type": "choice"
+      },
+      "s3://demo-app-logs/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-app-logs/'?",
+        "type": "choice"
+      },
+      "s3://demo-company-files/invoices/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-company-files/invoices/'?",
+        "type": "choice"
+      },
+      "s3://demo-company-files/public/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-company-files/public/'?",
+        "type": "choice"
+      },
+      "s3://demo-data-lake/curated/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-data-lake/curated/'?",
+        "type": "choice"
+      },
+      "s3://demo-data-lake/raw/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-data-lake/raw/'?",
+        "type": "choice"
+      },
+      "s3://demo-terraform-state/": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the object store location 'demo-terraform-state/'?",
+        "type": "choice"
+      },
+      "secret:payments-api-key": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the secret 'payments-api-key'?",
+        "type": "choice"
+      },
+      "secret:prod-db-credentials": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the secret 'prod-db-credentials'?",
+        "type": "choice"
+      }
+    },
+    "state": "Data stores declared in a company's Terraform repository. Classify each from its name and kind only. Credentials and secrets that unlock databases are as sensitive as the data they unlock."
+  }
+}

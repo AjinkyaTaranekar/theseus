@@ -1,0 +1,29 @@
+{
+  "answers": {
+    "urgent": {
+      "calibrated": true,
+      "choice": null,
+      "confidence": null,
+      "noul": 0.89,
+      "probabilities": {},
+      "source": "jev",
+      "type": "noul"
+    }
+  },
+  "model": "jev-1.13.0",
+  "ms": 254,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "urgent": {
+        "criteria": {
+          "false": "Nothing sensitive is reachable, or the exposure needs conditions that do not hold.",
+          "true": "Sensitive data is reachable now through the finding, so waiting risks exposure."
+        },
+        "instructions": "Is this finding urgent: should the team act on it today?",
+        "type": "noul"
+      }
+    },
+    "state": "<untrusted_advisory>\nGHSA-demo-0001: the GitHub Action demo-thirdparty/file-diff was compromised. Versions v1, v2 and v3 run code that prints the workflow's secrets and tokens to the build log. Modeled on the tj-actions compromise (CVE-2025-30066).\n</untrusted_advisory>\n\nBlast radius, computed by the graph engine:\nMatched workflows: docs-site/preview.yml (staging, id-token: write) and website/lint.yml, both on v3. Assuming preview.yml is compromised, it reaches s3://demo-company-files/invoices/ (confidential), secret:prod-db-credentials (regulated) and db:customer-db (regulated). The database is five hops away: the Action, preview.yml, role github-deploy, role prod-support, the secret, the database. website/lint.yml reaches nothing."
+  }
+}

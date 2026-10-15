@@ -43,7 +43,7 @@ Category = Literal[
     "DataStream",
 ]
 Sensitivity = Literal["public", "internal", "confidential", "regulated"]
-SensitivitySource = Literal["jev", "human", "unclassified"]
+SensitivitySource = Literal["jev", "fallback", "human", "unclassified"]
 Env = Literal["staging", "prod"]
 CandidateSource = Literal["rule", "llm", "human"]
 
@@ -123,9 +123,21 @@ class Grant(Contract):
 
 
 class Intent(Contract):
+    """What the PR says it needs. `stated` is False when its title and text do not say what the change is
+    for (empty, "update", a ticket number, a blank template): silence, not a claim of no access."""
+
     purpose: str
     grants: list[Grant] = Field(default_factory=list)
     suspicious: bool = False
+    stated: bool = True
+
+
+class ResourceChange(Contract):
+    """One resource the change adds, changes or removes, from the base and head worlds."""
+
+    address: str
+    type: str
+    action: Literal["create", "update", "delete"]
 
 
 class PathStep(Contract):
@@ -252,6 +264,13 @@ class Timings(Contract):
     total_ms: int = 0
 
 
+class NodeInfo(Contract):
+    """What the comment needs to name a node in plain words: the resource's category and its data class."""
+
+    category: Category | None = None
+    sensitivity: Sensitivity | None = None
+
+
 class Coverage(Contract):
     resources: int = 0
     modeled: int = 0
@@ -266,6 +285,7 @@ class AnalysisResult(Contract):
     pr_number: int | None = None
     graphs: dict[str, str] = Field(default_factory=dict)
     intent: Intent | None = None
+    changes: list[ResourceChange] = Field(default_factory=list)
     headline: str = ""
     opened: list[PathRecord] = Field(default_factory=list)
     closed: list[PathRecord] = Field(default_factory=list)
@@ -284,6 +304,10 @@ class AnalysisResult(Contract):
     tool_trace: list[ToolCall] = Field(default_factory=list)
     timings: Timings = Field(default_factory=Timings)
     coverage: Coverage = Field(default_factory=Coverage)
+    # The models that answered, such as {"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}: shown, not compared.
+    models: dict[str, str] = Field(default_factory=dict)
+    # Every node on a listed path, for plain names in the comment: shown, not compared.
+    nodes: dict[str, NodeInfo] = Field(default_factory=dict)
 
 
 # Golden tests ---------------------------------------------------------------------------------------------
@@ -329,6 +353,7 @@ def project(result: AnalysisResult) -> dict[str, Any]:
             "purpose": result.intent.purpose,
             "grants": sorted([g.principal, g.access, g.resource] for g in result.intent.grants),
             "suspicious": result.intent.suspicious,
+            "stated": result.intent.stated,
         }
     recommended = [c.id for c in result.candidates if c.recommended]
     return {
@@ -336,6 +361,7 @@ def project(result: AnalysisResult) -> dict[str, Any]:
         "mode": result.mode,
         "headline": result.headline,
         "intent": intent,
+        "changes": sorted([c.action, c.address] for c in result.changes),
         "opened": _paths(result.opened, ev),
         "closed": _paths(result.closed, ev),
         "unchanged": _paths(result.unchanged, ev),

@@ -164,7 +164,7 @@ Beats 1 to 3 cover the left edge. Beat 4 adds the code box and the two gaps that
 
 1. **Before merge.** It reads the Terraform plan and the code diff, so a path is caught before it exists. Cartography, SubImage, Wiz and IAM Access Analyzer's internal-access findings look at the deployed account.
 2. **Proves the fix.** `algo.maxFlow` finds the fewest changes that close every route. Each candidate is checked on its own graph copy against dangerous paths, second routes and required access.
-3. **Reads intent.** It compares what the PR says with what the change grants.
+3. **Reads intent.** It compares what the PR says with what the change grants. Words explain a change but never approve it: only `theseus.yaml`, which its owners review, can make access to sensitive data acceptable.
 4. **One path across domains.** GitHub OIDC trust, IAM, a secret and the database it unlocks sit on one path, and Beat 4 adds the app code.
 5. **Facts stay deterministic.** Jev and the LLM suggest, the graph engine decides what is reachable, and a person approves.
 

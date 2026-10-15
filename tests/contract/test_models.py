@@ -16,11 +16,13 @@ from theseus.contracts.result import (
     Grant,
     Intent,
     MinCut,
+    NodeInfo,
     NodeRow,
     PatchOp,
     PathRecord,
     PathStep,
     RequirementStatus,
+    ResourceChange,
     StagingToProd,
     UnusedGrant,
     compare,
@@ -153,7 +155,9 @@ EXPECTED_PROJECTION = {
         "purpose": "Let Priya read the app logs.",
         "grants": [["user:priya-intern", "read", "s3://demo-app-logs/"]],
         "suspicious": False,
+        "stated": True,
     },
+    "changes": [],
     "opened": [
         {
             "actor": "user:priya-intern",
@@ -184,6 +188,19 @@ def test_analysis_result_round_trips_through_json() -> None:
     result = intern_result()
     again = AnalysisResult.model_validate_json(result.model_dump_json())
     assert again == result
+
+
+def test_node_info_round_trips_and_is_never_compared() -> None:
+    nodes = {"db:customer-db": NodeInfo(category="database", sensitivity="regulated")}
+    result = intern_result().model_copy(update={"nodes": nodes})
+    assert AnalysisResult.model_validate_json(result.model_dump_json()).nodes == nodes
+    assert "nodes" not in project(result)
+
+
+def test_the_model_versions_round_trip_and_are_never_compared() -> None:
+    result = intern_result().model_copy(update={"models": {"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}})
+    assert AnalysisResult.model_validate_json(result.model_dump_json()).models == result.models
+    assert "models" not in project(result)
 
 
 def test_path_step_serializes_as_from_and_to() -> None:
@@ -325,3 +342,29 @@ def test_a_candidate_says_who_proposed_it() -> None:
     assert (human.id, human.source, human.proposed_by) == ("H1", "human", "sakshichitnis27")
     with pytest.raises(ValidationError):
         Candidate(id="A", source="rule", title="Revert", verdict="fail")
+
+
+def test_silence_is_not_a_claim_of_no_access() -> None:
+    unstated = Intent(purpose="The PR does not say what it is for.", stated=False)
+    assert project(AnalysisResult(mode="pr", intent=unstated))["intent"]["stated"] is False
+    assert Intent(purpose="Rename files; no access changes.").stated is True
+
+
+def test_changes_project_as_action_and_address() -> None:
+    result = AnalysisResult(
+        mode="pr",
+        changes=[
+            ResourceChange(
+                address="aws_iam_user_group_membership.priya_support",
+                type="aws_iam_user_group_membership",
+                action="create",
+            ),
+            ResourceChange(
+                address="aws_iam_role_policy.prod_support_read", type="aws_iam_role_policy", action="update"
+            ),
+        ],
+    )
+    assert project(result)["changes"] == [
+        ["create", "aws_iam_user_group_membership.priya_support"],
+        ["update", "aws_iam_role_policy.prod_support_read"],
+    ]

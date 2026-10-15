@@ -189,7 +189,9 @@ produces no edge; record it in `unknowns` as `"code: <file>:<line> <call> target
 
 - Jev classifies every `Resource` node as `public`, `internal`, `confidential` or `regulated` (prompt in
   `06-agent.md`). `sensitive_overrides` in `theseus.yaml` always wins. `sensitive` is true for
-  `confidential` and `regulated`. With no label, `sensitivity_source` is `unclassified` and `sensitive` is false.
+  `confidential` and `regulated`. `sensitivity_source` is `human` for an override, `jev` for Jev's class, and
+  `fallback` when the fast model answered because Jev could not. With no label it is `unclassified` and
+  `sensitive` is false.
 - `env` is `staging` for nodes listed under `environments.staging` in `theseus.yaml`, otherwise `prod`.
 
 ## 9. Paths
@@ -204,11 +206,17 @@ produces no edge; record it in `unknowns` as `"code: <file>:<line> <call> target
 ## 10. Requirements, coverage and dangerous paths
 
 - **Requirements** come from `theseus.yaml` (`R1`...) and from the PR's intent (`I1`...). Each is (principal, access, resource).
+- **Words explain, never approve.** A PR's text can say what a change is for, but it cannot make access to
+  sensitive data acceptable: only `theseus.yaml`, which its owners review, can. An intent requirement is
+  **unapproved** when its resource is sensitive, or when the intent is `suspicious`, so injected text cannot
+  shield an edge from a fix. An unapproved requirement is reported with its status, but it gets no `BIG`
+  capacity and no verdict fails on it (sections 12 and 14).
 - **Status:** `satisfied` if a path from the principal reaches the resource with that access and no unknown
   edge; `unknown` if only unknown paths do; `missing` otherwise. Access `assume` is satisfied by any traversal
   path that reaches the role.
-- **Coverage:** for an actor, a resource is covered if one of its requirements names it, or if it sits on the
-  route of a path that satisfies one (a secret on the way to a required database).
+- **Coverage:** for an actor, a resource is covered if one of its `theseus.yaml` requirements names it, or if it
+  sits on the route of a path that satisfies one (a secret on the way to a required database). Intent
+  requirements never cover: whatever a PR says, a path it opens to sensitive data stays dangerous.
 - **Dangerous path:** a path whose target is sensitive and not covered. Keyed by (actor, target).
 
 ## 11. Diff (PR mode)
@@ -220,7 +228,7 @@ Analyze base and head with the same actors and the same requirements (config plu
 
 | Capacity | Edges |
 | --- | --- |
-| `BIG` = 1,000,000 | Every edge on a path that satisfies a requirement (config or intent); every `RUNS_AS`, `UNLOCKS` and `USES` edge (not permissions) |
+| `BIG` = 1,000,000 | Every edge on a path that satisfies a `theseus.yaml` requirement or an approved intent requirement (section 10); every `RUNS_AS`, `UNLOCKS` and `USES` edge (not permissions) |
 | `USED` = 1,000 | A `CAN` edge from a role to a resource when a workload running as that role has a `CALLS` edge to that resource with an access the edge grants (task C3) |
 | 1 | Every other edge |
 
@@ -270,10 +278,13 @@ An op that cannot apply raises `PatchError`; the candidate's verdict is then `in
 | --- | --- |
 | `invalid` | An op raised `PatchError` |
 | `fail` | A dangerous path of the actor remains, or a new dangerous path appears (certain paths only) |
-| `fail` | A requirement becomes `missing` |
+| `fail` | A `theseus.yaml` or approved intent requirement becomes `missing` |
 | `fail` | A `CALLS` edge loses its access: the code would break. The reason names the file and line |
-| `unknown` | A requirement becomes `unknown`, or a remaining path is unknown |
-| `pass` | Every dangerous path of the actor closed, every requirement kept, every code call kept |
+| `unknown` | Such a requirement becomes `unknown`, or a remaining path is unknown |
+| `pass` | Every dangerous path of the actor closed, every `theseus.yaml` and approved intent requirement kept, every code call kept |
+
+A fix may remove what an unapproved requirement asks for and still pass; that requirement then shows as
+`missing`.
 
 ## 15. Candidates and ranking (`engine/candidates.py`)
 
@@ -324,20 +335,36 @@ say so and show the trade-off; never pick the least bad option silently.
 - **Scan:** analyze `main` with every actor. For each workload, list unused grants (Q_UNUSED_GRANTS) that lie
   on a dangerous path, and propose candidate U for each, verified like any candidate.
 - **Use beyond intent (PR mode):** a `CALLS` edge present in head but not base, by (workload, resource,
-  access), whose resource is sensitive (or unlocks a sensitive one) and is not covered by a config or intent
-  requirement. Report the workload, resource, access, file and line, and what it unlocks.
+  access), whose resource is sensitive (or unlocks a sensitive one) and is not covered by a `theseus.yaml`
+  requirement. Report the workload, resource, access, file and line, and what it unlocks. A use the intent
+  names is still listed, since words never approve (section 10); the headline says the PR asked for it.
 
 ## 18. Says versus grants (`engine/intent_effect.py`)
 
 Compare the intent's grants with the head analysis. **Grants beyond intent** are opened dangerous paths, plus
-uses beyond intent. The headline:
+uses beyond intent. Intent never covers sensitive data (section 10), so a path the PR asked for is among them.
+The headline:
 
 - `Your PR says <purpose>. Your change grants <the most sensitive opened target>.`
+- When that target, or the most sensitive use, is one the intent asks for: `Your PR asks for <target>.
+  Access to sensitive data needs an owner's approval in theseus.yaml.`
 - With no IAM change but a use beyond intent: `Your PR says <purpose>. Your code now reads <resource>.`, naming
   the most sensitive use, and a database before the secret that unlocks it.
 - With nothing beyond intent: `This change matches its stated purpose.`
+- When the PR states no purpose (`stated: false`): `This PR doesn't say what it's for. Your change grants
+  <target>.`, `... Your code now reads <resource>.`, or `This PR doesn't say what it's for. It opens no
+  dangerous path.`
 
-Pick the most sensitive target as `regulated` before `confidential`, then the shortest path, then by ID.
+**What the change does** opens the comment's "What happened", from the plan and never from a model: the resources the
+change creates, updates or deletes (`AnalysisResult.changes`, from the base and head worlds), then the
+dangerous paths it opens and closes. For example: `Adds aws_iam_user_group_membership.priya_support. Opens 3
+dangerous paths, closes 0.` It is the same whether or not the PR has a description.
+
+Pick the most sensitive target as `regulated` before `confidential`, then a target reached through what
+unlocks it (a database before its secret), then the shortest path, then by ID.
+
+**Plain names.** The headline names nodes as the comment does, with `engine/words.py`: the node's own name
+and what it is ("customer-db, a database"), never a vendor's resource type.
 
 ## 19. Writing fixes back to Terraform (`adapters/terraform/render.py`, task E9)
 

@@ -26,7 +26,7 @@ Assume every judge runs a large engineering org and has lived through this probl
 | Why is this an agent and not a CI script? | The agent picks its tools, reads the minimum cut, designs fixes rules can't, and retries when one fails. Only the final gate is fixed rules, on purpose | The MCP tool trace, and a retry that runs in the demo |
 | Can I trust an AI's verdict? What if it invents a permission? | The models suggest. The engine decides what is reachable, every claim cites an evidence ID, a checker rejects unknown IDs, and every fix is re-checked on a graph copy | Evidence links and the fix table with verdicts |
 | What stops it committing something harmful? | The model has no write tools. A commit needs a reviewer's command and a fix that passed the gate, and the GitHub App reaches only the demo repos | The wiring, shown in the README |
-| Can PR text or an advisory inject instructions? | Outside text reaches the model only as data, is scanned, and never counts as evidence | The injection case in the benchmark; the PoC flagged it |
+| Can PR text or an advisory inject instructions? | Outside text reaches the model only as data, is scanned, and never counts as evidence. Even a PR that openly asks for sensitive data cannot approve it: only `theseus.yaml` can | The injection cases in the replay tests; a PR asking for `customer-db` stays flagged |
 | What about KMS, SCPs, permission boundaries and conditions? | We model allows, explicit denies, wildcards, assume-role and KMS decrypt. Everything else returns UNKNOWN instead of a guess | Fix C returns UNKNOWN in Beat 2 |
 | Does a path prove an attacker can get in? | No. It is a modeled path under labeled assumptions | Edges marked configured, inferred or assumed |
 | Will it slow developers or flood them? | One comment per PR, and only for paths to sensitive data. About 20 seconds per PR in the PoC | The timing in the comment, and false alarms counted in the benchmark |
@@ -297,7 +297,7 @@ Small tasks that edit the same files became one agent session each, as long as t
 | Fixture format | `fixtures/<scenario>/` | `scenario.yaml`, `base/` and `head/` trees, both plans, `pr.md` or `advisory.json`, and `expected.json` (only compared fields, written by us) | A, B |
 | MCP tools | `mcp/tools.py` | Ten tools in one registry, used by the MCP server and the fix agent | B, A |
 | API | `api/routes.py` | `/health`, `/analyze`, `/finding`, `/scan`, `/apply`, `/webhooks/github`, `/graphs`, `/try` | B, A |
-| PR comment | `agent/templates/comment.md` | Nine sections, filled only from `AnalysisResult` fields | B, A |
+| PR comment | `agent/templates/comment.md` | Ten sections, filled only from `AnalysisResult` fields | B, A |
 
 ```
 theseus/            repo root; every file and its owner task is in docs/spec/05-contracts.md
