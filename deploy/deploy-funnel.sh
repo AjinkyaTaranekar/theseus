@@ -4,11 +4,13 @@
 #
 #   deploy/deploy-funnel.sh dev@100.104.51.40       or   THESEUS_VM=dev@100.104.51.40 deploy/deploy-funnel.sh
 #
-# 1. On the host: remember the running commit, reset the deploy-only clone (THESEUS_DIR, default ~/theseus) to
+# 1. Before anything changes: check the ref, reach the host, and read DOMAIN (THESEUS_DOMAIN, or the host's .env).
+#    If any of these fails, stop: nothing on the host has changed.
+# 2. On the host: remember the running commit, reset the deploy-only clone (THESEUS_DIR, default ~/theseus) to
 #    origin/<THESEUS_REF> (default main), install it into its venv, restart deploy/run.sh, and wait for the API's
-#    own /health. If any of that fails, return to the previous commit.
-# 2. From here: wait for https://<DOMAIN>/health, the Funnel address. DOMAIN comes from THESEUS_DOMAIN, or from
-#    the host's .env. If it never answers, return to the previous commit on the host.
+#    own /health. If any of that fails, the host returns to the previous commit itself.
+# 3. From here: wait for https://<DOMAIN>/health, the Funnel address. From the restart on, any failure, this one
+#    or anything unexpected, returns the host to the previous commit.
 #
 # Exit 0 means the new commit is live publicly; anything else is a failed deploy.
 set -euo pipefail
@@ -30,12 +32,13 @@ if [[ ! "$REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$REF" == *..* ]]; then
   exit 2
 fi
 
-# Runs on the host: bash -s -- <deploy|rollback> <dir> <ref or commit> <tries>.
+# Runs on the host: bash -s -- <domain|deploy|rollback> <dir> <ref or commit> <tries>.
 read -r -d '' REMOTE <<'SCRIPT' || true
 set -uo pipefail
 mode="$1"; dir="$2"; target="$3"; tries="$4"
 cd "$dir" || { echo "no $dir on the host"; exit 1; }
 [[ -f .env ]] || { echo "no .env in $(pwd); copy it there first (chmod 600)"; exit 1; }
+if [[ "$mode" == domain ]]; then sed -n 's/^DOMAIN=//p' .env | tr -d '\r' | tail -1; exit 0; fi
 
 healthy() { curl -sf -m 5 http://127.0.0.1:8000/health >/dev/null; }
 install_and_restart() {
@@ -62,22 +65,48 @@ git reset --quiet --hard "$prev" && install_and_restart && echo "ROLLED_BACK: $p
 exit 1
 SCRIPT
 
-out="$(ssh "$VM" bash -s -- deploy "$DIR" "$REF" "$TRIES" <<< "$REMOTE")" || { echo "$out"; exit 1; }
-echo "$out"
-prev="$(sed -n 's/^PREVIOUS=//p' <<< "$out")"
+remote() { ssh "$VM" bash -s -- "$@" <<< "$REMOTE"; }
 
-domain="${THESEUS_DOMAIN:-$(ssh "$VM" "sed -n 's/^DOMAIN=//p' $DIR/.env" | tr -d '\r')}"
-if [[ -z "$domain" ]]; then
-  echo "no DOMAIN in the host's .env and no THESEUS_DOMAIN; cannot check the public URL" >&2
+# 1. The public name to check afterwards, read before anything changes: without it a deploy can never be
+#    called live, so it stops here rather than after the restart.
+domain="${THESEUS_DOMAIN:-}"
+if [[ -z "$domain" ]] && ! domain="$(remote domain "$DIR" "" "$TRIES")"; then
+  echo "could not read DOMAIN from the host's .env over SSH; nothing changed" >&2
   exit 1
 fi
+if [[ -z "$domain" ]]; then
+  echo "no DOMAIN in the host's .env and no THESEUS_DOMAIN; nothing changed" >&2
+  exit 1
+fi
+
+# 2 and 3. From the restart on, a failed exit returns the host to the previous commit, unless the host already
+# did so itself (the deploy step failed) or the new commit answered publicly.
+prev=""
+settled=1
+finish() {
+  local status=$?
+  if [[ $status -ne 0 && $settled -eq 0 ]]; then
+    echo "the deploy failed after the restart; returning to ${prev:-the previous commit}" >&2
+    remote rollback "$DIR" "$prev" "$TRIES" || true
+  fi
+  exit "$status"
+}
+trap finish EXIT
+
+if ! out="$(remote deploy "$DIR" "$REF" "$TRIES")"; then
+  echo "$out"
+  exit 1
+fi
+echo "$out"
+prev="$(sed -n 's/^PREVIOUS=//p' <<< "$out")"
+settled=0
 for _ in $(seq 1 "$PUBLIC_TRIES"); do
   if curl -sf -m 10 "https://$domain/health" >/dev/null; then
+    settled=1
     echo "LIVE: https://$domain/health"
     exit 0
   fi
   sleep "$PUBLIC_WAIT"
 done
-echo "https://$domain/health never answered; returning to $prev" >&2
-ssh "$VM" bash -s -- rollback "$DIR" "$prev" "$TRIES" <<< "$REMOTE" || true
+echo "https://$domain/health never answered" >&2
 exit 1
