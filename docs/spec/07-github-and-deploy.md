@@ -95,6 +95,12 @@ workflow replays the event that first started it, and that copy may be out of da
 
 A comment cannot stop a merge; a required check can.
 
+**Today: a review gate.** The ruleset "main: reviewed by the other human" (active) requires a PR with one
+approving review, so the other human signs off every change. A "Request changes" review blocks the merge until it
+is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins may
+bypass it through the PR in an emergency, and GitHub records that. The `Theseus` check below is added to it with
+A5: until then `/analyze` returns a stub that fails every PR changing the world root.
+
 - **One ruleset on `main`** requires the `Theseus` check, with its source set to the Theseus App, so a workflow
   in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and `neutral`
   let it through. Repo admins can bypass it in an emergency, and GitHub records the bypass. A person creates
