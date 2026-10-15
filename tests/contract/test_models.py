@@ -217,7 +217,7 @@ def test_a_resource_node_carries_typed_core_fields() -> None:
         id="secret:prod-db-credentials",
         labels=["Node", "Resource"],
         name="prod-db-credentials",
-        category="secret",
+        category="Secret",
         provider="example",
         sensitivity="regulated",
         sensitive=True,
