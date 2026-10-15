@@ -508,3 +508,32 @@ def test_a_conditional_group_deny_makes_a_member_s_allow_unknown() -> None:
         ("aws_iam_user_policy.priya_read", "ReadInvoices"),
     ]
     assert summary(rows, "group:support-engineers") == {}
+
+
+def test_a_known_allow_beside_an_unresolved_policy_is_unknown() -> None:
+    """The unresolved policy could hold a Deny, so the allow is not definite. A secret is only read, so the
+    edge's kind is that one decision's."""
+    secret = f"arn:aws:secretsmanager:{REGION}:{ACCOUNT}:secret:prod-db-credentials-*"
+    world = [
+        res(
+            "aws_iam_role_policy.prod_support_read",
+            name="prod-support-read",
+            role="prod-support",
+            policy=doc(allow("ReadDbSecret", "secretsmanager:GetSecretValue", secret)),
+        ),
+        res(
+            "aws_iam_role_policy_attachment.prod_support_admin",
+            role="prod-support",
+            policy_arn="arn:aws:iam::aws:policy/AdministratorAccess",
+        ),
+    ]
+    edge = derive(world)[("CAN", "role:prod-support", "secret:prod-db-credentials")]
+    assert (edge.kind, edge.grants) == ("unknown", ["read"])
+    assert [(e.address, e.part, e.note) for e in edge.evidence] == [
+        ("aws_iam_role_policy.prod_support_read", "ReadDbSecret", None),
+        (
+            "aws_iam_role_policy_attachment.prod_support_admin",
+            None,
+            "unknown policy arn:aws:iam::aws:policy/AdministratorAccess",
+        ),
+    ]

@@ -274,3 +274,11 @@ def test_a_maybe_deny_leaves_explicit_trust_naming_the_caller() -> None:
     }
     decision = trust_kind(trust(assume({"AWS": SAM}), maybe_deny), SAM, ACCOUNT)
     assert (decision.kind, decision.names_caller) == ("unknown", True)
+
+
+def test_an_unknown_policy_could_deny_so_a_definite_allow_becomes_unknown() -> None:
+    read = policy(stmt(Sid="Read", resource="arn:aws:s3:::demo-company-files/*"))
+    decision = evaluate(read + statements(None), "s3:GetObject", INVOICES)
+    assert decision.result == "unknown"
+    assert "Read" in [s.sid for s in decision.statements]
+    assert evaluate(policy(stmt(effect="Deny")) + statements(None), "s3:GetObject", INVOICES).result == "deny"

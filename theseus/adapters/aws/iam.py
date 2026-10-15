@@ -77,15 +77,17 @@ def _principals(value: Any) -> dict[str, list[str]]:
 
 
 def unknown_policy() -> list[PolicyStatement]:
-    """A policy not known until apply: Allow everything, but uncertain (04-engine.md section 2)."""
+    """A policy Theseus cannot read (04-engine.md section 2): it could allow anything and deny anything, so it
+    is an uncertain Allow and an uncertain Deny of everything."""
     return [
         PolicyStatement(
-            effect="Allow",
+            effect=effect,
             actions=["*"],
             resources=["*"],
             principals={"*": ["*"]},
             unsupported=[UNKNOWN_POLICY],
         )
+        for effect in ("Allow", "Deny")
     ]
 
 
@@ -143,8 +145,9 @@ def evaluate(stmts: list[PolicyStatement], action: str, arn: str) -> Decision:
     """deny, allow, unknown or none for `action` on `arn` (04-engine.md section 5).
 
     An unconditional matching Deny wins. Otherwise an unconditional matching Allow allows, unless a Deny
-    that is conditional or unsupported could also match. An uncertain Allow can only add access, so it never
-    weakens a definite allow. Only uncertain Allows, or an Allow facing an uncertain Deny, give unknown.
+    that is conditional or unsupported could also match; an unknown policy is such a Deny. An uncertain Allow
+    can only add access, so it never weakens a definite allow. Only uncertain Allows, or an Allow facing an
+    uncertain Deny, give unknown.
     """
     matching = [s for s in stmts if _could_match(s, action, arn)]
     sure_deny = [s for s in matching if s.effect == "Deny" and s.certain]

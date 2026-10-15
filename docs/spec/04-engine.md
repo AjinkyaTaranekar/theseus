@@ -43,8 +43,10 @@ type is skipped and counted by type in the result's `coverage`; it never adds a 
 - A created resource's `arn` is unknown at plan; build it with section 4.
 - When a field is unknown but its reference names another resource's `name` or `id` (for IAM, the name), resolve
   it to that resource's configured name. Otherwise leave it unknown.
-- An IAM policy whose `policy` value is unknown is treated as `Allow * on *` with an unsupported condition, so
-  every edge it would create has kind `unknown`. It is listed in the result's `unknowns`.
+- An IAM policy whose `policy` value is unknown is treated as `Allow * on *` and `Deny * on *`, both with an
+  unsupported condition: it could grant anything, and it could deny anything. So every edge it could create has
+  kind `unknown`, and so does every edge it could remove, such as one another policy of the same principal
+  allows. It is listed in the result's `unknowns`.
 
 ## 3. Evidence lines (`adapters/terraform/source_index.py`)
 
@@ -96,7 +98,7 @@ Theseus may report a path that does not exist there, never miss one.
 | Result | When |
 | --- | --- |
 | `deny` | An unconditional matching `Deny` exists |
-| `allow` | An unconditional matching `Allow` exists, and no conditional or unsupported `Deny` could match |
+| `allow` | An unconditional matching `Allow` exists, and no conditional or unsupported `Deny` could match (an unknown policy is such a `Deny`) |
 | `unknown` | A matching `Allow` exists only with a condition or unsupported, or an unconditional one faces a conditional or unsupported `Deny` that could match |
 | `none` | Nothing matches |
 
