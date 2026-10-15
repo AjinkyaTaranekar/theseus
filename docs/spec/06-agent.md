@@ -103,14 +103,16 @@ it at a word to 160 characters. The comment still escapes it when rendering.
 14 and the screen 9; the screen missed the Spanish, Chinese, typo-ridden, JSON-breakout and config-block ones.
 Neither flagged any of the 17 ordinary cases, among them a reviewer pointer and a Spanish PR.
 
-Each intent grant becomes a requirement `I1`, `I2`, ... with source `intent`.
+Each intent grant becomes a requirement `I1`, `I2`, ... with source `intent`. Intent explains a change but
+never approves access to sensitive data; `04-engine.md` section 10 says which intent requirements count.
 
 ## The fix agent (`agent/fixer.py`, task A7)
 
 **When it runs:** PR mode, when at least one dangerous path opened.
 
 **Context it gets (JSON):** the IAM resources with addresses and statement Sids; data ARNs; each resource's
-sensitivity and who decided it; all requirements (config and intent); the opened dangerous paths with routes;
+sensitivity and who decided it; all requirements (config and intent), with intent requirements on sensitive data or from a
+suspicious PR marked unapproved, which a fix may remove; the opened dangerous paths with routes;
 the minimum cut (value, cuttable, cut edges).
 
 **Tools it may call:** the registry in `mcp/tools.py`: `explain_path`, `shortest_route`, `min_cut`,

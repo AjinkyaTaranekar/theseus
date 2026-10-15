@@ -54,8 +54,8 @@ The `public-bucket` fixture is a preset on the Try-it page, not a video scene.
 | Resource | A data location: an S3 bucket prefix, a Secrets Manager secret, or a database |
 | Sensitive | A resource whose class is `confidential` or `regulated` |
 | Path | A chain of edges from an actor to a resource, ending in a grant edge (`CAN` or `UNLOCKS`) |
-| Dangerous path | A path from an actor to a sensitive resource that no requirement covers |
-| Requirement | Access that must keep working, from `theseus.yaml` or from the PR's stated intent |
+| Dangerous path | A path from an actor to a sensitive resource that no `theseus.yaml` requirement covers |
+| Requirement | Access that must keep working, from `theseus.yaml` or from the PR's stated intent. Words in a PR explain a change but never approve access to sensitive data |
 | Evidence | The file, line, Terraform address and statement Sid behind an edge |
 | Edge kind | `configured` (read from config), `inferred` (derived by a rule), `assumed` (for example "this workflow is compromised"), `unknown` (outside the supported subset) |
 | State graph | One FalkorDB graph per state: `main`, `pr42-base`, `pr42-head`, `pr42-fix-B` |
