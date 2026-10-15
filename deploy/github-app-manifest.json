@@ -1,5 +1,5 @@
 {
-  "name": "Theseus",
+  "name": "Theseus Graph Review",
   "url": "https://github.com/AjinkyaTaranekar/theseus",
   "description": "Reviews Terraform pull requests as a graph: which sensitive data a change makes reachable, and the smallest safe fix.",
   "hook_attributes": {

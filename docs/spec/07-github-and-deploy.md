@@ -38,7 +38,7 @@ workflows only from the repo root's `.github/workflows/`, so they never run, and
 
 | Setting | Value |
 | --- | --- |
-| Name | Theseus |
+| Name | Theseus Graph Review (`theseus-graph-review`, App ID 5336067): GitHub reserves "Theseus" for an existing account. The check it posts is still named `Theseus` |
 | Installed on | This repo only (`THESEUS_REPOS`) |
 | Permissions | Contents read and write; Pull requests read and write; Issues read and write; Checks read and write; Actions read and write (to re-run the Theseus workflow); Metadata read |
 | Events | `pull_request`, `issue_comment`, `push`, and `check_run` (sent to any App with Checks write) |

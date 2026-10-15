@@ -158,10 +158,16 @@ If guest-box's host key ever changes (a new container), refresh it:
 
 The App posts the comment and the `Theseus` check, and re-runs a review on `/theseus review` or Re-run
 (`docs/spec/07-github-and-deploy.md`, "The GitHub App"). Its settings live in
-[`github-app-manifest.json`](github-app-manifest.json). Register it once the API answers on `https://<DOMAIN>`:
+[`github-app-manifest.json`](github-app-manifest.json). 
+**Where it stands:** registered, installed on this repo only (installation 171853568), and its key and settings
+are on guest-box. GitHub's ping to `https://guest-box.tail27b7c5.ts.net/webhooks/github` returns 204, so the
+signature check works. The repo has the variable `THESEUS_URL` and the secret `THESEUS_TOKEN`. To register it
+again from scratch:
+
+Register it once the API answers on `https://<DOMAIN>`:
 
 1. **Register.** Run `python tools/github_app.py form --domain <DOMAIN>`, open the page it writes, and click
-   the button. GitHub shows the settings from the manifest. If the name `Theseus` is taken, pick another;
+   the button. GitHub shows the settings from the manifest. GitHub reserves the name `Theseus`, so ours is **Theseus Graph Review** (`theseus-graph-review`, App ID 5336067, installed on this repo only); if that is taken too, pick another;
    the check is still called `Theseus`. Click **Create GitHub App**.
 2. **Save its credentials, within an hour.** GitHub sends you to the repo page with `?code=...` in the
    address bar. Run `python tools/github_app.py convert <code> --out <folder outside the repo>`. It writes
