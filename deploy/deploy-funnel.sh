@@ -65,7 +65,9 @@ git reset --quiet --hard "$prev" && install_and_restart && echo "ROLLED_BACK: $p
 exit 1
 SCRIPT
 
-remote() { ssh "$VM" bash -s -- "$@" <<< "$REMOTE"; }
+# ssh joins its arguments into one command for the remote shell, so each is quoted for it: an empty one (no
+# previous commit) must stay an argument, not vanish and shift the rest.
+remote() { ssh "$VM" "bash -s -- $(printf '%q ' "$@")" <<< "$REMOTE"; }
 
 # 1. The public name to check afterwards, read before anything changes: without it a deploy can never be
 #    called live, so it stops here rather than after the restart.

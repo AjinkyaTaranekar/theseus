@@ -19,8 +19,9 @@ BASH = shutil.which("bash")
 pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 STUBS = {
-    # ssh <host> bash -s -- <mode> ...: run the host's script here instead, or fail for one mode.
-    "ssh": 'shift\n[ -n "${FAKE_SSH_FAIL:-}" ] && [ "${FAKE_SSH_FAIL}" = "$4" ] && exit 255\nexec "$@"\n',
+    # ssh <host> <command...>: like real ssh, join the rest into one command for the remote shell, so an
+    # argument that is not quoted for it splits or vanishes; or fail for one mode.
+    "ssh": 'shift\ncase " $* " in *" ${FAKE_SSH_FAIL:-none} "*) exit 255 ;; esac\nexec bash -c "$*"\n',
     "sleep": "exit 0\n",
     "git": """
 echo "git $*" >> "$FAKE/log"
