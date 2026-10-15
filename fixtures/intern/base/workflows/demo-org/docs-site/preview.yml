@@ -1,0 +1,15 @@
+name: Preview docs
+on:
+  pull_request:
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: demo-thirdparty/file-diff@v3
+        id: changed-pages
+      - name: Build preview
+        run: npm ci && npm run build

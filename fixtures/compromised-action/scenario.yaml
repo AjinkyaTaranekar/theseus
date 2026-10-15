@@ -1,0 +1,4 @@
+description: Assume demo-thirdparty/file-diff versions v1, v2 and v3 are compromised.
+mode: finding
+name: compromised-action
+world: demo-infra
