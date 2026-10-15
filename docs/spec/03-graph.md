@@ -5,7 +5,10 @@ carries the evidence that proves it. Constants for everything below live in `the
 
 ## Node IDs
 
-IDs are strings, unique within a graph, and the same in every state of the same world.
+IDs are strings, unique within a graph, and the same in every state of the same world. They follow one
+grammar, `<kind>:<name>`, or `<scheme>://<path>` for a location inside a store (`schema.node_id` and
+`schema.location_id`). The core kinds are fixed. Resource kinds belong to the cloud adapter: the rows marked
+AWS below are the AWS adapter's (`08-core-and-adapters.md`).
 
 | Kind | ID pattern | Example |
 | --- | --- | --- |
@@ -16,11 +19,11 @@ IDs are strings, unique within a graph, and the same in every state of the same 
 | workflow | `workflow:<org>/<repo>/<file>` | `workflow:demo-org/docs-site/preview.yml` |
 | action | `action:<owner>/<repo>` | `action:demo-thirdparty/file-diff` |
 | entry | `entry:internet` | `entry:internet` |
-| s3 resource | `s3://<bucket>/<prefix>` (prefix may be empty) | `s3://demo-company-files/invoices/` |
-| secret resource | `secret:<name>` | `secret:prod-db-credentials` |
-| db resource | `db:<identifier>` | `db:customer-db` |
-| dynamodb resource | `dynamodb:<table>` | `dynamodb:demo-orders` |
-| requirement | `req:<id>` | `req:R1`, `req:I1` (intent) |
+| s3 location (AWS, category `object_store`) | `s3://<bucket>/<prefix>` (prefix may be empty) | `s3://demo-company-files/invoices/` |
+| secret (AWS, category `secret`) | `secret:<name>` | `secret:prod-db-credentials` |
+| db (AWS, category `database`) | `db:<identifier>` | `db:customer-db` |
+| dynamodb table (AWS, category `table`) | `dynamodb:<table>` | `dynamodb:demo-orders` |
+| req (requirement) | `req:<id>` | `req:R1`, `req:I1` (intent) |
 | finding | `finding:<id>` | `finding:GHSA-demo-0001` |
 
 ## Labels and properties
@@ -30,22 +33,28 @@ entry also carry `:Principal`.
 
 | Kind label | Extra labels | Properties beyond the common ones |
 | --- | --- | --- |
-| `User` | `Principal` | `arn` |
-| `Group` | `Principal` | `arn` |
-| `Role` | `Principal` | `arn`, `address` |
+| `User` | `Principal` | `arn` (AWS) |
+| `Group` | `Principal` | `arn` (AWS) |
+| `Role` | `Principal` | `arn` (AWS), `address` |
 | `Workload` | `Principal` | `runtime` (`lambda` or `ecs`), `address` (the function or the ECS service), `code_path` (folder under `services/` from the `theseus_code_path` tag, or null) |
 | `Workflow` | `Principal` | `repo`, `file`, `subs` (list of OIDC `sub` values it can present), `id_token` (bool) |
 | `Action` | | `version` |
 | `Entry` | `Principal` | none |
-| `Resource` | | `kind` (`s3`, `secret`, `db`, `dynamodb`), `arn_pattern`, `address` |
+| `Resource` | | `kind` (the ID prefix its cloud adapter declares), `category` (`object_store`, `secret`, `database`, `table`), `provider` (`aws`), `address`, `arn_pattern` (AWS) |
 | `Requirement` | | `req_id`, `access` (`read`, `write`, `assume`), `source` (`config`, `intent`) |
 | `Finding` | | `finding_id`, `summary` (untrusted text, never evidence) |
 
-Common properties on every node: `id`, `name` (the human label), `env` (`staging` or `prod`), and for
-`Resource` nodes: `sensitivity` (`public`, `internal`, `confidential`, `regulated` or null),
-`sensitive` (bool), `sensitivity_source` (`jev`, `human` or `unclassified`).
+Common properties on every node, typed fields on `NodeRow`: `id`, `name` (the human label), `env` (`staging`
+or `prod`), and for `Resource` nodes: `category`, `provider`, `sensitivity` (`public`, `internal`,
+`confidential`, `regulated` or null), `sensitive` (bool), `sensitivity_source` (`jev`, `human` or
+`unclassified`). The per-kind properties in the table above go in `NodeRow.props`. Properties marked AWS are
+set by the AWS adapter for its own use; core code never reads them, and reasons on `category`, never on
+`kind`.
 
 ## Edges
+
+Edge types are core and the same for every cloud. The "Derived from" column is how the v1 adapters (AWS,
+Terraform, GitHub Actions, Python) produce each one.
 
 | Type | From, to | Edge properties | Kind | Derived from |
 | --- | --- | --- | --- | --- |
@@ -65,12 +74,13 @@ Common properties on every node: `id`, `name` (the human label), `env` (`staging
 | `FLOW` | Node to Node | `eids` (list), `capacity` | internal | Written by the engine before each max-flow call (Q_SET_FLOW): one per (source, target) pair of traversal and grant edges. Never shown, never evidence |
 
 Common properties on every edge: `eid` (`e1`, `e2`, ... stable within a build), `kind` (`configured`,
-`inferred`, `assumed`, `unknown`), `evidence` (JSON string, a list of Evidence objects). `FLOW` edges carry only `eids` and
-`capacity`.
+`inferred`, `assumed`, `unknown`), `evidence` (JSON string, a list of Evidence objects). `FLOW` edges carry
+only `eids` and `capacity`.
 
-**Evidence object:** `{"address": "aws_iam_role_policy.prod_support_read", "sid": "ReadDbSecret",
+**Evidence object:** `{"address": "aws_iam_role_policy.prod_support_read", "part": "ReadDbSecret",
 "file": "terraform/roles.tf", "line": 31, "note": null}`. For workflow edges, `address` is the workflow
-path; for code edges, `address` is the Python file and `sid` is null.
+path; for code edges, `address` is the Python file and `part` is null. `part` is the piece of the resource that
+decided the edge: for AWS, an IAM statement's Sid.
 
 **Traversal and grant edges.** Paths move along `MEMBER_OF`, `CAN_ASSUME`, `TRUSTS` and `RUNS_AS`, and end
 on a grant edge: `CAN`, or `CAN` to a secret followed by `UNLOCKS`. `CALLS`, `REQUESTS`, `HAS_ENV`, `USES`,

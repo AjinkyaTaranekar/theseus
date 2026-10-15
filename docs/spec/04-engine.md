@@ -2,6 +2,10 @@
 
 Everything here is deterministic. Given the same inputs, the result is the same, in the same order.
 
+Some sections are adapter rules, not core (`08-core-and-adapters.md`): Terraform owns sections 2, 3 and 19,
+AWS owns sections 4, 5 and 13 and the IAM rules of section 6, GitHub owns the workflow `sub` values in section
+6, and Python owns section 7. Every other section is core and names no vendor in code.
+
 ## 1. Inputs
 
 A **world** is one state of the infrastructure. `theseus/importer/world.py: load_world()` assembles it from a
@@ -22,7 +26,7 @@ A **world** is one state of the infrastructure. `theseus/importer/world.py: load
 `aws_db_instance`, `aws_dynamodb_table`, `aws_lambda_function`, `aws_ecs_task_definition`, `aws_ecs_service`.
 Every other type is skipped and counted by type in the result's `coverage`; it never adds a node or an edge.
 
-## 2. Reading the plan (`importer/plan.py`)
+## 2. Reading the plan (`adapters/terraform/plan.py`)
 
 - Resources come from `planned_values.root_module.resources`, plus `child_modules` recursively.
   Each becomes `{address, type, name, values}`.
@@ -42,7 +46,7 @@ Every other type is skipped and counted by type in the result's `coverage`; it n
 - An IAM policy whose `policy` value is unknown is treated as `Allow * on *` with an unsupported condition, so
   every edge it would create has kind `unknown`. It is listed in the result's `unknowns`.
 
-## 3. Evidence lines (`importer/source_index.py`)
+## 3. Evidence lines (`adapters/terraform/source_index.py`)
 
 Plan JSON has no line numbers. For each resource, find the line matching
 `^\s*resource\s+"<type>"\s+"<name>"` in the `.tf` files. When a statement Sid is known, return the line of
@@ -63,7 +67,7 @@ When a value is missing or unknown, the importer builds the canonical ARN:
 | dynamodb table | `arn:aws:dynamodb:<region>:<account>:table/<name>` |
 | customer-managed policy | `arn:aws:iam::<account>:policy/<name>` |
 
-## 5. The IAM subset (`importer/iam.py`)
+## 5. The IAM subset (`adapters/aws/iam.py`)
 
 **Supported:** `Allow` and `Deny`; `Action` and `Resource` as a string or list; wildcards (`*` matches any
 run of characters including `/` and `:`; `?` matches one; case-insensitive); account-root and explicit-ARN
@@ -74,7 +78,7 @@ boundaries; SCPs; KMS key policies; resource policies other than S3 bucket polic
 
 **A principal's statements** are its inline policies (`aws_iam_user_policy`, `aws_iam_group_policy`,
 `aws_iam_role_policy`), plus every attached customer-managed policy (a `*_policy_attachment` whose `policy_arn`
-names an `aws_iam_policy` in the plan), plus AWS-managed policies listed in `importer/aws_managed.py`. That table
+names an `aws_iam_policy` in the plan), plus AWS-managed policies listed in `adapters/aws/managed.py`. That table
 holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, neither with a modeled action. Any
 other AWS-managed ARN, or a customer ARN not in the plan, counts as an unknown policy (section 2). A group's
 statements are evaluated on the group; its members reach them through `MEMBER_OF`.
@@ -125,20 +129,20 @@ or none. `Principal = "*"` counts as `account` when unconditional.
 | `CALLS`, `REQUESTS`, `HAS_ENV` | From service code, section 7 |
 | `FOR`, `NEEDS` | One requirement node per requirement, from `theseus.yaml` and from the PR's intent |
 
-**Workflow `sub` values** (`importer/workflows.py`), per job that can request an ID token: a job with
+**Workflow `sub` values** (`adapters/github/workflows.py`), per job that can request an ID token: a job with
 `environment: X` presents only `repo:<org>/<repo>:environment:X`, as GitHub does. Otherwise a `push` trigger
 gives `repo:<org>/<repo>:ref:refs/heads/<branch>` per listed branch (default `main`), and `pull_request` or
 `pull_request_target` gives `repo:<org>/<repo>:pull_request`. The workflow's `subs` is the sorted union over its
 jobs.
 
-**OIDC matching** (`importer/oidc.py`): every condition key must be `token.actions.githubusercontent.com:aud`
+**OIDC matching** (`adapters/aws/oidc.py`): every condition key must be `token.actions.githubusercontent.com:aud`
 or `:sub`, under `StringEquals` (exact) or `StringLike` (wildcards); anything else is `unknown`. `aud` must
 accept `sts.amazonaws.com`. Any failing test is `no`. If no `sub` test exists, the result is `yes-any-repo`.
 
 **Duplicate edges.** One edge per (source, target, type); merge grants and evidence. If any part is unknown,
 the merged edge is unknown.
 
-## 7. Reading service code (`importer/code.py`)
+## 7. Reading service code (`adapters/python/code.py`)
 
 Parse each `services/<folder>/*.py` with Python's `ast`; never execute it. The workload is the Lambda function
 or ECS service whose `theseus_code_path` tag names that folder. A folder no workload claims is skipped with an
@@ -216,11 +220,13 @@ Analyze base and head with the same actors and the same requirements (config plu
   flows and the `FLOW` capacities; an edge missing from the result has flow 0. If the call fails, run
   Edmonds-Karp in Python on the same `FLOW` rows.
 
-## 13. Patch ops (`engine/patch.py`)
+## 13. Patch ops (`adapters/aws/patch.py`)
 
-Candidate fixes are lists of ops applied to a copy of the head resources. Rules and the LLM use the same catalog.
+Candidate fixes are lists of ops applied to a copy of the head resources. A patch op is the envelope
+`{provider, op, args}`; this table is the AWS catalog, typed in `adapters/aws/ops.py`, which also publishes its
+JSON schema for the LLM. Rules and the LLM use the same catalog.
 
-| Op | Fields | Effect |
+| Op | Args | Effect |
 | --- | --- | --- |
 | `remove_membership` | `user`, `group` | Removes the group from the user's membership resources; drops a membership resource left empty |
 | `add_membership` | `user`, `group` | Adds a membership resource |
@@ -230,7 +236,8 @@ Candidate fixes are lists of ops applied to a copy of the head resources. Rules 
 | `add_role` | `name`, `trust_principals` (`user:` or `role:` IDs), `statements` | Adds a role trusting those principals' exact ARNs, with an inline policy |
 | `set_oidc_sub` | `role`, `patterns` | Replaces the role's OIDC `sub` condition with `StringLike` on these patterns |
 
-A statement in an op: `{sid, effect, actions, resources, condition}`; `condition` is `{op, key, value}` or null.
+A statement in an op's args: `{sid, effect, actions, resources, condition}`; `condition` is `{op, key, value}`
+or null.
 An op that cannot apply raises `PatchError`; the candidate's verdict is then `invalid`.
 
 ## 14. Simulation and verdicts (`engine/simulate.py`)
@@ -252,7 +259,10 @@ An op that cannot apply raises `PatchError`; the candidate's verdict is then `in
 
 ## 15. Candidates and ranking (`engine/candidates.py`)
 
-Candidate IDs are fixed by where they come from:
+Candidate IDs are fixed by where they come from. A rule decides its fix in graph terms, as a `RuleFix` whose
+`Change`s remove an edge, narrow a grant, restrict a trust or deny principals, and the cloud adapter turns
+each `Change` into ops. The fixes below say what AWS makes of them. Every candidate records `proposed_by`:
+`theseus` for a rule, the model string for the LLM, the person's login for H.
 
 | ID | Source | Fix |
 | --- | --- | --- |
@@ -263,6 +273,7 @@ Candidate IDs are fixed by where they come from:
 | S | rule | Scope down: set a statement on the path that grants both required and dangerous locations to the required ones only |
 | K | rule | Containment: `set_oidc_sub` on the cut role to the `sub` values of the workflows whose requirements need it |
 | U | rule | Remove a grant on a dangerous path that no code calls |
+| H1, H2, ... | A person | A fix someone proposes on the PR (`07-github-and-deploy.md`, "Proposing a fix"), numbered in the order they arrive. Verified exactly like the others |
 
 Generate only the candidates that apply to the paths in hand; derive names from the graph, never hardcode them.
 
@@ -272,7 +283,8 @@ Generate only the candidates that apply to the paths in hand; derive names from 
 2. Fewer UNKNOWN steps first.
 3. The smallest change: fewer ops, then fewer permissions removed.
 4. No broad wildcard in an added statement.
-5. Rule candidates before the LLM's, then by ID.
+5. A person's candidates before rule candidates before the LLM's, then by ID. This only breaks ties: a
+   person's fix that fails is never recommended.
 
 The first `pass` is `recommended`. Jev can veto, never approve: if Jev scores "could this fix break legitimate
 use?" above 0.5, the candidate is labeled "needs a closer look" and cannot be recommended. If nothing passes,
@@ -309,7 +321,7 @@ uses beyond intent. The headline:
 
 Pick the most sensitive target as `regulated` before `confidential`, then the shortest path, then by ID.
 
-## 19. Writing fixes back to Terraform (`engine/render_tf.py`, task E9)
+## 19. Writing fixes back to Terraform (`adapters/terraform/render.py`, task E9)
 
 A chosen candidate becomes text edits on the `.tf` files, so `/theseus apply` can commit it.
 

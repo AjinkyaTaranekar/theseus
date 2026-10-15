@@ -54,15 +54,15 @@ Regenerate it with `python tools/dep_graph.py` whenever `tools/tasks.csv` change
 
 | Task | Feature | Files it creates | It achieves | Needs first |
 | --- | --- | --- | --- | --- |
-| [E1](E1.md) | Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `theseus/importer/plan.py`, `theseus/importer/source_index.py` | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 10 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | F2, F4 |
-| [E2](E2.md) | IAM: statements, matching, CAN and CAN_ASSUME | `theseus/importer/iam.py`, `theseus/importer/policies.py`, `theseus/importer/aws_managed.py` | All unit tests pass | F2 |
+| [E1](E1.md) | Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `theseus/adapters/terraform/plan.py`, `theseus/adapters/terraform/source_index.py` | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 10 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | F2, F4 |
+| [E2](E2.md) | IAM: statements, matching, CAN and CAN_ASSUME | `theseus/adapters/aws/iam.py`, `theseus/adapters/aws/policies.py`, `theseus/adapters/aws/managed.py` | All unit tests pass | F2 |
 | [E3](E3.md) | Graph load, path diff and required access | `theseus/graph/store.py`, `theseus/graph/load.py`, `theseus/graph/queries.py` | `analyze` on the intern fixture matches `expected.json` for opened, closed and R1 to R17 | E1, E2, F3, F5 |
 | [A1](A1.md) | LLM intent extraction | `theseus/agent/llm.py`, `theseus/agent/intent.py`, `tests/replay/test_intent.py` | Replay tests pass on 10 PR texts | F2 |
 | [A2](A2.md) | Jev: sensitivity labels and advisory urgency | `theseus/agent/jev.py`, `theseus/agent/sensitivity.py`, `tests/replay/test_sensitivity.py` | Every demo resource is rated and cached | F2 |
 | [A3](A3.md) | Says versus grants | `theseus/engine/intent_effect.py`, `tests/unit/test_intent_effect.py` | The intern headline names `customer-db` | E3, A1 |
 | [A4](A4.md) | PR comment: paths, fix table, trace and coverage | `theseus/agent/templates/comment.md`, `theseus/agent/render.py`, `tests/unit/test_render.py` | Renders from every `expected.json` | F2 |
 | [A5](A5.md) | Real analyze behind the Action | `tests/e2e/test_analyze_route.py` | On a real `demo/intern-1` PR the comment shows the headline and three opened paths | E3, A3, A4, F7 |
-| [FM1](FM1.md) | CI in the graph: workflows and OIDC trust | `theseus/importer/workflows.py`, `theseus/importer/oidc.py`, `tests/unit/importer/test_workflows.py` | `preview.yml` has `id_token` true and `subs` `[repo:demo-org/docs-site:pull_request]` | F4, E2 |
+| [FM1](FM1.md) | CI in the graph: workflows and OIDC trust | `theseus/adapters/github/workflows.py`, `theseus/adapters/aws/oidc.py`, `tests/unit/adapters/github/test_workflows.py` | `preview.yml` has `id_token` true and `subs` `[repo:demo-org/docs-site:pull_request]` | F4, E2 |
 | [C1](C1.md) | Demo backend: service code and platform resources | `demo-infra/services/orders_api/app.py`, `store.py`, `events.py`, `billing.py`, `demo-infra/services/orders_worker/worker.py`, `fulfil.py`, `demo-infra/services/billing_job/handler.py`, `invoices.py`, `payments.py` | Every resource name in the code comes from an environment variable | F4 |
 
 ## Beat 2: Fix it
@@ -72,13 +72,13 @@ Regenerate it with `python tools/dep_graph.py` whenever `tools/tasks.csv` change
 | Task | Feature | Files it creates | It achieves | Needs first |
 | --- | --- | --- | --- | --- |
 | [E4](E4.md) | Minimum cut with MaxFlow | `theseus/engine/mincut.py`, `theseus/graph/algos.py`, `tests/unit/test_mincut.py` | Intern max flow is 1,000,000; the Action's is 1, with the right cut edge | E3 |
-| [E5](E5.md) | Simulator on GRAPH.COPY | `theseus/engine/patch.py`, `theseus/engine/simulate.py`, `tests/unit/test_patch.py` | Each candidate gets a verdict | E3 |
+| [E5](E5.md) | Simulator on GRAPH.COPY | `theseus/adapters/aws/patch.py`, `theseus/engine/simulate.py`, `tests/unit/test_patch.py` | Each candidate gets a verdict | E3 |
 | [E6](E6.md) | Rule-based fixes and ranking | `theseus/engine/candidates.py`, `tests/golden/test_public_bucket.py`, `tests/unit/test_ranking.py` | For the intern: A fails, C is UNKNOWN, D fails | E5 |
-| [E9](E9.md) | Terraform patch renderer | `theseus/engine/render_tf.py`, `tests/unit/render_tf/` | Every op renders and the result parses | F2, F4 |
+| [E9](E9.md) | Terraform patch renderer | `theseus/adapters/terraform/render.py`, `tests/unit/adapters/terraform/render/` | Every op renders and the result parses | F2, F4 |
 | [A6](A6.md) | MCP server and tool trace | `theseus/mcp/tools.py`, `theseus/agent/trace.py`, `theseus/mcp/server.py` | Claude Code lists and calls every tool on the fixtures | F2 |
 | [A7](A7.md) | LLM fix agent | `theseus/agent/fixer.py`, `theseus/agent/evidence.py`, `tests/replay/test_fixer.py` | Fix B verified | E5, A6 |
 | [A9](A9.md) | /theseus apply command | `theseus/api/webhooks.py`, `tests/unit/test_webhooks.py` | On a `demo/` PR, `/theseus apply <ID>` commits the rendered fix and the Action re-runs | F7, E9 |
-| [C2](C2.md) | Python code reader | `theseus/importer/code.py`, `tests/unit/importer/test_code.py` | Every call in the backend becomes an edge, a counted skip or an unknown | F2, C1 |
+| [C2](C2.md) | Python code reader | `theseus/adapters/python/code.py`, `tests/unit/adapters/python/test_code.py` | Every call in the backend becomes an edge, a counted skip or an unknown | F2, C1 |
 | [FM3](FM3.md) | Finding mode: blast radius and rotate list | `theseus/engine/finding.py`, `tests/golden/test_compromised_action.py` | The five-hop trace to `customer-db` | FM1, E3 |
 | [FM4](FM4.md) | Finding extras: choke points, staging to prod, urgency | `theseus/engine/staging.py` | `prod-support` ranks first among roles | FM3, E4, A2 |
 

@@ -6,7 +6,7 @@
 "P6","Prep","Prep","Register the team and agree IP ownership","Register the team, agree IP ownership in writing, and keep the repo private and the PoC out of public places until we submit","","Registered, and the agreement signed by both of us","S"
 "P7","Prep","Prep","Rehearse the judge questions","Rehearse the judge questions in docs/plan-of-action.md","P3","Each of us answers every question","S"
 "F1","Foundation","Foundation","Repo, board and CI","Repo, package, settings, CLI, CI, templates, labels and the GitHub board","P5","CI is green on the first PR","S"
-"F2","Foundation","Foundation","Freeze the contracts","Contracts: graph schema with DynamoDB and the modeled types, every shared model including Coverage, engine signatures","F1","Both humans reviewed and approved","M"
+"F2","Foundation","Foundation","Freeze the contracts","Contracts: vendor-neutral graph schema, every shared model including Coverage, engine signatures, and the adapter protocols","F1","Both humans reviewed and approved","M"
 "F4","Foundation","Foundation","Demo world and fixture generator","demo-infra/: modeled Terraform, the org's workflows, theseus.yaml; plan.sh and make_fixture.py; four fixtures","F1","`terraform plan` gives JSON for `demo-infra/terraform` with no AWS account","L"
 "F3","Foundation","Foundation","Run it: Compose, API stub and VM deploy","Docker Compose with FalkorDB, the API stub, and the same stack live on the VM with HTTPS","F2","`docker compose -f deploy/docker-compose.yml --profile dev up -d` starts FalkorDB","M"
 "F5","Foundation","Foundation","Hand-write expected.json","Write expected.json for each generated fixture from the outcomes in spec 02, reading line numbers from demo-infra/","F4, P3","We both sign off every expected.json","M"

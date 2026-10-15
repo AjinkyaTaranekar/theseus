@@ -64,15 +64,26 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 ## The apply command (task A9)
 
-1. An `issue_comment` on a PR matches `^/theseus apply ([A-Z])\s*$`.
+1. An `issue_comment` on a PR matches `^/theseus apply ([A-Z][0-9]*)\s*$` (a rule's or the LLM's letter, or a
+   person's `H1`, `H2`, ...).
 2. The commenter must have write or admin permission on the repo; otherwise reply that they cannot.
 3. Load the latest result for that PR and head SHA (cached in memory, keyed by repo, PR and SHA), or re-run the analysis.
 4. The candidate must exist and have verdict `pass`. Otherwise reply with its verdict and reason.
-5. `render_tf` the candidate's ops on the head `.tf` files, check every changed path is under the world root, and
-   commit the changed files to the PR branch with the App. The message follows the commit rules in `AGENTS.md`:
-   subject `fix: Apply Theseus fix <ID>`, a body naming the paths it closes and the requirements it keeps, and a
-   `Requested-by: @<user>` trailer.
+5. Render the candidate's ops on the head `.tf` files with the IaC adapter (`adapters/terraform/render.py`),
+   check every changed path is under the world root, and commit the changed files to the PR branch with the
+   App. The message follows the commit rules in `AGENTS.md`: subject `fix: Apply Theseus fix <ID>`, a body
+   naming the paths it closes and the requirements it keeps, and two trailers: `Proposed-by:` (the
+   candidate's `proposed_by`) and `Requested-by: @<user>` (who approved it).
 6. The commit triggers the Action, which re-runs the analysis; the comment updates and the check turns green.
+
+### Proposing a fix (task A9, stretch)
+
+A person with write access can propose their own fix for Theseus to check before anyone commits it:
+`/theseus propose` followed by a fenced JSON block holding a list of patch ops (`{provider, op, args}`, the
+cloud adapter's catalog). Theseus validates the ops, simulates them like any candidate, gives them the next
+`H<n>` ID with `source: "human"` and the commenter as `proposed_by`, and updates the comment's fix table.
+`/theseus apply H<n>` then works like any other ID. Pushing a commit to the PR is the other way to fix it
+by hand; that is not a candidate, just a new head that the Action analyzes again.
 
 ## Finding and scan outputs (tasks FM6, C3)
 

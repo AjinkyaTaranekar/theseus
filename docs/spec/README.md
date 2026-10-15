@@ -12,10 +12,12 @@ Task briefs in `docs/tasks/` point to the exact sections each task needs.
 | [05-contracts.md](05-contracts.md) | Module layout, the shared models, engine functions, MCP tools, API routes, the PR comment, `expected.json` | Every task |
 | [06-agent.md](06-agent.md) | The LLM and Jev: schemas, prompts, record and replay, the evidence checker, untrusted text | Agent tasks |
 | [07-github-and-deploy.md](07-github-and-deploy.md) | The GitHub Action and App, the apply command, Docker Compose, Caddy, environment variables | GitHub and deploy tasks |
+| [08-core-and-adapters.md](08-core-and-adapters.md) | What is core and what is an adapter, what crosses between them, and how to add a cloud, IaC format, CI system or language | Every task, before writing a module |
 
 ## Decisions already made
 
-- AWS only. Terraform plan JSON is the input; no live cloud account is ever read.
+- AWS, Terraform, GitHub Actions and Python in v1, each behind an adapter; the core names none of them
+  (`08-core-and-adapters.md`). Terraform plan JSON is the input; no live cloud account is ever read.
 - One repo. The product and the synthetic world (`demo-infra/`) live together; demo PRs are PRs in this repo
   that change only `demo-infra/`, and the App may write only there. No GitHub org is needed.
 - Python 3.12, FastAPI, Pydantic v2, FalkorDB.

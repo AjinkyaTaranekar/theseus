@@ -19,7 +19,7 @@ Beat 3 opens with a real alert shape and a trace through CI into the database. A
 
 | File | Action | Purpose |
 | --- | --- | --- |
-| `theseus/engine/finding.py` | create | `match_advisory`, `blast_radius`, `rotate_list` (sorted); the `Finding` node and `AFFECTS` edge |
+| `theseus/engine/finding.py` | create | `match_advisory`, `blast_radius`, `rotate_list` (every reachable resource whose category is `secret`, sorted); the `Finding` node and `AFFECTS` edge. Names no vendor |
 | `theseus/engine/pipeline.py` | change | `run_finding(world, advisory, deps)` with blast radius and rotate; `min_cut` once E4 has merged |
 | `theseus/api/routes.py`, `theseus/cli.py` | change | Real `/finding` for fixtures; `finding` command |
 | `tests/golden/test_compromised_action.py` | create | Blast-radius targets and the five-hop route to `customer-db`; `lint.yml` reaches nothing; `terraform-apply` and the state bucket are out of reach; rotate equals `[secret:prod-db-credentials]` |
