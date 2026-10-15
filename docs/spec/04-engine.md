@@ -324,12 +324,16 @@ uses beyond intent. The headline:
   <target>.`, `... Your code now reads <resource>.`, or `This PR doesn't say what it's for. It opens no
   dangerous path.`
 
-**What the change does** comes first in the comment, from the plan and never from a model: the resources the
+**What the change does** opens the comment's "What happened", from the plan and never from a model: the resources the
 change creates, updates or deletes (`AnalysisResult.changes`, from the base and head worlds), then the
 dangerous paths it opens and closes. For example: `Adds aws_iam_user_group_membership.priya_support. Opens 3
 dangerous paths, closes 0.` It is the same whether or not the PR has a description.
 
-Pick the most sensitive target as `regulated` before `confidential`, then the shortest path, then by ID.
+Pick the most sensitive target as `regulated` before `confidential`, then a target reached through what
+unlocks it (a database before its secret), then the shortest path, then by ID.
+
+**Plain names.** The headline names nodes as the comment does, with `engine/words.py`: the node's own name
+and what it is ("customer-db, a database"), never a vendor's resource type.
 
 ## 19. Writing fixes back to Terraform (`adapters/terraform/render.py`, task E9)
 

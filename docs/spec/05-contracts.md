@@ -135,7 +135,8 @@ An eid is stable within one build only, so anything compared across builds names
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
 | `Timings` | `engine_ms: int`, `llm_ms: int`, `jev_ms: int`, `total_ms: int` |
 | `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int` |
-| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage`, `models: dict[str,str]` (the models that answered, such as `{"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}`; shown in the comment, never projected) |
+| `NodeInfo` | `category: Category \| None`, `sensitivity: Sensitivity \| None`: what the comment needs to name a node in plain words |
+| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage`, `models: dict[str,str]` (the models that answered, such as `{"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}`; shown in the comment, never projected), `nodes: dict[str, NodeInfo]` (every node on a listed path; shown, never projected) |
 
 `project(result) -> dict` returns the comparable part of a result, in the `expected.json` shape below.
 
@@ -246,23 +247,45 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 
 ## The PR comment (`agent/templates/comment.md`)
 
+Written for a reader with no context, at 3 a.m.: what they need to decide sits in a card at the top, in plain
+words, and everything technical is folded below. Every sentence comes from a template over facts in the result,
+in the plain words of `engine/words.py`; no model writes prose in the comment.
+
+**The card:**
+
 1. The marker `<!-- theseus:pr-comment -->`, so the comment is updated in place, never duplicated
-2. What the change does, in one line the renderer writes from `changes` and the path diff: "Adds `a`; deletes `b`. Opens 3 dangerous paths, closes 0." (PR mode only)
-3. The headline from section 18 of `04-engine.md`, with a warning when the intent is suspicious
-4. Opened paths: a table (actor, target with its class, hops), then a Mermaid `flowchart LR` for each of the
-   three most sensitive opened paths (a database before the secret that unlocks it, then the fewest hops).
-   GitHub does not run links inside Mermaid, so a numbered list of its steps follows each diagram, each step
-   linked to `blob/<head_sha>/<world root>/<file>#L<line>`, or saying why its evidence is unknown
-5. Checkov's result on the same commit, one line
-6. The minimum cut in one sentence: "No single permission can be removed without breaking required access"
-   or "One change closes every path: `<edge>`"
-7. The fix table: ID, fix (its title and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"),
-   required access ("kept" or "breaks R3"), code calls ("kept" or what breaks), verdict (with "needs a closer
-   look" after Jev's veto); the recommended row in bold. If nothing passes, it says so
-8. "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass, the recommended one first
-9. Unknowns, if any
-10. A collapsed details block: tool trace, unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k>
-    of types Theseus does not model, such as <the three most common>"), timings, and the versions in `models`
+2. The status, which is also the check run's (`render.verdict`; `07-github-and-deploy.md`, "Blocking a merge"):
+   🔴 "Merge blocked" when a dangerous path opened or code reads data beyond intent; 🟡 "Needs a look" when only
+   something Theseus could not check remains; 🟢 "No new access to sensitive data" otherwise. Outside PR mode the
+   red status reads "Sensitive data at risk"
+3. The headline from section 18 of `04-engine.md`, in bold, and a warning when the intent is suspicious
+4. **What happened:** what the PR adds, updates and deletes; then the most serious opened path as a sentence, one
+   hop per line ("**priya-intern** (a user) is a member of the **support-engineers** group, → which can switch
+   into the **prod-support** role, ..."); and each code read beyond intent, with its file and line
+5. **What's at risk:** each exposed target, most sensitive first, at most five: its name, what it is, and what its
+   class means ("**customer-db**, a database: personal, payment or health data, or a key that opens it"). A
+   secret that unlocks another listed target is "the key that opens" it
+6. **What the PR said it needs:** its purpose in quotes and the access it asked for, or that it states no purpose
+7. **What to do:** the recommended fix, the command that applies it, and what Theseus tested it for; or what to do
+   when the passing fix needs a closer look, when nothing passes, or when there is no fix to apply
+8. Checkov's result on the same commit, and why it can pass while a path opens
+
+**Folded sections** (`<details>`), each shown only when it has something:
+
+9. **The path, step by step:** a table of opened paths (actor, target with its class, hops), then a Mermaid
+   `flowchart LR` for each of the three most sensitive (a database before the secret that unlocks it, then the
+   fewest hops). GitHub does not run links inside Mermaid, so a numbered list of steps follows each diagram, each
+   step linked to `blob/<head_sha>/<world root>/<file>#L<line>` or saying why its evidence is unknown
+10. **All fixes Theseus tested:** the minimum cut in one sentence ("No single permission can be removed without
+    breaking required access" or "One change closes every path: `<edge>`"); the fix table: ID, fix (its title
+    and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"), required access ("kept" or "breaks
+    R3"), code calls ("kept" or what breaks), verdict (with "needs a closer look" after Jev's veto), the
+    recommended row in bold; "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass; and,
+    if nothing passes, a sentence that says so
+11. **What Theseus could not check:** the unknowns
+12. **Technical details:** what the change does ("Adds `a`. Opens 3 dangerous paths, closes 0."), the tool trace,
+    unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k> of types Theseus does not model,
+    such as <the three most common>"), timings, and the versions in `models`
 
 Every value from a result is escaped before it reaches markdown: a PR author, a model, an advisory or a
 Terraform file may have written it. Links and @-mentions in such text show as code, so they neither link nor
