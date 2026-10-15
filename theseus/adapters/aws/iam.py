@@ -49,10 +49,17 @@ class Decision(Contract):
 
 
 class TrustDecision(Contract):
-    """How a role's trust policy treats one caller, and the statements that decided it."""
+    """How a role's trust policy treats one caller, and the statements that decided it. `naming` holds the
+    Allows that name the caller's own ARN, conditional or not: such trust needs no permission from the caller,
+    so it can let the caller in even when the caller's own policies say nothing."""
 
     kind: Literal["explicit", "account", "unknown"] | None
     statements: list[PolicyStatement] = Field(default_factory=list)
+    naming: list[PolicyStatement] = Field(default_factory=list)
+
+    @property
+    def names_caller(self) -> bool:
+        return bool(self.naming)
 
 
 def _as_list(value: Any) -> list[str]:
@@ -174,6 +181,8 @@ def trust_kind(trust: list[PolicyStatement], caller_arn: str | None, account: st
 
     `caller_arn` is None for a group, which only the account form can match. `Principal = "*"` counts as
     account when unconditional. Web-identity and service principals are not callers here (OIDC is FM1's).
+    Whatever the kind, `naming` lists the Allows that name the caller's ARN, unless a certain Deny removes
+    the trust.
     """
     relevant: list[tuple[PolicyStatement, str]] = []
     for s in trust:
@@ -186,14 +195,15 @@ def trust_kind(trust: list[PolicyStatement], caller_arn: str | None, account: st
     if any(s.effect == "Deny" and s.certain and level != "maybe" for s, level in relevant):
         return TrustDecision(kind=None, statements=[s for s, _ in relevant if s.effect == "Deny"])
     maybe_deny = [s for s, level in relevant if s.effect == "Deny"]
+    naming = [s for s, level in relevant if s.effect == "Allow" and level == "explicit"]
     sure = [(s, level) for s, level in relevant if s.effect == "Allow" and s.certain and level != "maybe"]
     if sure:
         best = "explicit" if any(level == "explicit" for _, level in sure) else "account"
         deciding = [s for s, level in sure if level == best]
         if maybe_deny:
-            return TrustDecision(kind="unknown", statements=deciding + maybe_deny)
-        return TrustDecision(kind=best, statements=deciding)
+            return TrustDecision(kind="unknown", statements=deciding + maybe_deny, naming=naming)
+        return TrustDecision(kind=best, statements=deciding, naming=naming)
     maybe_allow = [s for s, _ in relevant if s.effect == "Allow"]
     if maybe_allow:
-        return TrustDecision(kind="unknown", statements=maybe_allow + maybe_deny)
+        return TrustDecision(kind="unknown", statements=maybe_allow + maybe_deny, naming=naming)
     return TrustDecision(kind=None)

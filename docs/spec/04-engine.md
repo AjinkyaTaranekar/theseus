@@ -112,14 +112,16 @@ statement on `table/<name>/index/*` alone does not reach it.
 
 **Trust (`trust_kind`).** For a role's trust policy and a caller ARN, return `explicit` (the caller's ARN is
 named), `account` (the account root or account ID is named), `unknown` (it would match but has a condition),
-or none. `Principal = "*"` counts as `account` when unconditional.
+or none. `Principal = "*"` counts as `account` when unconditional. It also returns the `Allow` statements that
+name the caller's ARN, conditional or not, unless a certain `Deny` removes the trust: trust that names the
+caller needs no permission from it, so a condition on it makes the edge unknown, not absent.
 
 ## 6. Edge derivation (`importer/build.py` and friends)
 
 | Edge | Rule |
 | --- | --- |
 | `MEMBER_OF` | One per group listed in each `aws_iam_user_group_membership` |
-| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and `t` is not `explicit`. Kind `unknown` if either is unknown |
+| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and no `Allow` in R's trust names P's ARN. Kind `unknown` if either is unknown, or if `d` is `none` and `t` is not `explicit` (the trust naming P has a condition, or a `Deny` that might apply). Without a permission of P's own, the evidence is the trust that names P |
 | `CAN` | For every principal with statements, every resource, every modeled action that applies to that resource kind: `allow` makes a configured edge, `unknown` an unknown one. Grants of the same principal and resource merge into one edge. Evidence for a statement in an attached policy names the `aws_iam_policy` and Sid, with note `attached by <attachment address>` |
 | `CAN` from `entry:internet` | From `aws_s3_bucket_policy` statements whose principal is `"*"` or `{"AWS": "*"}`, evaluated like identity statements against the bucket's locations |
 | `UNLOCKS` | From a secret to `db:<tag value>` when the secret has tag `db_instance` and that database exists. Grants read and write. Kind inferred |

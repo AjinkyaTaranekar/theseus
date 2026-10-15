@@ -254,3 +254,23 @@ def test_web_identity_trust_is_left_to_oidc_matching() -> None:
 def test_an_unknown_trust_policy_is_unknown_for_every_caller() -> None:
     assert trust_kind(statements(None), SAM, ACCOUNT).kind == "unknown"
     assert evaluate(statements(None), "s3:GetObject", INVOICES).result == "unknown"
+
+
+def test_conditional_trust_that_names_the_caller_still_names_it() -> None:
+    """A condition makes explicit trust unknown, but it still needs no permission from the caller."""
+    mfa = {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
+    named = trust_kind(trust(assume({"AWS": SAM}, Condition=mfa)), SAM, ACCOUNT)
+    assert (named.kind, named.names_caller) == ("unknown", True)
+    account = trust_kind(trust(assume({"AWS": ACCOUNT}, Condition=mfa)), SAM, ACCOUNT)
+    assert (account.kind, account.names_caller) == ("unknown", False)
+
+
+def test_a_maybe_deny_leaves_explicit_trust_naming_the_caller() -> None:
+    maybe_deny = {
+        "Effect": "Deny",
+        "Action": "sts:AssumeRole",
+        "Principal": {"AWS": SAM},
+        "Condition": {"Bool": {"aws:SecureTransport": "false"}},
+    }
+    decision = trust_kind(trust(assume({"AWS": SAM}), maybe_deny), SAM, ACCOUNT)
+    assert (decision.kind, decision.names_caller) == ("unknown", True)

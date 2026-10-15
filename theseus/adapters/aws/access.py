@@ -105,21 +105,25 @@ def _public_edges(resources: list[IacResource], targets: list[NodeRow], locate: 
 def _assume_edge(
     caller: NodeRow, role: NodeRow, caller_pairs: Pairs, trust: Pairs, account: str
 ) -> EdgeRow | None:
-    """CAN_ASSUME from caller to role, by the rule in 04-engine.md section 6."""
+    """CAN_ASSUME from caller to role, by the rule in 04-engine.md section 6. Without a permission of its own,
+    the caller gets in only through trust that names it, so that trust is the evidence."""
     caller_kind = parse_id(caller.id)[0]
     caller_arn = None if caller_kind == "group" else _prop(caller, "arn")
     d = evaluate([s for s, _ in caller_pairs], ASSUME, _prop(role, "arn"))
     t = trust_kind([s for s, _ in trust], caller_arn, account)
-    if d.result == "deny" or t.kind is None or (d.result == "none" and t.kind != "explicit"):
+    if d.result == "deny" or t.kind is None or (d.result == "none" and not t.names_caller):
         return None
-    unknown = d.result == "unknown" or t.kind == "unknown"
+    unknown = d.result == "unknown" or t.kind == "unknown" or (d.result == "none" and t.kind != "explicit")
+    trusting = (
+        t.statements if d.result != "none" else t.naming + [s for s in t.statements if s.effect == "Deny"]
+    )
     return EdgeRow(
         eid="",
         type="CAN_ASSUME",
         src=caller.id,
         dst=role.id,
         kind="unknown" if unknown else "configured",
-        evidence=_evidence(caller_pairs, d.statements) + _evidence(trust, t.statements),
+        evidence=_evidence(caller_pairs, d.statements) + _evidence(trust, trusting),
     )
 
 

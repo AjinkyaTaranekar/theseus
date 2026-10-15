@@ -405,3 +405,54 @@ def test_a_log_group_named_in_only_one_form_is_unknown(edges: dict) -> None:
 def test_a_log_group_named_in_both_forms_is_read(edges: dict) -> None:
     got = summary(edges, "role:log-reader-both")
     assert got == {("CAN", "log-group:/aws/lambda/billing-job"): ("configured", ["read"])}
+
+
+# One world per case below, each built from the pieces above.
+
+
+def derive(resources: list[IacResource]) -> dict[tuple[str, str, str], EdgeRow]:
+    return {(e.type, e.src, e.dst): e for e in derive_access_edges(resources, NODES, CONFIG, locate)}
+
+
+def deny(sid: str, action: object, resource: object, **extra: object) -> dict:
+    return {"Sid": sid, "Effect": "Deny", "Action": action, "Resource": resource, **extra}
+
+
+def membership(user: str, *groups: str) -> IacResource:
+    return res(f"aws_iam_user_group_membership.{user.replace('-', '_')}", user=user, groups=list(groups))
+
+
+MFA = {"Bool": {"aws:MultiFactorAuthPresent": "true"}}
+INVOICES = "arn:aws:s3:::demo-company-files/invoices/*"
+
+
+def test_conditional_trust_naming_a_user_is_an_unknown_edge_without_permission() -> None:
+    world = [
+        res(
+            "aws_iam_role.audit_read",
+            name="audit-read",
+            assume_role_policy=doc(
+                {
+                    "Sid": "TrustAuditorWithMfa",
+                    "Effect": "Allow",
+                    "Action": "sts:AssumeRole",
+                    "Principal": {"AWS": f"arn:aws:iam::{ACCOUNT}:user/auditor"},
+                    "Condition": MFA,
+                }
+            ),
+        ),
+        res(
+            "aws_iam_role.prod_support",
+            name="prod-support",
+            assume_role_policy=doc(
+                {"Effect": "Allow", "Action": "sts:AssumeRole", "Principal": {"AWS": ROOT}, "Condition": MFA}
+            ),
+        ),
+    ]
+    rows = derive(world)
+    edge = rows[("CAN_ASSUME", "user:auditor", "role:audit-read")]
+    assert edge.kind == "unknown"
+    assert [(e.address, e.part) for e in edge.evidence] == [
+        ("aws_iam_role.audit_read", "TrustAuditorWithMfa")
+    ]
+    assert not any(t == "CAN_ASSUME" and d == "role:prod-support" for t, _, d in rows)
