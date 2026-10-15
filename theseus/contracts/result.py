@@ -29,7 +29,19 @@ EdgeType = Literal[
     "NEEDS",
     "AFFECTS",
 ]
-Category = Literal["object_store", "secret", "database", "table"]
+Category = Literal[
+    "ObjectStorage",
+    "FileStorage",
+    "BlockStorage",
+    "Database",
+    "Secret",
+    "EncryptionKey",
+    "AIModel",
+    "LogStore",
+    "MessageQueue",
+    "MessageTopic",
+    "DataStream",
+]
 Sensitivity = Literal["public", "internal", "confidential", "regulated"]
 SensitivitySource = Literal["jev", "fallback", "human", "unclassified"]
 Env = Literal["staging", "prod"]

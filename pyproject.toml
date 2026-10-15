@@ -41,7 +41,7 @@ version = { attr = "theseus.__version__" }
 include = ["theseus*"]
 
 [tool.setuptools.package-data]
-theseus = ["agent/templates/*.md", "web/*"]
+theseus = ["agent/templates/*.md", "web/*", "adapters/*/catalog.yaml"]
 
 [tool.ruff]
 line-length = 110

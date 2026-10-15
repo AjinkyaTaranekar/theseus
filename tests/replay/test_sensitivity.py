@@ -22,16 +22,16 @@ RESOURCE = ["Node", "Resource"]
 # (ID, category, name, the class spec 02 expects). None where theseus.yaml overrides it: Jev rates both from
 # the name alone, and neither name says what the files hold.
 DEMO: list[tuple[str, str, str, Sensitivity | None]] = [
-    ("s3://demo-app-logs/", "object_store", "demo-app-logs/", "internal"),
-    ("s3://demo-company-files/invoices/", "object_store", "demo-company-files/invoices/", "confidential"),
-    ("s3://demo-company-files/public/", "object_store", "demo-company-files/public/", "public"),
-    ("s3://demo-data-lake/raw/", "object_store", "demo-data-lake/raw/", None),
-    ("s3://demo-data-lake/curated/", "object_store", "demo-data-lake/curated/", "internal"),
-    ("s3://demo-terraform-state/", "object_store", "demo-terraform-state/", None),
-    ("secret:prod-db-credentials", "secret", "prod-db-credentials", "regulated"),
-    ("secret:payments-api-key", "secret", "payments-api-key", "regulated"),
-    ("db:customer-db", "database", "customer-db", "regulated"),
-    ("dynamodb:demo-orders", "table", "demo-orders", "confidential"),
+    ("s3://demo-app-logs/", "ObjectStorage", "demo-app-logs/", "internal"),
+    ("s3://demo-company-files/invoices/", "ObjectStorage", "demo-company-files/invoices/", "confidential"),
+    ("s3://demo-company-files/public/", "ObjectStorage", "demo-company-files/public/", "public"),
+    ("s3://demo-data-lake/raw/", "ObjectStorage", "demo-data-lake/raw/", None),
+    ("s3://demo-data-lake/curated/", "ObjectStorage", "demo-data-lake/curated/", "internal"),
+    ("s3://demo-terraform-state/", "ObjectStorage", "demo-terraform-state/", None),
+    ("secret:prod-db-credentials", "Secret", "prod-db-credentials", "regulated"),
+    ("secret:payments-api-key", "Secret", "payments-api-key", "regulated"),
+    ("db:customer-db", "Database", "customer-db", "regulated"),
+    ("dynamodb:demo-orders", "Database", "demo-orders", "confidential"),
 ]
 OVERRIDES: dict[str, Sensitivity] = {  # theseus.yaml in spec 02
     "s3://demo-terraform-state/": "regulated",

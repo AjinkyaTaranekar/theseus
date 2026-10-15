@@ -6,19 +6,13 @@ import logging
 from typing import Protocol, cast
 
 from theseus.agent.jev import JevAnswer
-from theseus.contracts.result import GraphRows, NodeRow, Sensitivity, SensitivitySource
-from theseus.contracts.schema import RESOURCE, parse_id
+from theseus.contracts.result import GraphRows, NodeInfo, NodeRow, Sensitivity, SensitivitySource
+from theseus.contracts.schema import RESOURCE
+from theseus.engine.words import kind
 
 log = logging.getLogger(__name__)
 
 SENSITIVE: frozenset[Sensitivity] = frozenset({"confidential", "regulated"})
-# The kind as Jev reads it: a category, never a vendor's name for it.
-KIND_WORDS = {
-    "object_store": "object store location",
-    "secret": "secret",
-    "database": "database",
-    "table": "database table",
-}
 
 
 class Classifier(Protocol):
@@ -27,11 +21,10 @@ class Classifier(Protocol):
 
 def classify(nodes: list[NodeRow], jev: Classifier) -> dict[str, JevAnswer]:
     """Jev's answer for every Resource node, keyed by node ID: its class, and whether Jev or the fallback gave
-    it. Logs answers that came from the fallback."""
+    it. Logs answers that came from the fallback. Jev reads each node's category in the comment's plain words
+    (`engine/words.py`), never a vendor's name for it."""
     resources = sorted(
-        (n.id, KIND_WORDS.get(n.category or "", parse_id(n.id)[0]), n.name)
-        for n in nodes
-        if RESOURCE in n.labels
+        (n.id, kind(n.id, NodeInfo(category=n.category)), n.name) for n in nodes if RESOURCE in n.labels
     )
     if not resources:
         return {}

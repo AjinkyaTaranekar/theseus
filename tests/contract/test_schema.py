@@ -42,6 +42,7 @@ def test_location_ids_follow_the_grammar(scheme: str, path: str, node: str) -> N
 def test_a_new_cloud_needs_no_contract_change_for_its_kinds() -> None:
     assert schema.parse_id("gcp-secret:db-password") == ("gcp-secret", "db-password")
     assert schema.labels_for("gcp-secret") == ["Node", "Resource"]
+    assert schema.labels_for("gcp-secret", "Secret") == ["Node", "Resource", "Secret"]
 
 
 @pytest.mark.parametrize("bad", ["", "nobody", "Role:x", "user:", "s3://", ":x", "1st:x"])
@@ -66,7 +67,10 @@ def test_path_edges_are_traversal_then_grant() -> None:
 
 
 def test_core_kinds_carry_their_labels() -> None:
-    assert schema.labels_for("role") == ["Node", "Principal", "Role"]
+    assert schema.labels_for("role") == ["Node", "Principal", "Role", "PermissionRole"]
+    assert schema.labels_for("user") == ["Node", "Principal", "User", "UserAccount"]
+    assert schema.labels_for("workload", "Function") == ["Node", "Principal", "Workload", "Function"]
+    assert schema.labels_for("workflow") == ["Node", "Principal", "Workflow"]
     assert schema.labels_for("entry") == ["Node", "Principal", "Entry"]
     assert schema.labels_for("action") == ["Node", "Action"]
     assert schema.labels_for("req") == ["Node", "Requirement"]
@@ -76,7 +80,21 @@ def test_core_kinds_carry_their_labels() -> None:
 def test_constants_match_the_spec() -> None:
     assert (schema.BIG, schema.USED, schema.MAX_PATH_EDGES) == (1_000_000, 1_000, 7)
     assert schema.CANDIDATE_IDS == ("A", "B", "C", "D", "S", "K", "U")
-    assert schema.RESOURCE_CATEGORIES == ("object_store", "secret", "database", "table")
+    assert schema.CARTOGRAPHY_CATEGORIES == (
+        "ObjectStorage",
+        "FileStorage",
+        "BlockStorage",
+        "Database",
+        "Secret",
+        "EncryptionKey",
+        "AIModel",
+    )
+    assert schema.RESOURCE_CATEGORIES[len(schema.CARTOGRAPHY_CATEGORIES) :] == (
+        "LogStore",
+        "MessageQueue",
+        "MessageTopic",
+        "DataStream",
+    )
 
 
 @pytest.mark.parametrize(
@@ -91,3 +109,11 @@ def test_human_candidates_are_numbered_from_one() -> None:
     assert schema.human_candidate_id(1) == "H1"
     with pytest.raises(GraphError):
         schema.human_candidate_id(0)
+
+
+@pytest.mark.parametrize(
+    ("kind", "label"), [("gcp-secret", "Function"), ("workload", "Secret"), ("role", "Function")]
+)
+def test_an_ontology_label_must_fit_the_kind(kind: str, label: str) -> None:
+    with pytest.raises(GraphError):
+        schema.labels_for(kind, label)

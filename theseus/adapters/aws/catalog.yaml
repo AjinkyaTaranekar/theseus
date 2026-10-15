@@ -1,0 +1,174 @@
+# The AWS catalog: what Theseus models in AWS, as data. How it is built and how to extend it: README.md here.
+#
+#   data       where data lives: each Terraform type becomes a Resource node with a category, and its actions
+#              say who can read or write it.
+#   workloads  what runs code: each Terraform type becomes a Workload node, RUNS_AS the role this names.
+#
+# Categories and workload labels are Cartography's ontology labels (theseus/contracts/schema.py), so a Theseus
+# graph and a Cartography graph line up. tests/contract/test_aws_catalog.py checks every action and ARN below
+# against AWS's service reference (tests/data/aws_service_reference.json, refreshed by
+# tools/aws_service_reference.py).
+version: 1
+
+data:
+  - type: aws_s3_bucket
+    kind: s3
+    category: ObjectStorage
+    service: s3
+    resource_type: object
+    per: location
+    arn: "arn:{partition}:s3:::{bucket}/{prefix}x"
+    read: [s3:GetObject, s3:GetObjectVersion]
+    write: [s3:PutObject, s3:DeleteObject, s3:DeleteObjectVersion]
+
+  # Writing a secret replaces a credential but reads no data, so only reading is modeled.
+  - type: aws_secretsmanager_secret
+    kind: secret
+    category: Secret
+    service: secretsmanager
+    resource_type: Secret
+    arn: "arn:{partition}:secretsmanager:{region}:{account}:secret:{name}-AbCdEf"
+    read: [secretsmanager:GetSecretValue]
+
+  # A SecureString also needs kms:Decrypt on its key; KMS key policies are outside the IAM subset.
+  # AWS checks GetParametersByPath on the path asked for, so access to `/prod` reveals `/prod/db-password`,
+  # even when a Deny names the parameter itself.
+  - type: aws_ssm_parameter
+    kind: ssm-parameter
+    category: Secret
+    service: ssm
+    resource_type: parameter
+    arn: "arn:{partition}:ssm:{region}:{account}:parameter/{name_path}"
+    read:
+      - ssm:GetParameter
+      - ssm:GetParameters
+      - {action: ssm:GetParametersByPath, by_path: true}
+      - ssm:GetParameterHistory
+    write: [ssm:PutParameter]
+
+  # Cartography's ontology files DynamoDB tables under Database.
+  - type: aws_dynamodb_table
+    kind: dynamodb
+    category: Database
+    service: dynamodb
+    resource_type: table
+    arn: "arn:{partition}:dynamodb:{region}:{account}:table/{name}"
+    read: [dynamodb:GetItem, dynamodb:BatchGetItem, dynamodb:Query, dynamodb:Scan]
+    write: [dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:DeleteItem, dynamodb:BatchWriteItem]
+
+  # Reached through UNLOCKS from the secret that holds its credentials. IAM database authentication
+  # (rds-db:connect) names the instance's resource ID, unknown at plan, and AWS files it as a write.
+  - type: aws_db_instance
+    kind: db
+    category: Database
+    service: rds
+    resource_type: db
+    name: identifier
+    arn: "arn:{partition}:rds:{region}:{account}:db:{name}"
+
+  # The data-plane HTTP actions are checked on a path under the domain, as AWS checks them.
+  - type: aws_opensearch_domain
+    kind: opensearch
+    category: Database
+    service: es
+    resource_type: domain
+    name: domain_name
+    arn: "arn:{partition}:es:{region}:{account}:domain/{name}"
+    read: [{action: es:ESHttpGet, arns: ["{arn}/x"]}]
+    write:
+      - {action: es:ESHttpPost, arns: ["{arn}/x"]}
+      - {action: es:ESHttpPut, arns: ["{arn}/x"]}
+      - {action: es:ESHttpDelete, arns: ["{arn}/x"]}
+
+  # Policies often name a log group as `log-group:NAME:*`; AWS's reference documents `log-group:NAME`.
+  # When a policy matches one form and not the other, the answer is unknown.
+  - type: aws_cloudwatch_log_group
+    kind: log-group
+    category: LogStore
+    service: logs
+    resource_type: log-group
+    arn: "arn:{partition}:logs:{region}:{account}:log-group:{name}"
+    read:
+      - {action: logs:FilterLogEvents, arns: ["{arn}", "{arn}:*"]}
+      - {action: logs:StartQuery, arns: ["{arn}", "{arn}:*"]}
+      - {action: logs:StartLiveTail, arns: ["{arn}", "{arn}:*"]}
+      - {action: logs:GetLogEvents, resource_type: log-stream, arns: ["{arn}:log-stream:x"]}
+    write:
+      - {action: logs:PutLogEvents, resource_type: log-stream, arns: ["{arn}:log-stream:x"]}
+
+  - type: aws_sqs_queue
+    kind: sqs
+    category: MessageQueue
+    service: sqs
+    resource_type: queue
+    arn: "arn:{partition}:sqs:{region}:{account}:{name}"
+    read: [sqs:ReceiveMessage]
+    write: [sqs:SendMessage, sqs:DeleteMessage, sqs:PurgeQueue]
+
+  # Subscribing is how a topic's messages are read, but AWS files sns:Subscribe as a write and it only starts
+  # a delivery the endpoint must confirm, so only publishing is modeled.
+  - type: aws_sns_topic
+    kind: sns
+    category: MessageTopic
+    service: sns
+    resource_type: topic
+    arn: "arn:{partition}:sns:{region}:{account}:{name}"
+    write: [sns:Publish]
+
+  - type: aws_kinesis_stream
+    kind: kinesis
+    category: DataStream
+    service: kinesis
+    resource_type: stream
+    arn: "arn:{partition}:kinesis:{region}:{account}:stream/{name}"
+    read: [kinesis:GetRecords, kinesis:GetShardIterator]
+    write: [kinesis:PutRecord, kinesis:PutRecords]
+
+workloads:
+  # role: the value naming the role (its ARN or its name), on the workload or on the resource `via` names.
+  #       `join` is the workload's value that names that resource, and `match` the resource's value it must
+  #       equal; a trailing `:revision` is ignored, so an ECS service finds its task definition by family.
+  - type: aws_lambda_function
+    name: function_name
+    runtime: lambda
+    label: Function
+    role: {field: role}
+
+  - type: aws_ecs_service
+    runtime: ecs
+    label: ComputeService
+    role: {via: aws_ecs_task_definition, join: task_definition, match: family, field: task_role_arn}
+
+  - type: aws_instance
+    name: tags.Name
+    runtime: ec2
+    label: ComputeInstance
+    role: {via: aws_iam_instance_profile, join: iam_instance_profile, match: name, field: role}
+
+  - type: aws_apprunner_service
+    name: service_name
+    runtime: apprunner
+    label: ComputeService
+    role: {field: instance_configuration.0.instance_role_arn}
+
+  - type: aws_codebuild_project
+    runtime: codebuild
+    label: CICDPipeline
+    role: {field: service_role}
+
+  - type: aws_sfn_state_machine
+    runtime: step-functions
+    role: {field: role_arn}
+
+  - type: aws_glue_job
+    runtime: glue
+    role: {field: role_arn}
+
+  - type: aws_bedrockagent_agent
+    name: agent_name
+    runtime: bedrock-agent
+    role: {field: agent_resource_role_arn}
+
+  - type: aws_sagemaker_notebook_instance
+    runtime: sagemaker
+    role: {field: role_arn}

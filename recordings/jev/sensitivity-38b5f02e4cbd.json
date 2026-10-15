@@ -17,13 +17,13 @@
     "dynamodb:demo-orders": {
       "calibrated": true,
       "choice": "confidential",
-      "confidence": 0.45,
+      "confidence": 0.23,
       "noul": null,
       "probabilities": {
-        "confidential": 0.59,
-        "internal": 0.25,
-        "public": 0.08,
-        "regulated": 0.08
+        "confidential": 0.42,
+        "internal": 0.39,
+        "public": 0.12,
+        "regulated": 0.07
       },
       "source": "jev",
       "type": "choice"
@@ -31,12 +31,12 @@
     "s3://demo-app-logs/": {
       "calibrated": true,
       "choice": "internal",
-      "confidence": 0.85,
+      "confidence": 0.81,
       "noul": null,
       "probabilities": {
         "confidential": 0.01,
-        "internal": 0.89,
-        "public": 0.1,
+        "internal": 0.86,
+        "public": 0.13,
         "regulated": 0.0
       },
       "source": "jev",
@@ -73,12 +73,12 @@
     "s3://demo-data-lake/curated/": {
       "calibrated": true,
       "choice": "internal",
-      "confidence": 0.63,
+      "confidence": 0.64,
       "noul": null,
       "probabilities": {
-        "confidential": 0.06,
-        "internal": 0.72,
-        "public": 0.21,
+        "confidential": 0.04,
+        "internal": 0.73,
+        "public": 0.22,
         "regulated": 0.01
       },
       "source": "jev",
@@ -87,12 +87,12 @@
     "s3://demo-data-lake/raw/": {
       "calibrated": true,
       "choice": "internal",
-      "confidence": 0.64,
+      "confidence": 0.59,
       "noul": null,
       "probabilities": {
-        "confidential": 0.03,
-        "internal": 0.73,
-        "public": 0.23,
+        "confidential": 0.02,
+        "internal": 0.69,
+        "public": 0.28,
         "regulated": 0.01
       },
       "source": "jev",
@@ -101,13 +101,13 @@
     "s3://demo-terraform-state/": {
       "calibrated": true,
       "choice": "internal",
-      "confidence": 0.52,
+      "confidence": 0.55,
       "noul": null,
       "probabilities": {
-        "confidential": 0.1,
-        "internal": 0.64,
-        "public": 0.13,
-        "regulated": 0.13
+        "confidential": 0.11,
+        "internal": 0.66,
+        "public": 0.09,
+        "regulated": 0.14
       },
       "source": "jev",
       "type": "choice"
@@ -115,13 +115,13 @@
     "secret:payments-api-key": {
       "calibrated": true,
       "choice": "regulated",
-      "confidence": 1.0,
+      "confidence": 0.99,
       "noul": null,
       "probabilities": {
-        "confidential": 0.0,
+        "confidential": 0.01,
         "internal": 0.0,
         "public": 0.0,
-        "regulated": 1.0
+        "regulated": 0.99
       },
       "source": "jev",
       "type": "choice"
@@ -142,7 +142,7 @@
     }
   },
   "model": "jev-1.13.0",
-  "ms": 329,
+  "ms": 318,
   "request": {
     "model": "jev-latest",
     "questions": {
@@ -163,7 +163,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the database table 'demo-orders'?",
+        "instructions": "Data sensitivity of the database 'demo-orders'?",
         "type": "choice"
       },
       "s3://demo-app-logs/": {
@@ -173,7 +173,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-app-logs/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-app-logs/'?",
         "type": "choice"
       },
       "s3://demo-company-files/invoices/": {
@@ -183,7 +183,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-company-files/invoices/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-company-files/invoices/'?",
         "type": "choice"
       },
       "s3://demo-company-files/public/": {
@@ -193,7 +193,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-company-files/public/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-company-files/public/'?",
         "type": "choice"
       },
       "s3://demo-data-lake/curated/": {
@@ -203,7 +203,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-data-lake/curated/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-data-lake/curated/'?",
         "type": "choice"
       },
       "s3://demo-data-lake/raw/": {
@@ -213,7 +213,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-data-lake/raw/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-data-lake/raw/'?",
         "type": "choice"
       },
       "s3://demo-terraform-state/": {
@@ -223,7 +223,7 @@
           "public": "safe to publish openly",
           "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
         },
-        "instructions": "Data sensitivity of the object store location 'demo-terraform-state/'?",
+        "instructions": "Data sensitivity of the storage location 'demo-terraform-state/'?",
         "type": "choice"
       },
       "secret:payments-api-key": {

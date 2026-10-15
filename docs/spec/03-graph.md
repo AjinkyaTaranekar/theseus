@@ -19,28 +19,32 @@ AWS below are the AWS adapter's (`08-core-and-adapters.md`).
 | workflow | `workflow:<org>/<repo>/<file>` | `workflow:demo-org/docs-site/preview.yml` |
 | action | `action:<owner>/<repo>` | `action:demo-thirdparty/file-diff` |
 | entry | `entry:internet` | `entry:internet` |
-| s3 location (AWS, category `object_store`) | `s3://<bucket>/<prefix>` (prefix may be empty) | `s3://demo-company-files/invoices/` |
-| secret (AWS, category `secret`) | `secret:<name>` | `secret:prod-db-credentials` |
-| db (AWS, category `database`) | `db:<identifier>` | `db:customer-db` |
-| dynamodb table (AWS, category `table`) | `dynamodb:<table>` | `dynamodb:demo-orders` |
+| s3 location (AWS, `ObjectStorage`) | `s3://<bucket>/<prefix>` (prefix may be empty) | `s3://demo-company-files/invoices/` |
+| secret (AWS, `Secret`) | `secret:<name>` | `secret:prod-db-credentials` |
+| db (AWS, `Database`) | `db:<identifier>` | `db:customer-db` |
+| dynamodb (AWS, `Database`) | `dynamodb:<table>` | `dynamodb:demo-orders` |
+| other AWS kinds | `ssm-parameter:`, `opensearch:`, `log-group:`, `sqs:`, `sns:`, `kinesis:` (`adapters/aws/catalog.yaml`) | `log-group:/aws/lambda/billing-job` |
 | req (requirement) | `req:<id>` | `req:R1`, `req:I1` (intent) |
 | finding | `finding:<id>` | `finding:GHSA-demo-0001` |
 
 ## Labels and properties
 
 Every node has the label `:Node` and one kind label. Users, groups, roles, workloads, workflows and the
-entry also carry `:Principal`.
+entry also carry `:Principal`. Nodes also carry [Cartography's ontology
+labels](https://github.com/cartography-cncf/cartography/blob/master/cartography/models/ontology/labels.py)
+where one fits: `UserAccount`, `UserGroup` and `PermissionRole` on users, groups and roles; a workload's from
+the catalog; and a resource's category, so `MATCH (n:Database)` reads the same as on a Cartography graph.
 
 | Kind label | Extra labels | Properties beyond the common ones |
 | --- | --- | --- |
 | `User` | `Principal` | `arn` (AWS) |
 | `Group` | `Principal` | `arn` (AWS) |
 | `Role` | `Principal` | `arn` (AWS), `address` |
-| `Workload` | `Principal` | `runtime` (`lambda` or `ecs`), `address` (the function or the ECS service), `code_path` (folder under `services/` from the `theseus_code_path` tag, or null) |
+| `Workload` | `Principal`, and its Cartography label where one fits (`Function`, `ComputeService`, `ComputeInstance`, `CICDPipeline`) | `runtime` (from the cloud adapter's catalog: `lambda`, `ecs`, `ec2`, ...), `address` (the function or the ECS service), `code_path` (folder under `services/` from the `theseus_code_path` tag, or null) |
 | `Workflow` | `Principal` | `repo`, `file`, `subs` (list of OIDC `sub` values it can present), `id_token` (bool) |
 | `Action` | | `version` |
 | `Entry` | `Principal` | none |
-| `Resource` | | `kind` (the ID prefix its cloud adapter declares), `category` (`object_store`, `secret`, `database`, `table`), `provider` (`aws`), `address`, `arn_pattern` (AWS) |
+| `Resource` | its category (`ObjectStorage`, `Database`, `Secret`, ...) | `kind` (the ID prefix its cloud adapter declares), `category` (one of `RESOURCE_CATEGORIES`), `provider` (`aws`), `address`, `arn_pattern` (AWS) |
 | `Requirement` | | `req_id`, `access` (`read`, `write`, `assume`), `source` (`config`, `intent`) |
 | `Finding` | | `finding_id`, `summary` (untrusted text, never evidence) |
 

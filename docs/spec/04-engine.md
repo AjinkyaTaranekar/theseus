@@ -19,12 +19,12 @@ A **world** is one state of the infrastructure. `theseus/importer/world.py: load
 | Service code | `services/<folder>/*.py` under the world root at the same commit |
 | Config | `theseus.yaml` at the world root |
 
-**Modeled resource types.** `aws_iam_user`, `aws_iam_group`, `aws_iam_user_group_membership`,
-`aws_iam_user_policy`, `aws_iam_group_policy`, `aws_iam_role`, `aws_iam_role_policy`, `aws_iam_policy`,
-`aws_iam_user_policy_attachment`, `aws_iam_group_policy_attachment`, `aws_iam_role_policy_attachment`,
-`aws_iam_openid_connect_provider`, `aws_s3_bucket`, `aws_s3_bucket_policy`, `aws_secretsmanager_secret`,
-`aws_db_instance`, `aws_dynamodb_table`, `aws_lambda_function`, `aws_ecs_task_definition`, `aws_ecs_service`.
-Every other type is skipped and counted by type in the result's `coverage`; it never adds a node or an edge.
+**Modeled resource types.** The IAM types (`aws_iam_user`, `aws_iam_group`, `aws_iam_user_group_membership`,
+`aws_iam_user_policy`, `aws_iam_group_policy`, `aws_iam_role`, `aws_iam_role_policy`, `aws_iam_policy`, the
+three `*_policy_attachment` types, `aws_iam_openid_connect_provider`) and `aws_s3_bucket_policy`, plus every
+data and workload type in `adapters/aws/catalog.yaml` and the types its workloads find roles through
+(`aws_ecs_task_definition`, `aws_iam_instance_profile`). `adapters/aws/README.md` lists them. Every other
+type is skipped and counted by type in the result's `coverage`; it never adds a node or an edge.
 
 ## 2. Reading the plan (`adapters/terraform/plan.py`)
 
@@ -43,8 +43,10 @@ Every other type is skipped and counted by type in the result's `coverage`; it n
 - A created resource's `arn` is unknown at plan; build it with section 4.
 - When a field is unknown but its reference names another resource's `name` or `id` (for IAM, the name), resolve
   it to that resource's configured name. Otherwise leave it unknown.
-- An IAM policy whose `policy` value is unknown is treated as `Allow * on *` with an unsupported condition, so
-  every edge it would create has kind `unknown`. It is listed in the result's `unknowns`.
+- An IAM policy whose `policy` value is unknown is treated as `Allow * on *` and `Deny * on *`, both with an
+  unsupported condition: it could grant anything, and it could deny anything. So every edge it could create has
+  kind `unknown`, and so does every edge it could remove, such as one another policy of the same principal
+  allows. It is listed in the result's `unknowns`.
 
 ## 3. Evidence lines (`adapters/terraform/source_index.py`)
 
@@ -61,65 +63,81 @@ When a value is missing or unknown, the importer builds the canonical ARN:
 | Kind | ARN |
 | --- | --- |
 | user, group, role | `arn:aws:iam::<account>:<kind>/<name>` |
-| s3 location | `arn:aws:s3:::<bucket>/<prefix>x`, a representative object key under the prefix |
-| secret | `arn:aws:secretsmanager:<region>:<account>:secret:<name>-AbCdEf` (AWS adds a 6-character suffix) |
-| db | `arn:aws:rds:<region>:<account>:db:<identifier>` |
-| dynamodb table | `arn:aws:dynamodb:<region>:<account>:table/<name>` |
+| data resources | The `arn` template of their catalog entry, such as `arn:aws:s3:::<bucket>/<prefix>x` (a representative key under the prefix) or `...:secret:<name>-AbCdEf` (AWS adds a 6-character suffix). The catalog test checks each against AWS's published ARN formats |
 | customer-managed policy | `arn:aws:iam::<account>:policy/<name>` |
 
 ## 5. The IAM subset (`adapters/aws/iam.py`)
 
 **Supported:** `Allow` and `Deny`; `Action` and `Resource` as a string or list; wildcards (`*` matches any
-run of characters including `/` and `:`; `?` matches one; case-insensitive); account-root and explicit-ARN
-trust; GitHub OIDC trust on `aud` and `sub` under `StringEquals` and `StringLike`.
+run of characters including `/` and `:`; `?` matches one). As in IAM, actions match without case and resource
+ARNs with it, so `Invoices/` and `invoices/` are different locations. Account-root and explicit-ARN trust;
+GitHub OIDC trust on `aud` and `sub` under `StringEquals` and `StringLike`.
 
 **Unsupported, so UNKNOWN:** any other `Condition`; `NotAction`, `NotResource`, `NotPrincipal`; permission
-boundaries; SCPs; KMS key policies; resource policies other than S3 bucket policies.
+boundaries (every edge from a user or role that has one is unknown); SCPs; KMS key policies; resource policies
+other than S3 bucket policies. The demo world has no SCP, KMS key policy or other resource policy; those types
+are skipped and counted in `coverage`.
 
 **A principal's statements** are its inline policies (`aws_iam_user_policy`, `aws_iam_group_policy`,
 `aws_iam_role_policy`), plus every attached customer-managed policy (a `*_policy_attachment` whose `policy_arn`
 names an `aws_iam_policy` in the plan), plus AWS-managed policies listed in `adapters/aws/managed.py`. That table
-holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, neither with a modeled action. Any
+holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, which read no data but write logs
+(`logs:PutLogEvents` on `*`), so every role they are attached to can write every log group. Any
 other AWS-managed ARN, or a customer ARN not in the plan, counts as an unknown policy (section 2). A group's
 statements are evaluated on the group; its members reach them through `MEMBER_OF`.
+
+**A group's `Deny` binds its members.** IAM evaluates a user with every policy of every group it is in, so each
+group's `Deny` statements, conditional ones included, are added to each member's own statements: a group `Deny`
+overrides a member's direct `Allow`, or makes it unknown. The reverse is not modeled: a member's own `Deny`, or
+one group's `Deny` against another group's `Allow`, does not remove what the member reaches through
+`MEMBER_OF`, because that edge serves every member. Such a path is reported though IAM would deny it, so
+Theseus may report a path that does not exist there, never miss one.
 
 **`evaluate(statements, action, arn)`** returns one of:
 
 | Result | When |
 | --- | --- |
 | `deny` | An unconditional matching `Deny` exists |
-| `allow` | An unconditional matching `Allow` exists, and no conditional `Deny` or unsupported statement could match |
-| `unknown` | A matching `Allow` exists only with a condition, or alongside a conditional `Deny` or an unsupported statement |
+| `allow` | An unconditional matching `Allow` exists, and no conditional or unsupported `Deny` could match (an unknown policy is such a `Deny`) |
+| `unknown` | A matching `Allow` exists only with a condition or unsupported, or an unconditional one faces a conditional or unsupported `Deny` that could match |
 | `none` | Nothing matches |
 
-It also returns the statements that decided it; those become the edge's evidence.
+It also returns the statements that decided it; those become the edge's evidence. An uncertain `Allow` can only
+add access, so it never weakens a definite allow; only a `Deny` can. An unsupported statement "could match"
+when the parts it does state match (a `NotAction` statement could match any action).
 
-**Modeled actions and the access they grant:**
+**Modeled actions and the access they grant** are data: the `read` and `write` lists of each entry in
+`adapters/aws/catalog.yaml` (S3, Secrets Manager, SSM Parameter Store, DynamoDB, RDS, OpenSearch, CloudWatch
+Logs, SQS, SNS, Kinesis), checked against AWS's service reference by `tests/contract/test_aws_catalog.py`.
+`adapters/aws/README.md` has the table and the reasons behind each choice. `sts:AssumeRole` grants assume
+on roles. When AWS may check more than one ARN form for an action (a log group as `log-group:NAME` or
+`log-group:NAME:*`) and a policy matches one but not the other, the answer is unknown.
 
-| Action | Access | Applies to |
-| --- | --- | --- |
-| `s3:GetObject` | read | s3 locations |
-| `s3:PutObject`, `s3:DeleteObject` | write | s3 locations |
-| `secretsmanager:GetSecretValue` | read | secrets |
-| `dynamodb:GetItem`, `dynamodb:BatchGetItem`, `dynamodb:Query`, `dynamodb:Scan` | read | DynamoDB tables |
-| `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`, `dynamodb:BatchWriteItem` | write | DynamoDB tables |
-| `sts:AssumeRole` | assume | roles |
+`ssm:GetParametersByPath` is checked on the path the caller asks for, not on each parameter it returns. AWS
+documents that access to a path reaches every level below it, and that a `Deny` on `/a/b` does not stop a
+recursive call on `/a`. So it is tested on each ancestor path of a parameter (`parameter/prod`, then the root
+`parameter/`, for `/prod/db-password`), and whichever allows reveals the parameter. A statement on
+`parameter/prod/*` reveals `/prod/team/x` this way, but not `/prod/db-password`. The catalog marks such an
+action `by_path`.
 
-`s3:ListBucket` is not modeled: listing keys is not reading data. Control-plane actions (`iam:*`,
+`s3:ListBucket` is not modeled: listing keys is not reading data, and neither are metadata reads such as
+`s3:GetObjectAcl`, though AWS files them as reads. Control-plane actions (`iam:*`,
 `dynamodb:CreateTable`, `s3:PutBucket*` and the like) are not modeled either: they change infrastructure, not
 data, and privilege escalation through IAM writes is out of scope. A table node's ARN is the table ARN, so a
 statement on `table/<name>/index/*` alone does not reach it.
 
 **Trust (`trust_kind`).** For a role's trust policy and a caller ARN, return `explicit` (the caller's ARN is
 named), `account` (the account root or account ID is named), `unknown` (it would match but has a condition),
-or none. `Principal = "*"` counts as `account` when unconditional.
+or none. `Principal = "*"` counts as `account` when unconditional. It also returns the `Allow` statements that
+name the caller's ARN, conditional or not, unless a certain `Deny` removes the trust: trust that names the
+caller needs no permission from it, so a condition on it makes the edge unknown, not absent.
 
 ## 6. Edge derivation (`importer/build.py` and friends)
 
 | Edge | Rule |
 | --- | --- |
 | `MEMBER_OF` | One per group listed in each `aws_iam_user_group_membership` |
-| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and `t` is not `explicit`. Kind `unknown` if either is unknown |
+| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). P's statements include its groups' `Deny` statements (section 5). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and no `Allow` in R's trust names P's ARN. Kind `unknown` if either is unknown, or if `d` is `none` and `t` is not `explicit` (the trust naming P has a condition, or a `Deny` that might apply). Without a permission of P's own, the evidence is the trust that names P |
 | `CAN` | For every principal with statements, every resource, every modeled action that applies to that resource kind: `allow` makes a configured edge, `unknown` an unknown one. Grants of the same principal and resource merge into one edge. Evidence for a statement in an attached policy names the `aws_iam_policy` and Sid, with note `attached by <attachment address>` |
 | `CAN` from `entry:internet` | From `aws_s3_bucket_policy` statements whose principal is `"*"` or `{"AWS": "*"}`, evaluated like identity statements against the bucket's locations |
 | `UNLOCKS` | From a secret to `db:<tag value>` when the secret has tag `db_instance` and that database exists. Grants read and write. Kind inferred |

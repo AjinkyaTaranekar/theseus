@@ -108,11 +108,11 @@ EVIDENCE = {
     "E6": Evidence(address="inferred", file="unknown", note="the secret's db_instance tag"),
 }
 NODES = {
-    "db:customer-db": NodeInfo(category="database", sensitivity="regulated"),
-    "secret:prod-db-credentials": NodeInfo(category="secret", sensitivity="regulated"),
-    "secret:payments-api-key": NodeInfo(category="secret", sensitivity="regulated"),
-    "s3://demo-company-files/invoices/": NodeInfo(category="object_store", sensitivity="confidential"),
-    "s3://demo-app-logs/": NodeInfo(category="object_store", sensitivity="internal"),
+    "db:customer-db": NodeInfo(category="Database", sensitivity="regulated"),
+    "secret:prod-db-credentials": NodeInfo(category="Secret", sensitivity="regulated"),
+    "secret:payments-api-key": NodeInfo(category="Secret", sensitivity="regulated"),
+    "s3://demo-company-files/invoices/": NodeInfo(category="ObjectStorage", sensitivity="confidential"),
+    "s3://demo-app-logs/": NodeInfo(category="ObjectStorage", sensitivity="internal"),
 }
 
 

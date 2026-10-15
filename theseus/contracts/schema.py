@@ -29,10 +29,31 @@ CORE_KINDS: Final[dict[str, str]] = {
     "finding": "Finding",
 }
 PRINCIPAL_KINDS: Final = ("user", "group", "role", "workload", "workflow", "entry")
+# Cartography's ontology labels for the core kinds that have one; a node carries both.
+ONTOLOGY_LABELS: Final[dict[str, str]] = {
+    "user": "UserAccount",
+    "group": "UserGroup",
+    "role": "PermissionRole",
+}
+# What a workload is, in Cartography's ontology; the cloud adapter's catalog says which for each type.
+WORKLOAD_LABELS: Final = ("Function", "ComputeService", "ComputeInstance", "CICDPipeline")
 INTERNET: Final = "entry:internet"
 
 # What a resource holds, whatever the cloud calls it. The engine reasons on category, never on kind.
-RESOURCE_CATEGORIES: Final = ("object_store", "secret", "database", "table")
+# The names are Cartography's ontology labels (cartography/models/ontology/labels.py), so a Theseus graph
+# and a Cartography graph line up. THESEUS_CATEGORIES are our own, for data that ontology does not cover.
+# Every Resource node also carries its category as a label, as Cartography's nodes do.
+CARTOGRAPHY_CATEGORIES: Final = (
+    "ObjectStorage",
+    "FileStorage",
+    "BlockStorage",
+    "Database",
+    "Secret",
+    "EncryptionKey",
+    "AIModel",
+)
+THESEUS_CATEGORIES: Final = ("LogStore", "MessageQueue", "MessageTopic", "DataStream")
+RESOURCE_CATEGORIES: Final = CARTOGRAPHY_CATEGORIES + THESEUS_CATEGORIES
 
 # Edge types. Paths walk TRAVERSE edges and end on GRANT edges; nothing else is traversed.
 TRAVERSE: Final = ("MEMBER_OF", "CAN_ASSUME", "TRUSTS", "RUNS_AS")
@@ -103,14 +124,22 @@ def human_candidate_id(n: int) -> str:
     return f"H{n}"
 
 
-def labels_for(kind: str) -> list[str]:
-    """The labels a node of this kind carries, `Node` first. A kind that is not core is a resource."""
+def labels_for(kind: str, ontology: str | None = None) -> list[str]:
+    """The labels a node of this kind carries, `Node` first, then Cartography's ontology label if it has one.
+
+    A kind that is not core is a resource, and `ontology` is its category. For a workload, `ontology` is one
+    of WORKLOAD_LABELS. Users, groups and roles get theirs from ONTOLOGY_LABELS.
+    """
     if not _KIND.match(kind):
         raise GraphError(f"not a node kind: {kind!r}")
+    allowed = RESOURCE_CATEGORIES if kind not in CORE_KINDS else WORKLOAD_LABELS if kind == "workload" else ()
+    if ontology is not None and ontology not in allowed:
+        raise GraphError(f"{ontology!r} is not an ontology label for a {kind} node")
     if kind not in CORE_KINDS:
-        return [NODE, RESOURCE]
+        return [NODE, RESOURCE, *([ontology] if ontology else [])]
     extra = [PRINCIPAL] if kind in PRINCIPAL_KINDS else []
-    return [NODE, *extra, CORE_KINDS[kind]]
+    onto = [ONTOLOGY_LABELS[kind]] if kind in ONTOLOGY_LABELS else [ontology] if ontology else []
+    return [NODE, *extra, CORE_KINDS[kind], *onto]
 
 
 def _check(kind: str, name: str) -> None:

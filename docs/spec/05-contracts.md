@@ -37,7 +37,9 @@ theseus/                              (repo root)
 │   │   │   └── render.py             patch ops as .tf text edits                          E9
 │   │   ├── aws/
 │   │   │   ├── adapter.py            AwsAdapter, the CloudAdapter                         E1, E2, E5, E6, FM1
-│   │   │   ├── kinds.py              resource kinds and categories, modeled types         F2
+│   │   │   ├── catalog.yaml          data and workload types as data (README.md)          F2, E2
+│   │   │   ├── catalog.py            load and check the catalog                           E2
+│   │   │   ├── kinds.py              resource kinds and categories, modeled types         F2, E2
 │   │   │   ├── ops.py                the patch-op catalog, typed, and its JSON schema     F2
 │   │   │   ├── resources.py          nodes, MEMBER_OF, RUNS_AS, UNLOCKS, HAS_ENV          E1
 │   │   │   ├── iam.py                evaluate, trust_kind, glob matching                  E2
@@ -106,7 +108,8 @@ theseus/                              (repo root)
 All are Pydantic v2 models that reject unknown fields. Lists are sorted before a result is returned. Closed
 sets are `Literal` types with the same values as the constants in `schema.py`, and a contract test keeps
 them equal: `Access` (`read`, `write`, `assume`), `EdgeKind`, `EdgeType` (the 13 types in `03-graph.md`;
-`FLOW` is internal and never in a row), `Category`, `Sensitivity`, `SensitivitySource`, `Env`, `Verdict`.
+`FLOW` is internal and never in a row), `Category` (Cartography's ontology labels plus four of ours, `08-core-and-adapters.md`), `Sensitivity`,
+`SensitivitySource`, `Env`, `Verdict`.
 An eid is stable within one build only, so anything compared across builds names an edge by
 (src, type, dst); eids appear only where the same run looks an edge up again (`CutEdge`, `UnusedGrant`,
 `Change`).

@@ -223,7 +223,12 @@ here; write them in full in the files (`arn:aws:iam::111122223333:role/prod-supp
 | `aws_iam_role.terraform_apply` | `terraform-apply` | Trust Sid `GitHubActionsOIDC`: as above, but `sub` StringEquals `repo:demo-org/infra:environment:production`. This is the pinned pattern that containment K copies |
 | `aws_iam_role_policy.terraform_apply` | `terraform-apply` | Sid `TerraformState`: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `demo-terraform-state/*`; `s3:ListBucket` on `demo-terraform-state`. Sid `ApplyInfra`: control-plane actions only, on `*`: `iam:*`, `lambda:*`, `ecs:*`, `ec2:*`, `rds:*`, `sqs:*`, `sns:*`, `kms:*`, `logs:*`, `events:*`, `ecr:*`, `route53:*`, `apigateway:*`, `dynamodb:CreateTable`, `dynamodb:Describe*`, `dynamodb:UpdateTable`, `dynamodb:TagResource`, `s3:CreateBucket`, `s3:GetBucket*`, `s3:PutBucket*`, `secretsmanager:CreateSecret`, `secretsmanager:DescribeSecret`, `secretsmanager:TagResource` |
 
-None of the `ApplyInfra` actions is a modeled data action, so `terraform-apply` reaches only the state bucket.
+Of the `ApplyInfra` actions, only `logs:*`, `sqs:*` and `sns:*` touch modeled data, now that the AWS catalog
+models log groups, queues and topics (C1's `platform.tf`): `terraform-apply` can read and write every log
+group and queue and publish to the topic, besides the state bucket. These are dangerous paths only if those
+resources are sensitive; F4 and F5 decide that with `sensitive_overrides` or requirements before writing
+`expected.json`. Every Lambda and ECS execution role can also write every log group, through its AWS-managed
+policy. The rest of `ApplyInfra` is control-plane.
 `iam:*` would let it grant itself anything in a real account; privilege escalation through IAM writes is not
 modeled (see "What the world leaves out").
 

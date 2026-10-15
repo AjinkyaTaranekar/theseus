@@ -16,10 +16,11 @@ from theseus.engine.words import access_words, article, class_words, kind, name,
         ("role:prod-support", None, "role"),
         ("workload:billing-api", None, "service"),
         ("workflow:demo-org/docs-site/preview.yml", None, "CI workflow"),
-        ("db:customer-db", NodeInfo(category="database"), "database"),
-        ("s3://demo-app-logs/", NodeInfo(category="object_store"), "storage location"),
-        ("secret:prod-db-credentials", NodeInfo(category="secret"), "secret"),
-        ("dynamodb:demo-orders", NodeInfo(category="table"), "database table"),
+        ("db:customer-db", NodeInfo(category="Database"), "database"),
+        ("s3://demo-app-logs/", NodeInfo(category="ObjectStorage"), "storage location"),
+        ("secret:prod-db-credentials", NodeInfo(category="Secret"), "secret"),
+        ("dynamodb:demo-orders", NodeInfo(category="Database"), "database"),
+        ("log-group:/aws/lambda/billing-job", NodeInfo(category="LogStore"), "log store"),
         ("db:customer-db", None, "data store"),
     ],
 )
@@ -27,12 +28,11 @@ def test_a_node_s_kind_in_words(node: str, info: NodeInfo | None, word: str) -> 
     assert kind(node, info) == word
 
 
-def test_both_spellings_of_a_category_read_the_same() -> None:
-    """The adapters' categories are moving to the Cartography labels (#50); both must read the same."""
+def test_every_category_has_plain_words() -> None:
+    from theseus.contracts.schema import RESOURCE_CATEGORIES
     from theseus.engine import words
 
-    assert words.CATEGORIES["objectstorage"] == words.CATEGORIES["objectstore"]
-    assert words.CATEGORIES["database"] == "database"
+    assert sorted(words.CATEGORIES) == sorted(c.lower() for c in RESOURCE_CATEGORIES)
 
 
 def test_names_and_articles() -> None:
