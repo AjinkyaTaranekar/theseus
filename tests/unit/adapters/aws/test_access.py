@@ -537,3 +537,37 @@ def test_a_known_allow_beside_an_unresolved_policy_is_unknown() -> None:
             "unknown policy arn:aws:iam::aws:policy/AdministratorAccess",
         ),
     ]
+
+
+def by_path(resource: str, *extra: dict) -> list[IacResource]:
+    return [
+        res(
+            "aws_iam_role_policy.config_reader",
+            name="config-reader",
+            role="config-reader",
+            policy=doc(allow("ReadProdTree", "ssm:GetParametersByPath", resource), *extra),
+        )
+    ]
+
+
+def test_reading_a_parent_path_reveals_its_parameters() -> None:
+    """AWS checks GetParametersByPath on the path asked for: `parameter/prod` reveals `/prod/db-password`."""
+    rows = derive(by_path(f"arn:aws:ssm:{REGION}:{ACCOUNT}:parameter/prod"))
+    edge = rows[("CAN", "role:config-reader", "ssm-parameter:/prod/db-password")]
+    assert (edge.kind, edge.grants) == ("configured", ["read"])
+    assert [(e.address, e.part) for e in edge.evidence] == [
+        ("aws_iam_role_policy.config_reader", "ReadProdTree")
+    ]
+
+
+def test_a_deny_on_the_parameter_does_not_stop_reading_its_parent_path() -> None:
+    """As AWS documents: a Deny on `/prod/db-password` does not stop GetParametersByPath on `/prod`."""
+    world = by_path(f"arn:aws:ssm:{REGION}:{ACCOUNT}:parameter/prod", deny("NotThisOne", "ssm:*", PARAM))
+    assert (
+        derive(world)[("CAN", "role:config-reader", "ssm-parameter:/prod/db-password")].kind == "configured"
+    )
+
+
+def test_a_path_below_the_parameter_s_parent_does_not_reveal_it() -> None:
+    rows = derive(by_path(f"arn:aws:ssm:{REGION}:{ACCOUNT}:parameter/prod/*"))
+    assert summary(rows, "role:config-reader") == {}

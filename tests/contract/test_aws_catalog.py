@@ -66,7 +66,12 @@ def test_every_arn_we_test_an_action_on_fits_aws_formats(pair: tuple[DataEntry, 
     assert action.resource_type in ref["actions"][name]["resources"], action.action
     formats = ref["resources"][action.resource_type]
     node_arn = entry.resource_arn(SAMPLE, CONFIG)
-    for arn in action.arns_for(node_arn):
+    arns = action.arns_for(node_arn)
+    if action.by_path:
+        arns = arns[
+            :-1
+        ]  # the root path, which AWS's format leaves out; kept so a top-level node is not missed
+    for arn in arns:
         if arn.endswith(":*"):
             continue  # the alternative log-group form AWS may check; tested in test_access.py
         assert fits(arn, formats), (arn, formats)
@@ -102,6 +107,29 @@ def test_kinds_categories_and_modeled_types_come_from_the_catalog() -> None:
     assert {"aws_ecs_task_definition", "aws_iam_instance_profile"} <= CATALOG.types  # through `via`
     assert {"aws_ssm_parameter", "aws_cloudwatch_log_group"} <= MODELED_TYPES
     assert "aws_glue_catalog_table" not in MODELED_TYPES
+
+
+def test_a_by_path_action_is_tested_on_every_ancestor_path() -> None:
+    [by_path] = [a for a in CATALOG.by_kind["ssm-parameter"].actions() if a.by_path]
+    assert by_path.action == "ssm:GetParametersByPath"
+    prefix = "arn:aws:ssm:eu-west-1:111122223333:parameter"
+    assert by_path.arns_for(f"{prefix}/prod/team/db-password") == [
+        f"{prefix}/prod/team",
+        f"{prefix}/prod",
+        f"{prefix}/",
+    ]
+    assert by_path.arns_for(f"{prefix}/db-password") == [f"{prefix}/"]
+
+
+def test_a_by_path_action_takes_no_arns() -> None:
+    with pytest.raises(ValueError, match="by_path"):
+        CatalogAction(
+            action="ssm:GetParametersByPath",
+            access="read",
+            resource_type="parameter",
+            arns=["{arn}/x"],
+            by_path=True,
+        )
 
 
 def test_the_ssm_arn_drops_the_leading_slash() -> None:

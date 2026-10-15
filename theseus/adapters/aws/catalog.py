@@ -38,15 +38,31 @@ def value_at(values: dict[str, Any], path: str) -> Any:
 
 
 class CatalogAction(Contract):
-    """One action, the access it grants, and the ARN forms to test it on. `arns` use {arn}, the node's ARN."""
+    """One action, the access it grants, and the ARN forms to test it on. `arns` use {arn}, the node's ARN.
+
+    `by_path` marks an action AWS checks on the path the caller asks for, such as `ssm:GetParametersByPath`:
+    it reveals a node to a statement on any ancestor path, whatever a statement on the node itself says.
+    """
 
     action: str
     access: Access
     resource_type: str
     arns: list[str] = Field(default_factory=lambda: ["{arn}"])
+    by_path: bool = False
+
+    @model_validator(mode="after")
+    def _check(self) -> CatalogAction:
+        if self.by_path and self.arns != ["{arn}"]:
+            raise ValueError(f"{self.action}: by_path tests the ancestor paths, so it takes no arns")
+        return self
 
     def arns_for(self, node_arn: str) -> list[str]:
-        """The ARNs to evaluate this action on, for a node whose ARN is `node_arn`."""
+        """The ARNs to evaluate this action on, for a node whose ARN is `node_arn`. For a `by_path` action,
+        the node's ancestor paths, nearest first, down to the root: `parameter/prod`, then `parameter/`."""
+        if self.by_path:
+            head, _, path = node_arn.partition("/")
+            parts = path.split("/")
+            return [f"{head}/{'/'.join(parts[:i])}" for i in range(len(parts) - 1, -1, -1)]
         return [a.format(arn=node_arn) for a in self.arns]
 
 

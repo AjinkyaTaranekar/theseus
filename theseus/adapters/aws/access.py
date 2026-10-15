@@ -42,8 +42,15 @@ def _evidence(pairs: Pairs, chosen: Iterable[PolicyStatement]) -> list[Evidence]
 
 def _decide(stmts: list[PolicyStatement], action: CatalogAction, node_arn: str) -> Decision:
     """The decision for one catalog action. When AWS may check more than one ARN form and the forms disagree,
-    the answer is unknown."""
+    the answer is unknown. An action AWS checks on a path reveals the node through whichever ancestor path the
+    caller asks for, so the most permissive answer wins."""
     decisions = [evaluate(stmts, action.action, arn) for arn in action.arns_for(node_arn)]
+    if action.by_path:
+        for result in ("allow", "unknown", "deny"):
+            if hits := [d for d in decisions if d.result == result]:
+                involved = [s for d in hits for s in d.statements]
+                return Decision(result=result, statements=[s for s in stmts if s in involved])
+        return Decision(result="none")
     if len({d.result for d in decisions}) == 1:
         return decisions[0]
     involved = [s for d in decisions for s in d.statements]

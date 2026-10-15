@@ -10,7 +10,7 @@ Adding an AWS service or a kind of workload is a catalog entry, not code.
 | --- | --- | --- | --- |
 | `ObjectStorage` | `aws_s3_bucket` (one node per data location in `theseus.yaml`) | `s3:GetObject(Version)` | `s3:PutObject`, `DeleteObject(Version)` |
 | `Secret` | `aws_secretsmanager_secret` | `secretsmanager:GetSecretValue` | not modeled |
-| `Secret` | `aws_ssm_parameter` | `ssm:GetParameter(s)`, `GetParametersByPath`, `GetParameterHistory` | `ssm:PutParameter` |
+| `Secret` | `aws_ssm_parameter` | `ssm:GetParameter(s)`, `GetParametersByPath` (on each ancestor path), `GetParameterHistory` | `ssm:PutParameter` |
 | `Database` | `aws_dynamodb_table` | `GetItem`, `BatchGetItem`, `Query`, `Scan` | `PutItem`, `UpdateItem`, `DeleteItem`, `BatchWriteItem` |
 | `Database` | `aws_db_instance` | through `UNLOCKS` from its secret | through `UNLOCKS` |
 | `Database` | `aws_opensearch_domain` | `es:ESHttpGet` | `es:ESHttpPost`, `Put`, `Delete` |
@@ -56,6 +56,13 @@ such as a log stream (`{arn}:log-stream:x`) or an OpenSearch path (`{arn}/x`). W
 form, as with log groups (`log-group:NAME` and `log-group:NAME:*`), a policy that matches one form and not the
 other gives `unknown`.
 
+**An action AWS checks on a path** is marked `by_path`. `ssm:GetParametersByPath` is authorized on the path the
+caller asks for, and access to `/prod` returns `/prod/db-password` even when a `Deny` names that parameter, as
+the [API reference](https://docs.aws.amazon.com/systems-manager/latest/APIReference/API_GetParametersByPath.html)
+says. So it is tested on each ancestor path (`parameter/prod`, then the root `parameter/`), and whichever allows
+reveals the node. AWS's ARN format has no form for the root path; the catalog test skips it, and it is kept so a
+parameter at the top level is not missed.
+
 ## Fields
 
 `data` entries:
@@ -69,7 +76,7 @@ other gives `unknown`.
 | `per` | `resource` (one node per resource) or `location` (one per data location in `theseus.yaml`) |
 | `name` | The value that names the node (default `name`) |
 | `arn` | The ARN template: `{partition}`, `{region}`, `{account}`, `{name}`, `{name_path}` (without a leading slash), `{bucket}`, `{prefix}` |
-| `read`, `write` | Actions. An entry is an action, or `{action, resource_type, arns}`; `arns` may use only `{arn}` |
+| `read`, `write` | Actions. An entry is an action, or `{action, resource_type, arns, by_path}`; `arns` may use only `{arn}`; `by_path: true` tests the action on each ancestor path instead, and takes no `arns` |
 
 `workloads` entries:
 

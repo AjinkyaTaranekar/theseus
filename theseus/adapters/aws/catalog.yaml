@@ -31,13 +31,19 @@ data:
     read: [secretsmanager:GetSecretValue]
 
   # A SecureString also needs kms:Decrypt on its key; KMS key policies are outside the IAM subset.
+  # AWS checks GetParametersByPath on the path asked for, so access to `/prod` reveals `/prod/db-password`,
+  # even when a Deny names the parameter itself.
   - type: aws_ssm_parameter
     kind: ssm-parameter
     category: Secret
     service: ssm
     resource_type: parameter
     arn: "arn:{partition}:ssm:{region}:{account}:parameter/{name_path}"
-    read: [ssm:GetParameter, ssm:GetParameters, ssm:GetParametersByPath, ssm:GetParameterHistory]
+    read:
+      - ssm:GetParameter
+      - ssm:GetParameters
+      - {action: ssm:GetParametersByPath, by_path: true}
+      - ssm:GetParameterHistory
     write: [ssm:PutParameter]
 
   # Cartography's ontology files DynamoDB tables under Database.

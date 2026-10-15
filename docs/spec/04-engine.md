@@ -113,6 +113,13 @@ Logs, SQS, SNS, Kinesis), checked against AWS's service reference by `tests/cont
 on roles. When AWS may check more than one ARN form for an action (a log group as `log-group:NAME` or
 `log-group:NAME:*`) and a policy matches one but not the other, the answer is unknown.
 
+`ssm:GetParametersByPath` is checked on the path the caller asks for, not on each parameter it returns. AWS
+documents that access to a path reaches every level below it, and that a `Deny` on `/a/b` does not stop a
+recursive call on `/a`. So it is tested on each ancestor path of a parameter (`parameter/prod`, then the root
+`parameter/`, for `/prod/db-password`), and whichever allows reveals the parameter. A statement on
+`parameter/prod/*` reveals `/prod/team/x` this way, but not `/prod/db-password`. The catalog marks such an
+action `by_path`.
+
 `s3:ListBucket` is not modeled: listing keys is not reading data, and neither are metadata reads such as
 `s3:GetObjectAcl`, though AWS files them as reads. Control-plane actions (`iam:*`,
 `dynamodb:CreateTable`, `s3:PutBucket*` and the like) are not modeled either: they change infrastructure, not
