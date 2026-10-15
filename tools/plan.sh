@@ -10,6 +10,10 @@ fi
 terraform_dir=$(cd "$1" && pwd)
 output_dir=$(cd "$(dirname "$2")" && pwd)
 output="$output_dir/$(basename "$2")"
+if [[ -d "$output" ]]; then
+  echo "Output path is a directory: $output" >&2
+  exit 2
+fi
 work=$(mktemp -d)
 json_tmp=""
 trap 'rm -rf "$work"; rm -f "$json_tmp"' EXIT

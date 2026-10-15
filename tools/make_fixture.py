@@ -158,6 +158,7 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
     scenario = SCENARIOS[name]
     staging: Path | None = None
     preserve_staging = False
+    published = False
     try:
         fixture_root.mkdir(parents=True, exist_ok=True)
         # Finish both plans before replacing any existing inputs. A failed plan leaves the old fixture intact.
@@ -197,6 +198,7 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
         target = fixture_root / name
         target.mkdir(exist_ok=True)
         _publish(staging, target)
+        published = True
     except _RecoveryError:
         preserve_staging = True
         raise
@@ -207,7 +209,9 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
             try:
                 shutil.rmtree(staging)
             except OSError as exc:
-                raise IngestError(f"Could not remove staging directory {staging}: {exc}") from exc
+                if published:
+                    raise IngestError(f"Could not remove staging directory {staging}: {exc}") from exc
+                log.warning("Could not remove staging directory %s after generation failed: %s", staging, exc)
     log.info("Generated %s", target)
 
 

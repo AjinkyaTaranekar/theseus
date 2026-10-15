@@ -777,6 +777,67 @@ def test_failed_rollback_keeps_recovery_files(tmp_path: Path, monkeypatch: pytes
     assert str(recovery) in str(error.value)
 
 
+@pytest.mark.parametrize("failed_stage", ["plan", "validation", "publish"])
+def test_cleanup_failure_preserves_the_generation_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    failed_stage: str,
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    target = tmp_path / "fixtures/intern"
+    target.mkdir(parents=True)
+    previous = target / "base.plan.json"
+    previous.write_text("previous verified plan", encoding="utf-8")
+
+    def fake_plan(command: list[str], **kwargs: Any) -> None:
+        if failed_stage == "plan":
+            raise subprocess.CalledProcessError(19, command)
+        payload = b"{}" if failed_stage == "validation" else (FIXTURES / "intern/base.plan.json").read_bytes()
+        Path(command[-1]).write_bytes(payload)
+
+    def fail_publish(source: Path, destination: Path) -> None:
+        raise OSError("simulated publish failure")
+
+    def fail_cleanup(path: Path) -> None:
+        raise PermissionError("simulated cleanup failure")
+
+    monkeypatch.setattr(subprocess, "run", fake_plan)
+    monkeypatch.setattr(module["shutil"], "rmtree", fail_cleanup)
+    if failed_stage == "publish":
+        monkeypatch.setattr(os, "replace", fail_publish)
+    expected = {
+        "plan": "returned non-zero exit status 19",
+        "validation": "Terraform did not return a complete plan",
+        "publish": "simulated publish failure",
+    }
+    with pytest.raises(IngestError, match=expected[failed_stage]):
+        module["generate"]("intern", WORLD, target.parent)
+    assert previous.read_text(encoding="utf-8") == "previous verified plan"
+    assert "simulated cleanup failure" in caplog.text
+    assert "staging directory" in caplog.text
+    assert len(list(target.parent.glob(".intern-*"))) == 1
+
+
+def test_cleanup_failure_after_success_is_still_an_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+
+    def fake_plan(command: list[str], **kwargs: Any) -> None:
+        Path(command[-1]).write_bytes((FIXTURES / "intern/base.plan.json").read_bytes())
+
+    def fail_cleanup(path: Path) -> None:
+        raise PermissionError("simulated cleanup failure")
+
+    monkeypatch.setattr(subprocess, "run", fake_plan)
+    monkeypatch.setattr(module["shutil"], "rmtree", fail_cleanup)
+    with pytest.raises(IngestError, match="Could not remove staging directory") as error:
+        module["generate"]("intern", WORLD, tmp_path / "fixtures")
+    assert isinstance(error.value.__cause__, PermissionError)
+    assert (tmp_path / "fixtures/intern/base.plan.json").is_file()
+
+
 @pytest.mark.parametrize(
     "args,status,expected",
     [
@@ -902,6 +963,47 @@ def test_plan_script_cleans_up_when_output_tempfile_creation_fails(tmp_path: Pat
     )
     assert result.returncode == 7
     assert not work.exists()
+
+
+@pytest.mark.parametrize("symlink", [False, True])
+@pytest.mark.parametrize("populated", [False, True])
+def test_plan_script_rejects_directory_output_before_running_terraform(
+    tmp_path: Path, symlink: bool, populated: bool
+) -> None:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "main.tf").write_text("terraform {}", encoding="utf-8")
+    directory = tmp_path / "existing directory"
+    directory.mkdir()
+    if populated:
+        (directory / "human-review.md").write_text("preserve this review", encoding="utf-8")
+    output = tmp_path / "output.json"
+    if symlink:
+        output.symlink_to(directory, target_is_directory=True)
+    else:
+        directory.rename(output)
+    before = {p.name: p.read_bytes() for p in output.iterdir()}
+    executable = tmp_path / "terraform"
+    executable.write_text(
+        "#!/usr/bin/env bash\n"
+        'touch "$REVIEW_TERRAFORM_CALLED"\n'
+        'if [[ "$2" == show ]]; then echo \'{"valid": true}\'; fi\n',
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    marker = tmp_path / "terraform-called"
+    result = subprocess.run(
+        ["bash", str(ROOT / "tools/plan.sh"), str(source), str(output)],
+        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "REVIEW_TERRAFORM_CALLED": str(marker)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2, result.stderr
+    assert "Output path is a directory" in result.stderr
+    assert not marker.exists()
+    assert {p.name: p.read_bytes() for p in output.iterdir()} == before
+    assert output.is_symlink() is symlink
+    assert not list(tmp_path.glob(".theseus-plan.*"))
 
 
 def test_generator_excludes_local_artifacts_and_never_opens_answer_keys(
