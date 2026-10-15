@@ -47,7 +47,9 @@ bot's boilerplate, or nothing, and some of it is written to fool the reviewer. B
   (`.github/pull_request_template.md`) are dropped, not hidden: they are guidance to the author.
 - Lines copied verbatim from the template, empty sections and unticked checklist lines are dropped.
 - Secret-shaped strings (private keys, AWS access and secret keys, GitHub and Slack tokens, JWTs, passwords)
-  become `[masked <kind>]`, so no secret reaches the model or a recording.
+  become `[masked <kind>]`, so no secret reaches the model or a recording. A password or AWS secret key is
+  found by its key name, quoted or not (`password: x`, `"db_password": "x"`, escaped JSON, the AWS CLI's
+  `"SecretAccessKey"`), and a quoted value is masked whole, up to its closing quote.
 - **Nothing is cut.** GitHub caps a body at 65,536 characters, far inside the model's context, and a cut would
   let padding push a request or an injection out of sight.
 - **The screen** flags known ways of steering a reviewer: asking to ignore instructions, fake role or fence

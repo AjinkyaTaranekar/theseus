@@ -118,6 +118,41 @@ def test_secret_shaped_strings_are_masked(kind: str, text: str) -> None:
     assert f"[masked {kind}]" in masked
 
 
+# Secrets after a quoted key, as in JSON, YAML, escaped JSON and AWS CLI output. The whole quoted value is
+# masked, spaces and escaped quotes included.
+QUOTED = [
+    ("password", '{"password": "' + "hunter2!x" + '"}', '{"password": [masked password]}'),
+    ("password", "{'password': '" + "hunter2!x" + "'}", "{'password': [masked password]}"),
+    ("password", '"password": "' + 'correct horse \\"battery\\"' + '",', '"password": [masked password],'),
+    ("password", '{\\"db_password\\": \\"' + "hunter2!x" + '\\"}', '{\\"db_password\\": [masked password]}'),
+    ("password", 'MasterUserPassword: "' + "s3cr3t-pw" + '"', "MasterUserPassword: [masked password]"),
+    (
+        "AWS secret key",
+        '{"aws_secret_access_key": "' + "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "EXAMPLEKEY" + '"}',
+        '{"aws_secret_access_key": [masked AWS secret key]}',
+    ),
+    (
+        "AWS secret key",
+        '"SecretAccessKey": "' + "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "EXAMPLEKEY" + '",',
+        '"SecretAccessKey": [masked AWS secret key],',
+    ),
+]
+
+
+@pytest.mark.parametrize(("kind", "text", "masked"), QUOTED)
+def test_a_secret_after_a_quoted_key_is_masked_whole(kind: str, text: str, masked: str) -> None:
+    assert mask_secrets(text) == (masked, [kind])
+
+
+def test_a_key_name_alone_or_a_reference_is_not_masked() -> None:
+    for text in [
+        'The "password": field is required',
+        "passwordless: true, and the password policy: strict",
+        "aws_secret_access_key = var.secret_key",
+    ]:
+        assert mask_secrets(text) == (text, [])
+
+
 def test_masking_keeps_the_key_name_and_ordinary_text() -> None:
     assert mask_secrets("password: hunter2!x")[0] == "password: [masked password]"
     text = "Grants read on secret: prod-db-credentials for billing-api."

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -20,8 +21,9 @@ from theseus.agent.intent import (
     to_requirements,
     vocabulary,
 )
-from theseus.agent.llm import LlmReply
+from theseus.agent.llm import Llm, LlmReply
 from theseus.agent.pr_text import prepare
+from theseus.config import Settings
 from theseus.contracts.result import Grant, GraphRows, Intent, NodeRow
 from theseus.errors import ModelError
 
@@ -225,6 +227,35 @@ def test_secrets_never_reach_the_model() -> None:
     llm = FakeLlm(answer())
     extract_intent("Rotate the deploy key", f"The old key {key} leaked.", VOCAB, llm=llm)
     assert key not in json.dumps(llm.seen)
+
+
+def test_secrets_after_quoted_keys_reach_neither_the_request_nor_the_recording(tmp_path: Path) -> None:
+    """A PR body that pastes JSON config: the passwords and AWS secret key are masked before the call."""
+    password, secret = "hunter2!x-" + "Q7" * 4, "wJalrXUtnFEMI/K7MDENG/bPxRfiCY" + "EXAMPLEKEY"
+    config = '{"password": "' + password + '", "aws_secret_access_key": "' + secret + '"}'
+    body = f"Config:\n```json\n{config}\n```\n<!-- {{'db_password': '{password}'}} -->"
+    sent_kwargs: list[dict[str, Any]] = []
+
+    def completion(**kwargs: Any) -> Any:
+        sent_kwargs.append(kwargs)
+        call = SimpleNamespace(function=SimpleNamespace(name="submit_intent", arguments=json.dumps(answer())))
+        message = SimpleNamespace(content=None, tool_calls=[call])
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=message, finish_reason="tool_calls")],
+            usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        )
+
+    llm = Llm(
+        Settings(_env_file=None, theseus_mode="record", llm_api_key="k"),
+        recordings=tmp_path,
+        completion=completion,
+        sleep=lambda _: None,
+    )
+    extract_intent("Move the config", body, VOCAB, llm=llm)
+    [path] = tmp_path.glob("intent-*.json")
+    for text in (json.dumps(sent_kwargs), path.read_text(encoding="utf-8")):
+        assert "[masked password]" in text and "[masked AWS secret key]" in text
+        assert password not in text and secret not in text
 
 
 def test_the_purpose_is_one_plain_line() -> None:

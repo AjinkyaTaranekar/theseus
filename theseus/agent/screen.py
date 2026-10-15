@@ -81,21 +81,29 @@ _FLAGS: list[tuple[str, re.Pattern[str]]] = [
 ]
 _BASE64 = re.compile(r"[A-Za-z0-9+/]{24,}={0,2}")
 
-# Each pattern with a group keeps that group (the `=` or `:` after a key name) and masks the rest.
+# A value after a key name: a JSON string, also inside escaped JSON, or a single-quoted string, each up to its
+# closing quote or the end of the line.
+_QUOTED = r"""\\"(?:[^"\\\n]|\\[^"\n])*(?:\\"|$)|"(?:[^"\\\n]|\\.)*(?:"|$)|'[^'\n]*(?:'|$)"""
+
+
+def _keyed(key: str, bare: str) -> re.Pattern[str]:
+    """A secret after its key name: `key: value`, `key=value`, or JSON and YAML with the key or value quoted.
+    Group 1 is the key name and separator, which masking keeps."""
+    return re.compile(rf"(?im)({key}\\?[\"']?\s*[:=]\s*)(?:{_QUOTED}|{bare})")
+
+
+# Each pattern with a group keeps that group (the key name and its `=` or `:`) and masks the rest.
 _SECRETS: list[tuple[str, re.Pattern[str]]] = [
     (
         "private key",
         re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?(?:-----END [A-Z ]*PRIVATE KEY-----|\Z)", re.S),
     ),
     ("AWS access key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
-    (
-        "AWS secret key",
-        re.compile(r"(?i)(?<=aws_secret_access_key)(\s*[:=]\s*)[\"']?[A-Za-z0-9/+=]{40}[\"']?"),
-    ),
+    ("AWS secret key", _keyed(r"secret_?access_?key", r"[A-Za-z0-9/+=]{40}")),
     ("GitHub token", re.compile(r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})")),
     ("Slack token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}")),
     ("JWT", re.compile(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}")),
-    ("password", re.compile(r"(?i)(?<=\bpassword)(\s*[:=]\s*)[\"']?[^\s\"']{6,}[\"']?")),
+    ("password", _keyed(r"passw(?:or)?d", r"[^\s\"']{6,}")),
 ]
 
 
