@@ -31,7 +31,7 @@ EdgeType = Literal[
 ]
 Category = Literal["object_store", "secret", "database", "table"]
 Sensitivity = Literal["public", "internal", "confidential", "regulated"]
-SensitivitySource = Literal["jev", "human", "unclassified"]
+SensitivitySource = Literal["jev", "fallback", "human", "unclassified"]
 Env = Literal["staging", "prod"]
 CandidateSource = Literal["rule", "llm", "human"]
 

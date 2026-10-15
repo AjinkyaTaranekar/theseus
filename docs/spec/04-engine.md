@@ -171,7 +171,9 @@ produces no edge; record it in `unknowns` as `"code: <file>:<line> <call> target
 
 - Jev classifies every `Resource` node as `public`, `internal`, `confidential` or `regulated` (prompt in
   `06-agent.md`). `sensitive_overrides` in `theseus.yaml` always wins. `sensitive` is true for
-  `confidential` and `regulated`. With no label, `sensitivity_source` is `unclassified` and `sensitive` is false.
+  `confidential` and `regulated`. `sensitivity_source` is `human` for an override, `jev` for Jev's class, and
+  `fallback` when the fast model answered because Jev could not. With no label it is `unclassified` and
+  `sensitive` is false.
 - `env` is `staging` for nodes listed under `environments.staging` in `theseus.yaml`, otherwise `prod`.
 
 ## 9. Paths

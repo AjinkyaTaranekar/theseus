@@ -41,32 +41,40 @@ NODES = [NodeRow(id=i, labels=RESOURCE, name=n, category=c) for i, c, n, _ in DE
 ROWS = GraphRows(nodes=[*NODES, NodeRow(id="user:priya-intern", labels=["Node", "Principal"], name="priya")])
 
 
+def says(choice: Sensitivity, source: str = "jev") -> JevAnswer:
+    """An answer as Jev, or the fallback answering for it, would give it."""
+    return JevAnswer(type="choice", choice=choice, source=source, calibrated=source == "jev")  # type: ignore[arg-type]
+
+
 @pytest.fixture(scope="module")
-def labels() -> dict[str, Sensitivity]:
+def labels() -> dict[str, JevAnswer]:
     settings = get_settings()
     return classify(NODES, Jev(settings, llm=Llm(settings)))
 
 
-def test_every_demo_resource_is_rated(labels: dict[str, Sensitivity]) -> None:
+def test_every_demo_resource_is_rated_by_jev(labels: dict[str, JevAnswer]) -> None:
     assert sorted(labels) == sorted(i for i, *_ in DEMO)
+    assert {(a.source, a.calibrated) for a in labels.values()} == {("jev", True)}
 
 
-def test_the_scenarios_sensitive_resources_are_sensitive(labels: dict[str, Sensitivity]) -> None:
+def test_the_scenarios_sensitive_resources_are_sensitive(labels: dict[str, JevAnswer]) -> None:
     """What the engine needs: `sensitive` matches spec 02 for every resource, after the override."""
     nodes = {n.id: n for n in apply(ROWS, labels, OVERRIDES).nodes}
     for node, _, _, expected in DEMO:
         want = (expected or OVERRIDES[node]) in ("confidential", "regulated")
-        assert nodes[node].sensitive is want, f"{node}: Jev said {labels[node]}, spec 02 expects {expected}"
+        assert nodes[node].sensitive is want, (
+            f"{node}: Jev said {labels[node].choice}, spec 02 expects {expected}"
+        )
 
 
 def test_an_override_always_wins() -> None:
-    labelled = apply(ROWS, {"s3://demo-terraform-state/": "public"}, OVERRIDES)
+    labelled = apply(ROWS, {"s3://demo-terraform-state/": says("public")}, OVERRIDES)
     node = next(n for n in labelled.nodes if n.id == "s3://demo-terraform-state/")
     assert (node.sensitivity, node.sensitive, node.sensitivity_source) == ("regulated", True, "human")
 
 
 def test_jev_labels_are_marked_as_jev_s() -> None:
-    labelled = apply(ROWS, {"db:customer-db": "regulated", "s3://demo-app-logs/": "internal"}, {})
+    labelled = apply(ROWS, {"db:customer-db": says("regulated"), "s3://demo-app-logs/": says("internal")}, {})
     nodes = {n.id: n for n in labelled.nodes}
     assert (nodes["db:customer-db"].sensitive, nodes["db:customer-db"].sensitivity_source) == (True, "jev")
     assert (nodes["s3://demo-app-logs/"].sensitive, nodes["s3://demo-app-logs/"].sensitivity) == (
@@ -95,6 +103,15 @@ class FallbackJev:
 
 def test_labels_from_the_fallback_are_logged_as_uncalibrated(caplog: pytest.LogCaptureFixture) -> None:
     with caplog.at_level(logging.WARNING, logger="theseus.agent.sensitivity"):
-        labels = classify(NODES[:1], FallbackJev())
-    assert labels == {"s3://demo-app-logs/": "regulated"}
+        answers = classify(NODES[:1], FallbackJev())
+    assert answers == {"s3://demo-app-logs/": says("regulated", "fallback")}
     assert "uncalibrated" in caplog.text
+
+
+def test_a_label_from_the_fallback_is_marked_as_the_fallback_s() -> None:
+    node = next(
+        n
+        for n in apply(ROWS, {"db:customer-db": says("regulated", "fallback")}, {}).nodes
+        if n.id == "db:customer-db"
+    )
+    assert (node.sensitivity, node.sensitive, node.sensitivity_source) == ("regulated", True, "fallback")

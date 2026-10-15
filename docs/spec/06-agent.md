@@ -178,7 +178,7 @@ payment or health data, or credentials and secrets that unlock such data.
 
 **Fallback:** if Jev is unreachable, ask the fast model the same questions with a forced tool call, and
 mark every answer `"source": "fallback", "calibrated": false`. Labels from the fallback are logged as
-uncalibrated.
+uncalibrated and stored with `sensitivity_source: fallback`.
 
 **Measured on `jev-1.13.0`:**
 
