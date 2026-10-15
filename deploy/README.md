@@ -34,16 +34,27 @@ below are parked until we have the VM. Fill these in as you go:
 From your machine, after the PR is merged to `main`:
 
 ```bash
-deploy/deploy.sh ubuntu@<vm-ip>
-curl https://<DOMAIN>/health    # {"status": "ok", "falkordb": "4.22.0", "version": ...}
+deploy/deploy.sh ubuntu@<vm-ip>    # exits 0 only once https://<DOMAIN>/health answers
 ```
 
-`deploy.sh` tags the running image as `previous`, pulls `main`, runs `docker compose up -d --build`, and waits
-up to a minute for `/health`. If the check fails, it prints the API's last log lines and starts the previous
-image again.
+What it does, and what each failure does:
 
-`/health` returns 503 with `"falkordb": "unreachable"` when FalkorDB Cloud cannot be reached, so a failed deploy
-can also mean the database is down: check `docker compose -f deploy/docker-compose.yml logs api`.
+| Step | Where | If it fails |
+| --- | --- | --- |
+| Remember the running commit and tag its image `previous` | VM | |
+| Reset the clone to `origin/main` | VM | Stops; nothing changed |
+| `docker compose up -d --build` | VM | Prints the API's last log lines, rolls back |
+| Wait up to a minute for the API's own `/health` | VM | Prints the logs, rolls back |
+| Wait up to two minutes for `https://<DOMAIN>/health`, through DNS, Caddy and its certificate | Your machine | Rolls back, then checks the public URL again |
+
+A rollback resets the clone to the previous commit, starts the previous image, and reports `ROLLED_BACK` only
+once that answers `/health`; otherwise it reports `ROLLBACK_FAILED`. A first deploy has nothing to roll back to
+(`ROLLBACK_IMPOSSIBLE`). `DOMAIN` is read from the VM's `.env`; `THESEUS_DOMAIN` overrides it.
+
+The API will not start without FalkorDB: startup connects and fails if it cannot, whether it is launched by
+`theseus serve` or by uvicorn in the image. `/health` returns 503 with `"falkordb": "unreachable"` if FalkorDB
+Cloud stops answering later. So a failed deploy can also mean the database is down: check
+`docker compose -f deploy/docker-compose.yml logs api`.
 
 ## Rotating a secret
 
