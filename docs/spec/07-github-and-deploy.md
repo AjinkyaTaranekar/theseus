@@ -165,6 +165,8 @@ Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username 
 
 ## Docker Compose (`deploy/docker-compose.yml`, task F3)
 
+For a host with Docker and public ports 80 and 443. guest-box, where we run today, has neither: see "The VM".
+
 | Service | Image | Notes |
 | --- | --- | --- |
 | `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`, including the FalkorDB Cloud settings |
@@ -192,10 +194,15 @@ Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username 
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
 | `THESEUS_WORLD_ROOT` | `demo-infra` | Folder read for analysis; the only folder the App may write to |
-| `DOMAIN` | | Caddy's public hostname |
+| `DOMAIN` | | The public hostname: the Funnel name on guest-box (`guest-box.tail27b7c5.ts.net`), or Caddy's under Compose |
 
 ## The VM
 
-Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) runs the API and Caddy; FalkorDB is on FalkorDB Cloud. Only port
-443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
+**guest-box**, a container (Ubuntu 24.04, arm64, 4 cores, 22 GB) on an Oracle ARM host, runs the API; FalkorDB
+is on FalkorDB Cloud. It has no Docker, no systemd and no public port, and is reached over our tailnet
+(`ssh dev@100.104.51.40`). **Tailscale Funnel** publishes the API at `https://guest-box.tail27b7c5.ts.net`, with
+Tailscale's certificate: the only public way in, which GitHub's webhooks and the Action's `THESEUS_URL` use. The
+API runs from a venv on `127.0.0.1:8000` under `deploy/run.sh`, which restarts it when it exits;
+`deploy/deploy-funnel.sh` deploys a commit and rolls back if the public `/health` never answers. Secrets live in
+`.env` on the host, readable by `dev` only. `deploy/README.md` has the setup.
 Rate-limit `POST /try/*` to 10 requests a minute per IP.

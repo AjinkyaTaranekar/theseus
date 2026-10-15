@@ -1,60 +1,54 @@
 # Deploying Theseus
 
-The API runs on an Oracle Always Free VM behind Caddy, which serves HTTPS on the domain in `.env`. FalkorDB is
-on FalkorDB Cloud, so the VM runs only two containers: `api` and `caddy`.
+The API runs on **guest-box**, a container on an Oracle ARM host, reachable only through our tailnet. Tailscale
+Funnel publishes it at **https://guest-box.tail27b7c5.ts.net**, with Tailscale's certificate, so there is no
+domain to buy, no Caddy and no open port. FalkorDB is on FalkorDB Cloud. guest-box has no Docker and no
+systemd, so the API runs from a venv under `deploy/run.sh`, which restarts it if it exits.
 
-## Status
+A host with Docker and public ports 80 and 443 can run the Compose stack instead (`deploy/docker-compose.yml`
+with Caddy, deployed by `deploy.sh`); see the end of this file.
 
-The image, the compose file and `deploy.sh` are written, and CI builds the image on every PR. The VM steps
-below are parked until we have the VM. Fill these in as you go:
+## The host
 
 | Item | Value |
 | --- | --- |
-| VM shape (`uname -m`, `nproc`, `free -h`) | not checked yet |
-| Public IP | not set yet |
-| `DOMAIN` | not chosen yet |
-| SSH user | not known yet |
+| Host | `guest-box`: Ubuntu 24.04 in a container on an Oracle ARM host; 4 cores, 22 GB, 50 GB disk |
+| SSH | `ssh dev@100.104.51.40`, from a machine on the tailnet |
+| Public URL (`DOMAIN`) | `https://guest-box.tail27b7c5.ts.net`, through Tailscale Funnel |
+| Deploy clone | `~/theseus`, a read-only deploy key ("guest-box (read-only deploy)") |
+| Logs | `~/theseus-logs/api.log` |
 
-## One-time VM setup
+## One-time setup
 
-1. **Firewall.** In the VM's subnet security list, allow inbound TCP 80 and 443 (and 22 from your IP only).
-   Oracle's Ubuntu images also block ports in iptables, so open them there too:
-   `sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -m state --state NEW -j ACCEPT`, then
-   `sudo netfilter-persistent save`. Nothing else is exposed: the API listens only inside the compose network.
-2. **Docker.** Install Docker Engine and the compose plugin, and add the SSH user to the `docker` group.
-3. **The repo.** The repo is private, so add a read-only deploy key and `git clone` it to `~/theseus`. This
-   clone is deploy-only; `deploy.sh` resets it to `origin/main` every time.
-4. **Secrets.** Copy your `.env` to `~/theseus/.env` and run `chmod 600 ~/theseus/.env`. Set `DOMAIN`. Never
-   commit it; the image never contains it (`.dockerignore`).
-5. **DNS.** Point an A record for `DOMAIN` at the VM's public IP. Caddy gets the certificate on first start.
-6. **FalkorDB Cloud.** If the instance has an IP allowlist, add the VM's public IP.
+1. **Tailscale.** The host is in our tailnet; join it to reach SSH. In the admin console, turn on HTTPS
+   certificates and Funnel. On the host, let `dev` manage it once: `sudo tailscale set --operator=dev`.
+2. **The repo.** The repo is private, so the host has its own read-only deploy key. `git clone
+   git@github.com:<owner>/theseus.git ~/theseus`, then `python3 -m venv ~/theseus/.venv` and
+   `~/theseus/.venv/bin/pip install ~/theseus`.
+3. **Secrets.** Copy your `.env` to `~/theseus/.env` and run `chmod 600 ~/theseus/.env`. Set
+   `DOMAIN=guest-box.tail27b7c5.ts.net`. Never commit it.
+4. **Start and publish.** `bash ~/theseus/deploy/run.sh start`, then `tailscale funnel --bg 8000`. Funnel keeps
+   its setting across restarts; the runner does not survive the container restarting, so start it again then,
+   or add `su dev -c 'bash ~/theseus/deploy/run.sh start'` to the container's start script.
+5. **FalkorDB Cloud.** If the instance has an IP allowlist, add the host's public address (`curl ifconfig.me`).
 
 ## Deploy
 
-From your machine, after the PR is merged to `main`:
+From a machine on the tailnet, after the PR is merged to `main`:
 
 ```bash
-deploy/deploy.sh ubuntu@<vm-ip>    # exits 0 only once https://<DOMAIN>/health answers
+deploy/deploy-funnel.sh dev@100.104.51.40    # exits 0 only once https://<DOMAIN>/health answers
+THESEUS_REF=f7-action-app deploy/deploy-funnel.sh dev@100.104.51.40    # try a branch before it merges
 ```
 
-What it does, and what each failure does:
+It records the running commit, resets the clone to `origin/<THESEUS_REF>` (default `main`), installs it into the
+venv, restarts the runner, and waits for the API's own `/health`, then for the public one. If either never
+answers, it returns to the previous commit and says whether that recovered (`ROLLED_BACK`) or not
+(`ROLLBACK_FAILED`).
 
-| Step | Where | If it fails |
-| --- | --- | --- |
-| Remember the running commit and tag its image `previous` | VM | |
-| Reset the clone to `origin/main` | VM | Stops; nothing changed |
-| `docker compose up -d --build` | VM | Prints the API's last log lines, rolls back |
-| Wait up to a minute for the API's own `/health` | VM | Prints the logs, rolls back |
-| Wait up to two minutes for `https://<DOMAIN>/health`, through DNS, Caddy and its certificate | Your machine | Rolls back, then checks the public URL again |
-
-A rollback resets the clone to the previous commit, starts the previous image, and reports `ROLLED_BACK` only
-once that answers `/health`; otherwise it reports `ROLLBACK_FAILED`. A first deploy has nothing to roll back to
-(`ROLLBACK_IMPOSSIBLE`). `DOMAIN` is read from the VM's `.env`; `THESEUS_DOMAIN` overrides it.
-
-The API will not start without FalkorDB: startup connects and fails if it cannot, whether it is launched by
-`theseus serve` or by uvicorn in the image. `/health` returns 503 with `"falkordb": "unreachable"` if FalkorDB
-Cloud stops answering later. So a failed deploy can also mean the database is down: check
-`docker compose -f deploy/docker-compose.yml logs api`.
+The API will not start without FalkorDB: startup connects and fails if it cannot. `/health` returns 503 with
+`"falkordb": "unreachable"` if FalkorDB Cloud stops answering later. So a failed deploy can also mean the
+database is down: read `~/theseus-logs/api.log`.
 
 ## The GitHub App
 
@@ -70,13 +64,15 @@ The App posts the comment and the `Theseus` check, and re-runs a review on `/the
    `theseus.private-key.pem` and `github-app.env` there, readable only by you, and prints no secret.
 3. **Install it on this repo only.** On the App's page: **Install App**, your account, **Only select
    repositories**, `theseus`.
-4. **Give the VM the key and the settings.**
-   - Copy the key to `~/theseus/secrets/theseus.private-key.pem` on the VM. The container runs as user
-     10001, so run `sudo chown 10001 ~/theseus/secrets/theseus.private-key.pem` and
-     `sudo chmod 400 ~/theseus/secrets/theseus.private-key.pem`.
-   - Add the three lines of `github-app.env` to `~/theseus/.env`, plus `THESEUS_REPOS=<owner>/theseus` and
+4. **Give the host the key and the settings.**
+   - Copy the key to `~/theseus/secrets/theseus.private-key.pem` on the host and `chmod 400` it. (With
+     Compose, the container runs as user 10001, so also `sudo chown 10001` it there.)
+   - Add the three lines of `github-app.env` to `~/theseus/.env`, with `GITHUB_APP_PRIVATE_KEY_PATH` set to the
+     key's full path on guest-box (`/home/dev/theseus/secrets/theseus.private-key.pem`; with Compose,
+     `/app/secrets/theseus.private-key.pem`), plus `THESEUS_REPOS=<owner>/theseus` and
      `THESEUS_TOKEN=<a long random string>` (`openssl rand -hex 32`).
-   - Restart: `docker compose -f deploy/docker-compose.yml up -d`.
+   - Restart: `bash ~/theseus/deploy/run.sh restart` (with Compose, `docker compose -f
+     deploy/docker-compose.yml up -d`).
 5. **Tell the Action where to send reviews.** In the repo: `gh variable set THESEUS_URL --body https://<DOMAIN>`
    and `gh secret set THESEUS_TOKEN` (paste the same token).
 6. **Try it.** Open a PR from `demo/trial-1` that edits a comment in `demo-infra/terraform/people.tf`, with
@@ -87,6 +83,17 @@ The App posts the comment and the `Theseus` check, and re-runs a review on `/the
 
 ## Rotating a secret
 
-Edit `~/theseus/.env` on the VM, then `docker compose -f deploy/docker-compose.yml up -d`. Compose recreates
-the containers with the new values; no rebuild is needed. For a key that was exposed, revoke it at its source
-first (Crusoe, TypeSafe, FalkorDB Cloud, or the GitHub App), then update `.env`.
+Edit `~/theseus/.env` on the host, then `bash ~/theseus/deploy/run.sh restart`. For a key that was exposed,
+revoke it at its source first (Crusoe, TypeSafe, FalkorDB Cloud, or the GitHub App), then update `.env`.
+
+## On a host with Docker and public ports instead
+
+`deploy/docker-compose.yml` runs the API and Caddy, which serves HTTPS for the `DOMAIN` in `.env`.
+
+1. **Firewall.** Allow inbound TCP 80 and 443 (and 22 from your IP only). Oracle's Ubuntu images also block
+   ports in iptables: `sudo iptables -I INPUT 6 -p tcp -m multiport --dports 80,443 -m state --state NEW -j
+   ACCEPT`, then `sudo netfilter-persistent save`.
+2. **Docker.** Install Docker Engine and the compose plugin, and add the SSH user to the `docker` group.
+3. **The repo, secrets and FalkorDB** as above; point an A record for `DOMAIN` at the public IP.
+4. **Deploy** with `deploy/deploy.sh user@host`: it rebuilds with `docker compose up -d --build`, waits for
+   `/health` locally and then on `https://<DOMAIN>`, and rolls back to the previous image if either fails.
