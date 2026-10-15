@@ -1,5 +1,6 @@
 # The Theseus API. Built from the repo root: docker build -f deploy/Dockerfile .
 # Secrets never enter the image: .dockerignore excludes .env, and compose passes it at run time.
+# Startup connects to FalkorDB and fails without it (theseus/api/app.py), so the container never serves alone.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

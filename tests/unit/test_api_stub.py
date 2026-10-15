@@ -8,34 +8,55 @@ import pytest
 from fastapi.testclient import TestClient
 
 from theseus import __version__
+from theseus.api import app as app_module
 from theseus.api.app import create_app, falkordb_version
 from theseus.api.stub import result_from_expected
 from theseus.contracts.result import AnalysisResult, compare, project
+from theseus.errors import GraphError
 
 SAMPLE = Path("tests/data/stub_expected.json")
 ROUTES = {"pr": "/analyze", "finding": "/finding", "scan": "/scan"}
 FIXTURES = sorted(Path("fixtures").glob("*/expected.json"))
 
 
-def client_with(version: str | None) -> TestClient:
-    app = create_app()
+def unreachable() -> object:
+    raise GraphError("cannot reach FalkorDB at example:1")
+
+
+def started(version: str | None) -> TestClient:
+    """A client whose app has started (startup ran) with a stand-in FalkorDB of this version."""
+    app = create_app(connect=lambda: object())
     app.dependency_overrides[falkordb_version] = lambda: version
     return TestClient(app)
 
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:
-    yield client_with("4.22.0")
+    with started("4.22.0") as c:
+        yield c
+
+
+def test_the_app_refuses_to_start_without_falkordb() -> None:
+    """Rule 3 holds however the app is launched: `theseus serve`, or uvicorn straight from the image."""
+    with pytest.raises(GraphError, match="cannot reach FalkorDB"):
+        with TestClient(create_app(connect=unreachable)):
+            pass
+
+
+def test_importing_the_app_connects_to_nothing() -> None:
+    assert not hasattr(app_module.app.state, "falkordb")
 
 
 def test_health_reports_falkordb_and_the_version() -> None:
-    res = client_with("4.22.0").get("/health")
+    with started("4.22.0") as c:
+        res = c.get("/health")
     assert res.status_code == 200
     assert res.json() == {"status": "ok", "falkordb": "4.22.0", "version": __version__}
 
 
-def test_health_is_degraded_without_falkordb() -> None:
-    res = client_with(None).get("/health")
+def test_health_is_degraded_when_falkordb_stops_answering() -> None:
+    with started(None) as c:
+        res = c.get("/health")
     assert res.status_code == 503
     assert res.json() == {"status": "degraded", "falkordb": "unreachable", "version": __version__}
 

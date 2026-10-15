@@ -1,14 +1,17 @@
 """The FastAPI app: health and the analysis routes. A composition root (docs/spec/08-core-and-adapters.md).
 
-`uvicorn theseus.api.app:app` serves it; importing it never connects to anything.
+`uvicorn theseus.api.app:app` serves it. Importing it connects to nothing; starting it connects to FalkorDB
+and fails if it cannot, so the API never runs without FalkorDB however it is launched (rule 3).
 """
 
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
+from typing import Any
 
-from falkordb import FalkorDB
-from fastapi import Depends, FastAPI, Response
+from fastapi import Depends, FastAPI, Request, Response
 
 from theseus import __version__
 from theseus.api import routes
@@ -19,34 +22,36 @@ from theseus.graph.client import get_client, server_version
 log = logging.getLogger(__name__)
 
 
-class _FalkorProbe:
-    """Keeps one client between health checks, and drops it when the server stops answering."""
+def connect_falkordb() -> Any:
+    """A FalkorDB client from the environment and .env. Raises GraphError when it cannot connect."""
+    return get_client(get_settings())
 
-    def __init__(self) -> None:
-        self._db: FalkorDB | None = None
 
-    def version(self) -> str | None:
+def falkordb_version(request: Request) -> str | None:
+    """The version of the FalkorDB the app connected to at startup, or None if it stopped answering."""
+    db = getattr(request.app.state, "falkordb", None)
+    if db is None:
+        return None
+    try:
+        return server_version(db)
+    except GraphError as e:
+        log.warning("FalkorDB stopped answering: %s", e)
+        return None
+
+
+def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
+    """A new app with every route. `connect` runs at startup; tests pass a stand-in."""
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
-            if self._db is None:
-                self._db = get_client(get_settings())
-            return server_version(self._db)
+            app.state.falkordb = connect()
         except GraphError as e:
-            log.warning("FalkorDB unavailable: %s", e)
-            self._db = None
-            return None
+            log.error("not starting: %s", e)
+            raise
+        yield
 
-
-_probe = _FalkorProbe()
-
-
-def falkordb_version() -> str | None:
-    """The FalkorDB server version, or None when it cannot be reached. Tests override this dependency."""
-    return _probe.version()
-
-
-def create_app() -> FastAPI:
-    """A new app with every route."""
-    app = FastAPI(title="Theseus", version=__version__)
+    app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)
     app.include_router(routes.router)
 
     @app.get("/health")
