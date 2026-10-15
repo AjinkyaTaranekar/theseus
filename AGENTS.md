@@ -210,6 +210,7 @@ Co-Authored-By: <the agent that wrote it>
 | Who does what, in what order | `docs/tasks/README.md`, `docs/tasks/dependencies.md` |
 | The plan: beats, gates, fallbacks, video script, judge questions | `docs/plan-of-action.md` |
 | What is core and what is an adapter; adding a cloud, IaC format, CI system or language | `docs/spec/08-core-and-adapters.md` |
+| Adding an AWS service (a catalog entry, not code), or a whole connector | `theseus/adapters/aws/README.md`, `theseus/adapters/README.md` |
 | Why we build it: problem, competitors, design choices, roadmap | `docs/project-overview.md` |
 
 When code and spec disagree, the spec wins until both humans change it.

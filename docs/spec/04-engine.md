@@ -19,12 +19,12 @@ A **world** is one state of the infrastructure. `theseus/importer/world.py: load
 | Service code | `services/<folder>/*.py` under the world root at the same commit |
 | Config | `theseus.yaml` at the world root |
 
-**Modeled resource types.** `aws_iam_user`, `aws_iam_group`, `aws_iam_user_group_membership`,
-`aws_iam_user_policy`, `aws_iam_group_policy`, `aws_iam_role`, `aws_iam_role_policy`, `aws_iam_policy`,
-`aws_iam_user_policy_attachment`, `aws_iam_group_policy_attachment`, `aws_iam_role_policy_attachment`,
-`aws_iam_openid_connect_provider`, `aws_s3_bucket`, `aws_s3_bucket_policy`, `aws_secretsmanager_secret`,
-`aws_db_instance`, `aws_dynamodb_table`, `aws_lambda_function`, `aws_ecs_task_definition`, `aws_ecs_service`.
-Every other type is skipped and counted by type in the result's `coverage`; it never adds a node or an edge.
+**Modeled resource types.** The IAM types (`aws_iam_user`, `aws_iam_group`, `aws_iam_user_group_membership`,
+`aws_iam_user_policy`, `aws_iam_group_policy`, `aws_iam_role`, `aws_iam_role_policy`, `aws_iam_policy`, the
+three `*_policy_attachment` types, `aws_iam_openid_connect_provider`) and `aws_s3_bucket_policy`, plus every
+data and workload type in `adapters/aws/catalog.yaml` and the types its workloads find roles through
+(`aws_ecs_task_definition`, `aws_iam_instance_profile`). `adapters/aws/README.md` lists them. Every other
+type is skipped and counted by type in the result's `coverage`; it never adds a node or an edge.
 
 ## 2. Reading the plan (`adapters/terraform/plan.py`)
 
@@ -61,10 +61,7 @@ When a value is missing or unknown, the importer builds the canonical ARN:
 | Kind | ARN |
 | --- | --- |
 | user, group, role | `arn:aws:iam::<account>:<kind>/<name>` |
-| s3 location | `arn:aws:s3:::<bucket>/<prefix>x`, a representative object key under the prefix |
-| secret | `arn:aws:secretsmanager:<region>:<account>:secret:<name>-AbCdEf` (AWS adds a 6-character suffix) |
-| db | `arn:aws:rds:<region>:<account>:db:<identifier>` |
-| dynamodb table | `arn:aws:dynamodb:<region>:<account>:table/<name>` |
+| data resources | The `arn` template of their catalog entry, such as `arn:aws:s3:::<bucket>/<prefix>x` (a representative key under the prefix) or `...:secret:<name>-AbCdEf` (AWS adds a 6-character suffix). The catalog test checks each against AWS's published ARN formats |
 | customer-managed policy | `arn:aws:iam::<account>:policy/<name>` |
 
 ## 5. The IAM subset (`adapters/aws/iam.py`)
@@ -82,7 +79,8 @@ are skipped and counted in `coverage`.
 **A principal's statements** are its inline policies (`aws_iam_user_policy`, `aws_iam_group_policy`,
 `aws_iam_role_policy`), plus every attached customer-managed policy (a `*_policy_attachment` whose `policy_arn`
 names an `aws_iam_policy` in the plan), plus AWS-managed policies listed in `adapters/aws/managed.py`. That table
-holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, neither with a modeled action. Any
+holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, which read no data but write logs
+(`logs:PutLogEvents` on `*`), so every role they are attached to can write every log group. Any
 other AWS-managed ARN, or a customer ARN not in the plan, counts as an unknown policy (section 2). A group's
 statements are evaluated on the group; its members reach them through `MEMBER_OF`.
 
@@ -99,18 +97,15 @@ It also returns the statements that decided it; those become the edge's evidence
 add access, so it never weakens a definite allow; only a `Deny` can. An unsupported statement "could match"
 when the parts it does state match (a `NotAction` statement could match any action).
 
-**Modeled actions and the access they grant:**
+**Modeled actions and the access they grant** are data: the `read` and `write` lists of each entry in
+`adapters/aws/catalog.yaml` (S3, Secrets Manager, SSM Parameter Store, DynamoDB, RDS, OpenSearch, CloudWatch
+Logs, SQS, SNS, Kinesis), checked against AWS's service reference by `tests/contract/test_aws_catalog.py`.
+`adapters/aws/README.md` has the table and the reasons behind each choice. `sts:AssumeRole` grants assume
+on roles. When AWS may check more than one ARN form for an action (a log group as `log-group:NAME` or
+`log-group:NAME:*`) and a policy matches one but not the other, the answer is unknown.
 
-| Action | Access | Applies to |
-| --- | --- | --- |
-| `s3:GetObject` | read | s3 locations |
-| `s3:PutObject`, `s3:DeleteObject` | write | s3 locations |
-| `secretsmanager:GetSecretValue` | read | secrets |
-| `dynamodb:GetItem`, `dynamodb:BatchGetItem`, `dynamodb:Query`, `dynamodb:Scan` | read | DynamoDB tables |
-| `dynamodb:PutItem`, `dynamodb:UpdateItem`, `dynamodb:DeleteItem`, `dynamodb:BatchWriteItem` | write | DynamoDB tables |
-| `sts:AssumeRole` | assume | roles |
-
-`s3:ListBucket` is not modeled: listing keys is not reading data. Control-plane actions (`iam:*`,
+`s3:ListBucket` is not modeled: listing keys is not reading data, and neither are metadata reads such as
+`s3:GetObjectAcl`, though AWS files them as reads. Control-plane actions (`iam:*`,
 `dynamodb:CreateTable`, `s3:PutBucket*` and the like) are not modeled either: they change infrastructure, not
 data, and privilege escalation through IAM writes is out of scope. A table node's ARN is the table ARN, so a
 statement on `table/<name>/index/*` alone does not reach it.
