@@ -24,7 +24,7 @@ flowchart LR
   n2 -->|CAN_ASSUME| n3
   n3 -->|CAN| n4
   n4 -->|UNLOCKS| n5
-  classDef sensitive fill:#fde2e1,stroke:#c0392b
+  classDef sensitive fill:#fde2e1,stroke:#c0392b,color:#1f2328
   class n5 sensitive
 ```
 
@@ -42,7 +42,7 @@ flowchart LR
   n1 -->|MEMBER_OF| n2
   n2 -->|CAN_ASSUME| n3
   n3 -->|CAN| n4
-  classDef sensitive fill:#fde2e1,stroke:#c0392b
+  classDef sensitive fill:#fde2e1,stroke:#c0392b,color:#1f2328
   class n4 sensitive
 ```
 
@@ -59,7 +59,7 @@ flowchart LR
   n1 -->|MEMBER_OF| n2
   n2 -->|CAN_ASSUME| n3
   n3 -->|CAN| n4
-  classDef sensitive fill:#fde2e1,stroke:#c0392b
+  classDef sensitive fill:#fde2e1,stroke:#c0392b,color:#1f2328
   class n4 sensitive
 ```
 

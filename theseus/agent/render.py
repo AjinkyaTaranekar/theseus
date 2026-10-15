@@ -115,7 +115,10 @@ def mermaid(path: PathRecord) -> Md:
     lines += [f'  {nid}["{_label(node)}"]' for node, nid in ids.items()]
     lines += [f"  {ids[s.src]} -->|{s.type}| {ids[s.dst]}" for s in path.steps]
     if path.sensitivity in SENSITIVE_RANK:
-        lines += ["  classDef sensitive fill:#fde2e1,stroke:#c0392b", f"  class {ids[path.target]} sensitive"]
+        lines += [
+            "  classDef sensitive fill:#fde2e1,stroke:#c0392b,color:#1f2328",
+            f"  class {ids[path.target]} sensitive",
+        ]
     lines.append("```")
     return Md("\n".join(lines))
 
