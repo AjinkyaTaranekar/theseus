@@ -103,6 +103,7 @@ def result_from_expected(expected: dict[str, Any]) -> AnalysisResult:
             purpose=raw.get("purpose", STUB),
             grants=[Grant(principal=p, access=a, resource=r) for p, a, r in raw.get("grants", [])],
             suspicious=raw.get("suspicious", False),
+            stated=raw.get("stated", True),
         )
 
     min_cut = None

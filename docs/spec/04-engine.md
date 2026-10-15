@@ -171,7 +171,9 @@ produces no edge; record it in `unknowns` as `"code: <file>:<line> <call> target
 
 - Jev classifies every `Resource` node as `public`, `internal`, `confidential` or `regulated` (prompt in
   `06-agent.md`). `sensitive_overrides` in `theseus.yaml` always wins. `sensitive` is true for
-  `confidential` and `regulated`. With no label, `sensitivity_source` is `unclassified` and `sensitive` is false.
+  `confidential` and `regulated`. `sensitivity_source` is `human` for an override, `jev` for Jev's class, and
+  `fallback` when the fast model answered because Jev could not. With no label it is `unclassified` and
+  `sensitive` is false.
 - `env` is `staging` for nodes listed under `environments.staging` in `theseus.yaml`, otherwise `prod`.
 
 ## 9. Paths
@@ -318,8 +320,20 @@ uses beyond intent. The headline:
 - With no IAM change but a use beyond intent: `Your PR says <purpose>. Your code now reads <resource>.`, naming
   the most sensitive use, and a database before the secret that unlocks it.
 - With nothing beyond intent: `This change matches its stated purpose.`
+- When the PR states no purpose (`stated: false`): `This PR doesn't say what it's for. Your change grants
+  <target>.`, `... Your code now reads <resource>.`, or `This PR doesn't say what it's for. It opens no
+  dangerous path.`
 
-Pick the most sensitive target as `regulated` before `confidential`, then the shortest path, then by ID.
+**What the change does** opens the comment's "What happened", from the plan and never from a model: the resources the
+change creates, updates or deletes (`AnalysisResult.changes`, from the base and head worlds), then the
+dangerous paths it opens and closes. For example: `Adds aws_iam_user_group_membership.priya_support. Opens 3
+dangerous paths, closes 0.` It is the same whether or not the PR has a description.
+
+Pick the most sensitive target as `regulated` before `confidential`, then a target reached through what
+unlocks it (a database before its secret), then the shortest path, then by ID.
+
+**Plain names.** The headline names nodes as the comment does, with `engine/words.py`: the node's own name
+and what it is ("customer-db, a database"), never a vendor's resource type.
 
 ## 19. Writing fixes back to Terraform (`adapters/terraform/render.py`, task E9)
 

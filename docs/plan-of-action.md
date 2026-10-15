@@ -297,7 +297,7 @@ Small tasks that edit the same files became one agent session each, as long as t
 | Fixture format | `fixtures/<scenario>/` | `scenario.yaml`, `base/` and `head/` trees, both plans, `pr.md` or `advisory.json`, and `expected.json` (only compared fields, written by us) | A, B |
 | MCP tools | `mcp/tools.py` | Ten tools in one registry, used by the MCP server and the fix agent | B, A |
 | API | `api/routes.py` | `/health`, `/analyze`, `/finding`, `/scan`, `/apply`, `/webhooks/github`, `/graphs`, `/try` | B, A |
-| PR comment | `agent/templates/comment.md` | Nine sections, filled only from `AnalysisResult` fields | B, A |
+| PR comment | `agent/templates/comment.md` | Ten sections, filled only from `AnalysisResult` fields | B, A |
 
 ```
 theseus/            repo root; every file and its owner task is in docs/spec/05-contracts.md
