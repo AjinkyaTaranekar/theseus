@@ -186,7 +186,8 @@ Register it once the API answers on `https://<DOMAIN>`:
 5. **Tell the Action where to send reviews.** In the repo: `gh variable set THESEUS_URL --body https://<DOMAIN>`
    and `gh secret set THESEUS_TOKEN` (paste the same token).
 6. **Try it.** Open a PR from `demo/trial-1` that edits a comment in `demo-infra/terraform/people.tf`, with
-   label `demo`. Theseus's comment and the `Theseus` check should appear. Comment `/theseus review` and click
+   label `demo`. Theseus's comment and the `Theseus` check should appear. (`Theseus publish`, which
+   sends the review, runs only from `main`, so try this after the workflows are merged.) Comment `/theseus review` and click
    **Re-run** on the check: each starts a new run of the Theseus workflow.
 7. **Block merges on it.** Settings, **Rules**, **Rulesets**, **New branch ruleset**: target `main`, turn on
    **Require status checks to pass**, add `Theseus`, and set its source to the App. Both of you agree first.

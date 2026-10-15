@@ -5,27 +5,45 @@ repo that change only `demo-infra/`. There is no GitHub org and no second repo.
 
 ## The Theseus Action (`.github/workflows/theseus.yml`, task F7)
 
-Runs on `pull_request` (`opened`, `synchronize`, `reopened`, `edited`) with `paths: ["demo-infra/**"]`, so product
-PRs never trigger it. `edited` is a changed title or description, which intent depends on. One run per PR at a
-time: `concurrency: theseus-<PR number>` with `cancel-in-progress`. Permissions: `contents: read`,
-`pull-requests: read`.
+Two workflows, because planning runs the PR's own Terraform: a `data "external"` block runs a program during the
+plan, and anything it plants (a `BASH_ENV` hook through `GITHUB_ENV`, a file) reaches every later step of that
+job. So the run that plans holds no secret at all, and a separate run that never touches PR code sends the
+result.
 
-1. Check out the head commit, and the base commit into `./base`.
+**`Theseus` (untrusted).** Runs on `pull_request` (`opened`, `synchronize`, `reopened`, `edited`) with
+`paths: ["demo-infra/**"]`, so product PRs never trigger it. `edited` is a changed title or description, which
+intent depends on. One run per PR at a time: `concurrency: theseus-<PR number>` with `cancel-in-progress`.
+Permissions: `contents: read`. No secrets, no `THESEUS_URL`.
+
+1. Check out the head commit, and the base commit into `./base`, without persisting credentials.
 2. Install Terraform 1.16.6, the version P1 checked, with `hashicorp/setup-terraform`.
 3. For base and head, in `demo-infra/terraform`: `terraform init -backend=false`, `terraform plan -out tfplan`,
-   `terraform show -json tfplan > <side>.plan.json`. The provider block's mock credentials and skip flags mean
-   no AWS account is needed (task P1 confirms).
+   `terraform show -json tfplan > <side>.plan.json`, through `tools/plan.sh` from the base commit, never the PR.
+   The provider block's mock credentials and skip flags mean no AWS account is needed (task P1 confirms).
 4. Run Checkov 3.3.29 on `demo-infra/terraform/` and keep its JSON summary.
-5. `POST $THESEUS_URL/analyze` with the repo, PR number, both SHAs, title, body, both plans and the Checkov
-   summary, and the header `X-Theseus-Token: ${{ secrets.THESEUS_TOKEN }}`.
+5. Write `review.json` (`pr_number`, both plans, the Checkov summary) and upload it as the artifact
+   `theseus-review`.
 
-**Never put `${{ github.event.pull_request.title }}` or `.body` inside a `run:` script.** Pass them through
-`env:` and read them as variables. Inlining them lets a PR title inject shell commands. No `run:` step uses
-`${{ }}` at all, and a unit test checks it.
+**`Theseus publish` (trusted).** Runs on `workflow_run` when `Theseus` completes, and only when that run came
+from a `pull_request` and succeeded. GitHub always runs main's copy of a `workflow_run` workflow, so a PR cannot
+change it. It holds `THESEUS_TOKEN`, never checks out or runs PR code, and treats the artifact as data: it
+refuses a missing file, a symlink, more than 50 MB or the wrong shape, then builds the request with `jq`. It
+sends `POST $THESEUS_URL/analyze` with the repo, the PR number from the artifact, **the head commit from its own
+event** (`workflow_run.head_sha`), both plans and the Checkov summary, and the header `X-Theseus-Token`.
 
-**Planning runs the PR's own Terraform,** and a `data "external"` block would run a program during the plan. So
-`tools/plan.sh` comes from the base commit, never the PR, and only the last step, which sends the request, can
-read `THESEUS_TOKEN`.
+**Fork PRs** get a review the same way: GitHub withholds secrets from the fork's own run, but not from
+`Theseus publish`. (GitHub may ask a maintainer to approve the first run of a new contributor's fork.)
+
+**What the backend trusts.** The commit comes from the trusted event; the PR number comes from the untrusted
+artifact, so the backend reads the PR from the API and writes the comment only when that PR's head is the
+reviewed commit. The check always goes on the reviewed commit, so a wrong PR number can only check that
+commit, never another PR. The PR's title and body are read from the API, never from the request.
+
+**No `run:` step in either workflow uses `${{ }}`;** values reach the shell through `env:`. Unit tests check
+this, that `Theseus` mentions no secret, and that `Theseus publish` never checks out code.
+
+**Before it is on `main`,** `Theseus publish` does not run, because `workflow_run` workflows run only from the
+default branch.
 
 The backend, not the Action, posts the comment and the check, using the GitHub App. Commits made with the
 Action's `GITHUB_TOKEN` would not trigger a new run; commits made by the App do.

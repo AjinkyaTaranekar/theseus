@@ -1,9 +1,7 @@
-# The Theseus Action (docs/spec/07-github-and-deploy.md, "The Theseus Action"). It plans the world root at both
-# commits, runs Checkov, and sends everything to the backend, which posts the comment and the check run with the
-# GitHub App. PR text reaches the shell only through env:, never as ${{ }} inside a run: script.
-#
-# Needs the repo variable THESEUS_URL and the secret THESEUS_TOKEN. Only the last step holds the token:
-# Terraform plans the PR's own files, and a `data "external"` block in them would run during the plan.
+# The Theseus Action (docs/spec/07-github-and-deploy.md, "The Theseus Action"), part 1 of 2: plan the world root
+# at both commits and run Checkov. It runs the PR's own Terraform (a `data "external"` block runs during a plan),
+# so it is untrusted: it holds no secrets and can reach nothing but this artifact. `Theseus publish` reads the
+# artifact when this run finishes and sends it to the backend, which posts the comment and the check run.
 name: Theseus
 
 on:
@@ -17,7 +15,6 @@ concurrency:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:
   review:
@@ -80,35 +77,23 @@ jobs:
           jq '(if type == "array" then .[0] else . end) | .summary // null' checkov.json > checkov-summary.json \
             || echo "null" > checkov-summary.json
 
-      - name: Send the review to Theseus
+      # Data only. `Theseus publish` takes the commit from its own event, not from here, and the backend checks
+      # the PR number against that commit, so nothing here can point a review at another PR.
+      - name: Save the review inputs
         env:
-          THESEUS_URL: ${{ vars.THESEUS_URL }}
-          THESEUS_TOKEN: ${{ secrets.THESEUS_TOKEN }}
-          REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           set -euo pipefail
-          if [ -z "$THESEUS_URL" ] || [ -z "$THESEUS_TOKEN" ]; then
-            echo "::error::Set the repo variable THESEUS_URL and the secret THESEUS_TOKEN"
-            exit 1
-          fi
-          jq -n \
-            --arg repo "$REPO" --argjson pr_number "$PR_NUMBER" \
-            --arg base_sha "$BASE_SHA" --arg head_sha "$HEAD_SHA" \
-            --arg pr_title "$PR_TITLE" --arg pr_body "$PR_BODY" \
+          jq -n --argjson pr_number "$PR_NUMBER" \
             --slurpfile base base.plan.json --slurpfile head head.plan.json \
             --slurpfile checkov checkov-summary.json \
-            '{repo: $repo, pr_number: $pr_number, base_sha: $base_sha, head_sha: $head_sha,
-              pr_title: $pr_title, pr_body: $pr_body, base_plan: $base[0], head_plan: $head[0],
-              checkov: $checkov[0]}' > request.json
-          curl --fail-with-body --silent --show-error --max-time 300 \
-            --retry 2 --retry-delay 5 --retry-all-errors \
-            -X POST "${THESEUS_URL%/}/analyze" \
-            -H "Content-Type: application/json" \
-            -H "X-Theseus-Token: $THESEUS_TOKEN" \
-            --data-binary @request.json -o response.json
-          jq -r '.headline // "Theseus reviewed this commit."' response.json
+            '{pr_number: $pr_number, base_plan: $base[0], head_plan: $head[0], checkov: $checkov[0]}' \
+            > review.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: theseus-review
+          path: review.json
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
