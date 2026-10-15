@@ -103,26 +103,32 @@ theseus/                              (repo root)
 
 ## Shared models (`contracts/result.py`)
 
-All are Pydantic v2 models. Lists are sorted before a result is returned.
+All are Pydantic v2 models that reject unknown fields. Lists are sorted before a result is returned. Closed
+sets are `Literal` types with the same values as the constants in `schema.py`, and a contract test keeps
+them equal: `Access` (`read`, `write`, `assume`), `EdgeKind`, `EdgeType` (the 13 types in `03-graph.md`;
+`FLOW` is internal and never in a row), `Category`, `Sensitivity`, `SensitivitySource`, `Env`, `Verdict`.
+An eid is stable within one build only, so anything compared across builds names an edge by
+(src, type, dst); eids appear only where the same run looks an edge up again (`CutEdge`, `UnusedGrant`,
+`Change`).
 
 | Model | Fields |
 | --- | --- |
 | `Evidence` | `address: str`, `part: str \| None` (the piece of the resource that decided it, such as an IAM statement Sid), `file: str`, `line: int \| None`, `note: str \| None` |
-| `NodeRow` | `id: str`, `labels: list[str]`, `props: dict` |
-| `EdgeRow` | `eid: str`, `type: str`, `src: str`, `dst: str`, `kind: str`, `grants: list[str]`, `evidence: list[Evidence]`, `props: dict` |
+| `NodeRow` | `id: str`, `labels: list[str]`, `name: str`, `env: Env` (default `prod`), `category: Category \| None`, `provider: str \| None`, `sensitivity: Sensitivity \| None`, `sensitive: bool`, `sensitivity_source: SensitivitySource \| None`, `props: dict`. The category, provider and sensitivity fields are set on Resource nodes only. `props` holds the per-kind properties in `03-graph.md` (core may read them) and properties marked for one adapter (core never reads them) |
+| `EdgeRow` | `eid: str`, `type: EdgeType`, `src: str`, `dst: str`, `kind: EdgeKind`, `grants: list[str]`, `evidence: list[Evidence]`, `props: dict` (the per-type properties in `03-graph.md`) |
 | `GraphRows` | `nodes: list[NodeRow]`, `edges: list[EdgeRow]`, `unknowns: list[str]` |
 | `Requirement` | `id: str`, `principal: str`, `access: Literal["read","write","assume"]`, `resource: str`, `source: Literal["config","intent"]` |
-| `Grant` | `principal: str`, `access: str`, `resource: str` |
+| `Grant` | `principal: str`, `access: Access`, `resource: str` |
 | `Intent` | `purpose: str`, `grants: list[Grant]`, `suspicious: bool` |
-| `PathStep` | `src: str` (serialized as `from`), `edge: str`, `dst: str` (serialized as `to`), `evidence: str` (an evidence ID) |
-| `PathRecord` | `id: str`, `actor: str`, `target: str`, `grants: list[str]`, `steps: list[PathStep]`, `unknown: bool`, `inferred: bool`, `sensitivity: str \| None` |
+| `PathStep` | `src: str` (serialized as `from`), `type: EdgeType`, `dst: str` (serialized as `to`), `evidence: str` (an evidence ID). No eid: a step means the same in every build |
+| `PathRecord` | `id: str`, `actor: str`, `target: str`, `grants: list[Access]`, `steps: list[PathStep]`, `unknown: bool`, `inferred: bool`, `sensitivity: Sensitivity \| None`; `route` (a property, not a field) is every node in order |
 | `RequirementStatus` | `id: str`, `status: Literal["satisfied","missing","unknown"]` |
-| `CutEdge` | `eid: str`, `src: str`, `type: str`, `dst: str`, `evidence: str` |
+| `CutEdge` | `eid: str`, `src: str`, `type: EdgeType`, `dst: str`, `evidence: str` |
 | `MinCut` | `sources: list[str]`, `sinks: list[str]`, `value: int`, `cuttable: bool`, `cut: list[CutEdge]` |
 | `PatchOp` | `provider: str`, `op: str`, `args: dict`. The cloud adapter owns the catalog and validates `args`; AWS's is `04-engine.md` section 13 |
-| `Candidate` | `id: str`, `source: Literal["rule","llm"]`, `title: str`, `ops: list[PatchOp]`, `verdict: Literal["pass","fail","unknown","invalid"]`, `reason: str`, `paths_left: list[str]`, `new_paths: list[str]`, `requirements_broken: list[str]`, `calls_broken: list[str]`, `unknown: list[str]`, `recommended: bool`, `needs_closer_look: bool`, `seconds: float` |
-| `UnusedGrant` | `workload: str`, `resource: str`, `access: str`, `eid: str`, `evidence: str` |
-| `BeyondIntent` | `workload: str`, `resource: str`, `access: str`, `file: str`, `line: int`, `unlocks: list[str]` |
+| `Candidate` | `id: str`, `source: Literal["rule","llm","human"]`, `proposed_by: str` (`theseus`, the model string, or a person's login), `title: str`, `ops: list[PatchOp]`, `verdict: Literal["pass","fail","unknown","invalid"]`, `reason: str`, `paths_left: list[str]`, `new_paths: list[str]`, `requirements_broken: list[str]`, `calls_broken: list[str]`, `unknown: list[str]`, `recommended: bool`, `needs_closer_look: bool`, `seconds: float` |
+| `UnusedGrant` | `workload: str`, `resource: str`, `access: Access`, `eid: str`, `evidence: str` |
+| `BeyondIntent` | `workload: str`, `resource: str`, `access: Access`, `file: str`, `line: int`, `unlocks: list[str]` |
 | `StagingToProd` | `actor: str`, `target: str`, `path_id: str` |
 | `ChokePoint` | `id: str`, `score: float` |
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
@@ -138,20 +144,49 @@ All are Pydantic v2 models. Lists are sorted before a result is returned.
 | --- | --- | --- | --- |
 | `load_world` | a world root (`demo-infra/`, a fixture side, or a fetched commit), its plan output, the adapters | `World` (root, IaC format, resources, unknown fields, skipped types, unknowns, IaC, CI and code files, config) | `importer/world.py` |
 | `build_rows` | `World`, sensitivity labels, the adapters | `GraphRows` | `importer/build.py` |
-| `load_graph`, `copy_graph`, `delete_graph`, `apply_delta` | store, graph name, rows or a `GraphDelta` | none | `graph/load.py` |
-| `analyze` | store, graph name, rows, requirements, actors | `Analysis` (paths per actor, dangerous paths, requirement statuses) | `engine/analyze.py` |
+| `load_graph`; `copy_graph`, `delete_graph` | store, `GraphState`; store, graph names | none | `graph/load.py` |
+| `delta`, `apply_delta` | old rows, new rows; store, graph name, `GraphDelta` | `GraphDelta`; none | `graph/load.py` (E5) |
+| `analyze` | store, `GraphState`, requirements, actors | `Analysis` (paths per actor, dangerous paths, requirement statuses) | `engine/analyze.py` |
 | `diff` | base `Analysis`, head `Analysis` | `PathDiff`: opened, closed, unchanged | `engine/analyze.py` |
-| `min_cut` | store, graph name, rows, `Analysis`, sources, requirements | `MinCut` | `engine/mincut.py` |
-| `simulate` | store, head graph, world and rows, a `CandidateDraft`, actors, requirements, the adapters | `Candidate` | `engine/simulate.py` |
-| `rule_candidates`, `rank` | rows, analysis, opened paths, cut; candidates and Jev's break scores | `Change`s by candidate ID; ranked `Candidate` list | `engine/candidates.py` |
-| `blast_radius`, `rotate_list`, `containment` | store, graph, rows, matched workflows | paths; secret IDs (category `secret`); `Change`s | `engine/finding.py` |
-| `staging_to_prod` | `Analysis`, rows | `StagingToProd` list | `engine/staging.py` (task FM4) |
-| `unused_grants`, `use_beyond_intent` | store, graph, rows (base and head for the second) | lists | `engine/usage.py` |
-| `choke_points` | store, graph | `ChokePoint` list | `graph/algos.py` |
+| `min_cut` | store, `GraphState`, `Analysis`, sources, requirements | `MinCut` | `engine/mincut.py` |
+| `simulate` | store, head `GraphState`, a `CandidateDraft`, actors, requirements, the adapters | `Candidate` | `engine/simulate.py` |
+| `rule_candidates`, `rank` | `GraphState`, analysis, opened paths, cut; candidates and Jev's break scores by ID | `RuleFix` list; ranked `Candidate` list | `engine/candidates.py` |
+| `blast_radius`, `rotate_list` | store, `GraphState`, matched workflows | paths; resource IDs of category `secret`, sorted | `engine/finding.py` |
+| `containment` | `GraphState`, `Analysis`, cut, requirements | `RuleFix` K, or none when no trust is cut | `engine/finding.py` |
+| `staging_to_prod` | `Analysis`, `GraphState` | `StagingToProd` list | `engine/staging.py` (task FM4) |
+| `unused_grants`; `use_beyond_intent` | store, `GraphState`; base and head `GraphState`, requirements | lists | `engine/usage.py` |
+| `choke_points` | store, `GraphState` | `ChokePoint` list | `graph/algos.py` |
 | `run_pr`, `run_finding`, `run_scan` | worlds, PR text or advisory, `Deps` (store, adapters, LLM, Jev, settings) | `AnalysisResult` | `engine/pipeline.py` |
 
 Applying ops and writing them back as text are adapter methods, not engine functions: `CloudAdapter.apply_ops`
 and `IacAdapter.render`, below.
+
+**The models these signatures use** (in `contracts/engine.py`):
+
+| Model | Fields |
+| --- | --- |
+| `GraphState` | `name` (the graph in the store), `world: World`, `rows: GraphRows`. One state, kept together so the three never come from different states |
+| `World` | `root`, `iac` (the IaC format), `resources: list[IacResource]`, `unknown_fields`, `skipped_types: dict[str, int]`, `unknowns`, `iac_files`, `ci_files`, `code_files` (relative path to text), `config` (`theseus.yaml`) |
+| `Analysis` | `actors`, `paths: dict[actor, list[PathRecord]]`, `dangerous: list[PathRecord]`, `requirements: list[RequirementStatus]` |
+| `PathDiff` | `opened`, `closed`, `unchanged`: lists of `PathRecord`, keyed by (actor, target) |
+| `GraphDelta` | `add_nodes`, `remove_nodes` (IDs), `add_edges`, `remove_edges` (as (src, type, dst)) |
+| `FlowRow`, `EdgeFlow`, `FlowResult` | One `FLOW` edge (`src`, `dst`, `eids`, `capacity`); its flow (`eids`, `flow`); max flow (`value`, `flows`) |
+| `RuleFix` | `id`, `title`, `changes: list[Change]`: a rule's fix before the cloud adapter turns it into ops |
+| `CandidateDraft` | `id`, `source: Literal["rule","llm","human"]`, `proposed_by`, `title`, `ops: list[PatchOp]`: a fix ready to simulate |
+| `WorkflowUse`, `GrantRow`, `CallRow` | Rows of Q_WORKFLOWS_USING, Q_UNUSED_GRANTS and Q_CALLS |
+| `Deps` | `store`, `adapters`, `llm` (A1's wrapper), `jev` (A2's client), `settings` |
+
+**The graph store** (`GraphStore`, implemented by `FalkorStore` and `MemoryStore` in E3) has one method per
+canonical query in `03-graph.md`, so both stores answer the same questions and the parity test compares them:
+
+| Method | Query | Returns |
+| --- | --- | --- |
+| `list_graphs()` | `GRAPH.LIST` | graph names, sorted |
+| `load(name, rows)`, `copy(src, dst)`, `delete(name)`, `apply_delta(name, delta)` | Loading, `GRAPH.COPY`, `GRAPH.DELETE` | none |
+| `paths(name, actor)` | Q_PATHS | the eids of each route |
+| `max_flow(name, sources, sinks, rows)` | Q_SET_FLOW, then Q_MAXFLOW | `FlowResult` |
+| `betweenness(name)` | Q_REL_TYPES, then Q_BETWEENNESS | `ChokePoint` list |
+| `workflows_using(name, action)`, `unused_grants(name)`, `calls(name)` | Q_WORKFLOWS_USING, Q_UNUSED_GRANTS, Q_CALLS | `WorkflowUse`, `GrantRow`, `CallRow` lists |
 
 ## Adapter protocols (`contracts/adapters.py`)
 
@@ -261,6 +296,17 @@ fixtures/<scenario>/
   "staging_to_prod": []
 }
 ```
+
+**How `project()` shapes a result and `compare()` reads `expected.json`:**
+
+- Every key in the example is projected, plus `headline`, `unchanged`, `unknowns` and `intent.purpose`. A key
+  missing from `expected.json` is not compared, and neither is a field missing inside a compared item.
+- Paths are matched by (actor, target). `route` is compared in order. `cites` (one `file:line` per step, or
+  `unknown`) and every other list are compared as sets.
+- Tuples keep the file short: `intent.grants` and `unused_grants` and `use_beyond_intent` are
+  `[principal or workload, access or resource, ...]` as in the example; `min_cut.cut` is
+  `[src, TYPE, dst]`; `staging_to_prod` is `[actor, target]`.
+- `min_cut.value_at_least` is a lower bound on the projected `value`.
 
 The line numbers in `cites` above are placeholders: humans fill in the real ones from `demo-infra/` once F4 is
 merged. For a cuttable result, `min_cut` is `{"value": 1, "cuttable": true, "cut": [["<src>", "<TYPE>", "<dst>"]]}`.

@@ -259,9 +259,10 @@ An op that cannot apply raises `PatchError`; the candidate's verdict is then `in
 
 ## 15. Candidates and ranking (`engine/candidates.py`)
 
-Candidate IDs are fixed by where they come from. A rule decides its fix in graph terms, as `Change`s (remove an
-edge, narrow a grant, restrict a trust, deny principals), and the cloud adapter turns each `Change` into ops.
-The fixes below say what AWS makes of them.
+Candidate IDs are fixed by where they come from. A rule decides its fix in graph terms, as a `RuleFix` whose
+`Change`s remove an edge, narrow a grant, restrict a trust or deny principals, and the cloud adapter turns
+each `Change` into ops. The fixes below say what AWS makes of them. Every candidate records `proposed_by`:
+`theseus` for a rule, the model string for the LLM, the person's login for H.
 
 | ID | Source | Fix |
 | --- | --- | --- |
@@ -272,6 +273,7 @@ The fixes below say what AWS makes of them.
 | S | rule | Scope down: set a statement on the path that grants both required and dangerous locations to the required ones only |
 | K | rule | Containment: `set_oidc_sub` on the cut role to the `sub` values of the workflows whose requirements need it |
 | U | rule | Remove a grant on a dangerous path that no code calls |
+| H1, H2, ... | A person | A fix someone proposes on the PR (`07-github-and-deploy.md`, "Proposing a fix"), numbered in the order they arrive. Verified exactly like the others |
 
 Generate only the candidates that apply to the paths in hand; derive names from the graph, never hardcode them.
 
@@ -281,7 +283,8 @@ Generate only the candidates that apply to the paths in hand; derive names from 
 2. Fewer UNKNOWN steps first.
 3. The smallest change: fewer ops, then fewer permissions removed.
 4. No broad wildcard in an added statement.
-5. Rule candidates before the LLM's, then by ID.
+5. A person's candidates before rule candidates before the LLM's, then by ID. This only breaks ties: a
+   person's fix that fails is never recommended.
 
 The first `pass` is `recommended`. Jev can veto, never approve: if Jev scores "could this fix break legitimate
 use?" above 0.5, the candidate is labeled "needs a closer look" and cannot be recommended. If nothing passes,

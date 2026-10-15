@@ -40,7 +40,7 @@ The `public-bucket` fixture is a preset on the Try-it page, not a video scene.
 
 | Layer | Decides | Never does |
 | --- | --- | --- |
-| A person | Which fix ships | Nothing changes without them |
+| A person | Which fix ships; may also propose a fix of their own (H1, H2, ...), which the engine checks like any other | Nothing changes without them |
 | The LLM (System 2), GLM 5.3 by default | Proposes structural fixes, reads PR intent, writes explanations | Decide what is reachable; call write tools |
 | Jev (System 1) | Fast typed judgments with probabilities: sensitivity, urgency, "could this fix break legitimate use?" | Approve a fix (it can only veto) |
 | The engine and FalkorDB | What is reachable, which requirements hold, which fixes pass | Guess: unsupported rules return UNKNOWN |
