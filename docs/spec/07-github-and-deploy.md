@@ -5,8 +5,10 @@ repo that change only `demo-infra/`. There is no GitHub org and no second repo.
 
 ## The Theseus Action (`.github/workflows/theseus.yml`, task F7)
 
-Runs on `pull_request` (`opened`, `synchronize`, `reopened`) with `paths: ["demo-infra/**"]`, so product PRs never
-trigger it. Permissions: `contents: read`, `pull-requests: read`.
+Runs on `pull_request` (`opened`, `synchronize`, `reopened`, `edited`) with `paths: ["demo-infra/**"]`, so product
+PRs never trigger it. `edited` is a changed title or description, which intent depends on. One run per PR at a
+time: `concurrency: theseus-<PR number>` with `cancel-in-progress`. Permissions: `contents: read`,
+`pull-requests: read`.
 
 1. Check out the head commit, and the base commit into `./base`.
 2. Install Terraform 1.16.6, the version P1 checked, with `hashicorp/setup-terraform`.
@@ -33,8 +35,8 @@ workflows only from the repo root's `.github/workflows/`, so they never run, and
 | --- | --- |
 | Name | Theseus |
 | Installed on | This repo only (`THESEUS_REPOS`) |
-| Permissions | Contents read and write; Pull requests read and write; Issues read and write; Checks read and write; Metadata read |
-| Events | `pull_request`, `issue_comment`, `push` |
+| Permissions | Contents read and write; Pull requests read and write; Issues read and write; Checks read and write; Actions read and write (to re-run the Theseus workflow); Metadata read |
+| Events | `pull_request`, `issue_comment`, `push`, and `check_run` (sent to any App with Checks write) |
 | Webhook URL | `https://<DOMAIN>/webhooks/github`, with `GITHUB_WEBHOOK_SECRET` |
 | Auth | A JWT signed with the App's private key, exchanged for an installation token (httpx and PyJWT) |
 
@@ -50,7 +52,46 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 **The check run** is named `Theseus`. Conclusion: `success` when nothing opened and no use beyond intent;
 `failure` when a dangerous path opened or a use beyond intent appeared and no passing fix is applied;
-`neutral` when the only issue is UNKNOWN. The summary is the headline.
+`neutral` when the only issue is UNKNOWN. "Blocking a merge" below makes it required.
+
+## When Theseus reviews (tasks F7 and A5)
+
+| Moment | What starts it | What happens |
+| --- | --- | --- |
+| A PR that changes `demo-infra/` is opened or reopened, drafts included | The Action (`opened`, `reopened`) | A full review: plans, Checkov, analysis, the comment and the check |
+| A commit is pushed to it | The Action (`synchronize`) | A full review of the new head. The newest run cancels an older one still running |
+| Its title or description is edited | The Action (`edited`) | A full review. Intent comes from that text, and the headline asks authors who said nothing to say what the PR is for |
+| A fix is applied with `/theseus apply <ID>` | The App's commit (`synchronize`) | A full review of the fixed head |
+| Someone with write access comments `/theseus review` | The App (`issue_comment`) | The App re-runs the PR's latest Theseus workflow run for the head commit |
+| Someone clicks **Re-run** on the `Theseus` check | The App (`check_run`, `rerequested`) | The same as `/theseus review` |
+| A PR changes nothing under `demo-infra/` | The App (`pull_request`) | No review: a `success` check, "Nothing under demo-infra changed" |
+| A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
+| A push to `main` | The App (`push`) | A scan of `main` |
+
+**Requesting a review from the App is not relied on.** GitHub documents review requests for people and teams,
+not Apps. F7 tests it once the App exists; if GitHub allows it, the App treats a `review_requested` event that
+names it like `/theseus review`.
+
+**A review reads the PR's current title and body** from the API, not the copy the Action sends: re-running a
+workflow replays the event that first started it, and that copy may be out of date.
+
+## Blocking a merge (tasks F7 and A5)
+
+A comment cannot stop a merge; a required check can.
+
+- **One ruleset on `main`** requires the `Theseus` check, with its source set to the Theseus App, so a workflow
+  in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and `neutral`
+  let it through. Repo admins can bypass it in an emergency, and GitHub records the bypass. A person creates
+  the ruleset once the App exists (F7).
+- **Every PR gets the check** (the table above). Without that, a PR that never runs the Action would wait for
+  the check forever.
+- **A check belongs to one commit.** Each push needs a new review, so a pass never covers code it did not see.
+- **It fails closed.** If the backend is down, no check arrives, and the merge box shows it as expected and
+  waiting. When the backend is back, `/theseus review` starts the review.
+- **Applying a fix unblocks the merge.** The App's commit starts a new review; when the fixed head opens no
+  dangerous path, the check passes.
+- **The check's title is the verdict in plain words,** because the merge box shows it. Its summary is the
+  comment's first section.
 
 ## Demo PRs
 

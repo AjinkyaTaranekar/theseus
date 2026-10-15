@@ -241,7 +241,7 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 | `POST /finding` | `{repo, advisory}` or `{fixture}` | `AnalysisResult` | With a repo: opens the containment PR and an issue listing secrets to rotate |
 | `POST /scan` | `{repo}` or `{fixture}` | `AnalysisResult` | With a repo: opens an issue, and a PR for each passing U candidate |
 | `POST /apply` | `{repo, pr_number, candidate_id, requested_by}` | `{commit_sha}` | Commits the candidate's `.tf` edits to the PR branch. Refuses any file outside the world root |
-| `POST /webhooks/github` | GitHub payload | `204` | `issue_comment` with `/theseus apply <ID>` from a user with write access calls apply; `pull_request` closed deletes graphs; `push` to `main` runs a scan |
+| `POST /webhooks/github` | GitHub payload | `204` | From a user with write access, `issue_comment` with `/theseus apply <ID>` calls apply and `/theseus review` re-runs the review; `check_run` `rerequested` re-runs the review; a `pull_request` that changes nothing under the world root gets a `success` check; `pull_request` closed deletes graphs; `push` to `main` runs a scan (`07-github-and-deploy.md`, "When Theseus reviews") |
 | `GET /graphs` | | graph names | For the "under the hood" shot |
 | `GET /` and `POST /try/{preset}` | | the Try-it page; an `AnalysisResult` | Runs the live engine on a fixture, with the LLM replayed |
 
