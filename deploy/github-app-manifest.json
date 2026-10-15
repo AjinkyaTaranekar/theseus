@@ -1,0 +1,25 @@
+{
+  "name": "Theseus",
+  "url": "https://github.com/AjinkyaTaranekar/theseus",
+  "description": "Reviews Terraform pull requests as a graph: which sensitive data a change makes reachable, and the smallest safe fix.",
+  "hook_attributes": {
+    "url": "https://<DOMAIN>/webhooks/github",
+    "active": true
+  },
+  "redirect_url": "https://github.com/AjinkyaTaranekar/theseus",
+  "public": false,
+  "default_permissions": {
+    "actions": "write",
+    "checks": "write",
+    "contents": "write",
+    "issues": "write",
+    "metadata": "read",
+    "pull_requests": "write"
+  },
+  "default_events": [
+    "check_run",
+    "issue_comment",
+    "pull_request",
+    "push"
+  ]
+}
