@@ -135,7 +135,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
 | `Timings` | `engine_ms: int`, `llm_ms: int`, `jev_ms: int`, `total_ms: int` |
 | `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int` |
-| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage` |
+| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage`, `models: dict[str,str]` (the models that answered, such as `{"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}`; shown in the comment, never projected) |
 
 `project(result) -> dict` returns the comparable part of a result, in the `expected.json` shape below.
 
@@ -247,18 +247,27 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 ## The PR comment (`agent/templates/comment.md`)
 
 1. The marker `<!-- theseus:pr-comment -->`, so the comment is updated in place, never duplicated
-2. What the change does, in one line from `changes` and the path diff (`04-engine.md` section 18)
+2. What the change does, in one line the renderer writes from `changes` and the path diff: "Adds `a`; deletes `b`. Opens 3 dangerous paths, closes 0." (PR mode only)
 3. The headline from section 18 of `04-engine.md`, with a warning when the intent is suspicious
-4. Opened paths: a table (actor, target, hops), then one Mermaid `flowchart LR` per opened path (at most 3), each
-   step linked to `blob/<head_sha>/<file>#L<line>`
+4. Opened paths: a table (actor, target with its class, hops), then a Mermaid `flowchart LR` for each of the
+   three most sensitive opened paths (a database before the secret that unlocks it, then the fewest hops).
+   GitHub does not run links inside Mermaid, so a numbered list of its steps follows each diagram, each step
+   linked to `blob/<head_sha>/<world root>/<file>#L<line>`, or saying why its evidence is unknown
 5. Checkov's result on the same commit, one line
 6. The minimum cut in one sentence: "No single permission can be removed without breaking required access"
    or "One change closes every path: `<edge>`"
-7. The fix table: ID, fix, dangerous paths, required access, code calls, verdict; the recommended row in bold
-8. "Reply `/theseus apply <ID>` to commit a fix."
+7. The fix table: ID, fix (its title and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"),
+   required access ("kept" or "breaks R3"), code calls ("kept" or what breaks), verdict (with "needs a closer
+   look" after Jev's veto); the recommended row in bold. If nothing passes, it says so
+8. "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass, the recommended one first
 9. Unknowns, if any
 10. A collapsed details block: tool trace, unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k>
-    of types Theseus does not model, such as <the three most common>"), timings, model and Jev versions
+    of types Theseus does not model, such as <the three most common>"), timings, and the versions in `models`
+
+Every value from a result is escaped before it reaches markdown: a PR author, a model, an advisory or a
+Terraform file may have written it. Links and @-mentions in such text show as code, so they neither link nor
+notify. Long lists stop at 20 opened paths, 30 unchanged paths, 40 tool calls and 20 unknowns, so the comment
+stays under GitHub's 65,536 characters.
 
 ## Fixture folders and `expected.json`
 
