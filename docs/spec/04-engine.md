@@ -318,6 +318,14 @@ uses beyond intent. The headline:
 - With no IAM change but a use beyond intent: `Your PR says <purpose>. Your code now reads <resource>.`, naming
   the most sensitive use, and a database before the secret that unlocks it.
 - With nothing beyond intent: `This change matches its stated purpose.`
+- When the PR states no purpose (`stated: false`): `This PR doesn't say what it's for. Your change grants
+  <target>.`, `... Your code now reads <resource>.`, or `This PR doesn't say what it's for. It opens no
+  dangerous path.`
+
+**What the change does** comes first in the comment, from the plan and never from a model: the resources the
+change creates, updates or deletes (`AnalysisResult.changes`, from the base and head worlds), then the
+dangerous paths it opens and closes. For example: `Adds aws_iam_user_group_membership.priya_support. Opens 3
+dangerous paths, closes 0.` It is the same whether or not the PR has a description.
 
 Pick the most sensitive target as `regulated` before `confidential`, then the shortest path, then by ID.
 

@@ -119,7 +119,8 @@ An eid is stable within one build only, so anything compared across builds names
 | `GraphRows` | `nodes: list[NodeRow]`, `edges: list[EdgeRow]`, `unknowns: list[str]` |
 | `Requirement` | `id: str`, `principal: str`, `access: Literal["read","write","assume"]`, `resource: str`, `source: Literal["config","intent"]` |
 | `Grant` | `principal: str`, `access: Access`, `resource: str` |
-| `Intent` | `purpose: str`, `grants: list[Grant]`, `suspicious: bool` |
+| `Intent` | `purpose: str`, `grants: list[Grant]`, `suspicious: bool`, `stated: bool` (false when the PR does not say what it is for; then no grants) |
+| `ResourceChange` | `address: str`, `type: str`, `action: Literal["create","update","delete"]`: one resource the change adds, changes or removes |
 | `PathStep` | `src: str` (serialized as `from`), `type: EdgeType`, `dst: str` (serialized as `to`), `evidence: str` (an evidence ID). No eid: a step means the same in every build |
 | `PathRecord` | `id: str`, `actor: str`, `target: str`, `grants: list[Access]`, `steps: list[PathStep]`, `unknown: bool`, `inferred: bool`, `sensitivity: Sensitivity \| None`; `route` (a property, not a field) is every node in order |
 | `RequirementStatus` | `id: str`, `status: Literal["satisfied","missing","unknown"]` |
@@ -134,7 +135,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
 | `Timings` | `engine_ms: int`, `llm_ms: int`, `jev_ms: int`, `total_ms: int` |
 | `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int` |
-| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage` |
+| `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage` |
 
 `project(result) -> dict` returns the comparable part of a result, in the `expected.json` shape below.
 
@@ -246,17 +247,18 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 ## The PR comment (`agent/templates/comment.md`)
 
 1. The marker `<!-- theseus:pr-comment -->`, so the comment is updated in place, never duplicated
-2. The headline from section 18 of `04-engine.md`
-3. Opened paths: a table (actor, target, hops), then one Mermaid `flowchart LR` per opened path (at most 3), each
+2. What the change does, in one line from `changes` and the path diff (`04-engine.md` section 18)
+3. The headline from section 18 of `04-engine.md`, with a warning when the intent is suspicious
+4. Opened paths: a table (actor, target, hops), then one Mermaid `flowchart LR` per opened path (at most 3), each
    step linked to `blob/<head_sha>/<file>#L<line>`
-4. Checkov's result on the same commit, one line
-5. The minimum cut in one sentence: "No single permission can be removed without breaking required access"
+5. Checkov's result on the same commit, one line
+6. The minimum cut in one sentence: "No single permission can be removed without breaking required access"
    or "One change closes every path: `<edge>`"
-6. The fix table: ID, fix, dangerous paths, required access, code calls, verdict; the recommended row in bold
-7. "Reply `/theseus apply <ID>` to commit a fix."
-8. Unknowns, if any
-9. A collapsed details block: tool trace, unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k>
-   of types Theseus does not model, such as <the three most common>"), timings, model and Jev versions
+7. The fix table: ID, fix, dangerous paths, required access, code calls, verdict; the recommended row in bold
+8. "Reply `/theseus apply <ID>` to commit a fix."
+9. Unknowns, if any
+10. A collapsed details block: tool trace, unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k>
+    of types Theseus does not model, such as <the three most common>"), timings, model and Jev versions
 
 ## Fixture folders and `expected.json`
 
@@ -299,13 +301,14 @@ fixtures/<scenario>/
 
 **How `project()` shapes a result and `compare()` reads `expected.json`:**
 
-- Every key in the example is projected, plus `headline`, `unchanged`, `unknowns` and `intent.purpose`. A key
-  missing from `expected.json` is not compared, and neither is a field missing inside a compared item.
+- Every key in the example is projected, plus `headline`, `unchanged`, `unknowns`, `intent.purpose`,
+  `intent.stated` and `changes`. A key missing from `expected.json` is not compared, and neither is a field
+  missing inside a compared item.
 - Paths are matched by (actor, target). `route` is compared in order. `cites` (one `file:line` per step, or
   `unknown`) and every other list are compared as sets.
 - Tuples keep the file short: `intent.grants` and `unused_grants` and `use_beyond_intent` are
   `[principal or workload, access or resource, ...]` as in the example; `min_cut.cut` is
-  `[src, TYPE, dst]`; `staging_to_prod` is `[actor, target]`.
+  `[src, TYPE, dst]`; `staging_to_prod` is `[actor, target]`; `changes` is `[action, address]`.
 - `min_cut.value_at_least` is a lower bound on the projected `value`.
 
 The line numbers in `cites` above are placeholders: humans fill in the real ones from `demo-infra/` once F4 is
