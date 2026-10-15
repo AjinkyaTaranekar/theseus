@@ -191,6 +191,24 @@ Register it once the API answers on `https://<DOMAIN>`:
 7. **Block merges on it.** Settings, **Rules**, **Rulesets**, **New branch ruleset**: target `main`, turn on
    **Require status checks to pass**, add `Theseus`, and set its source to the App. Both of you agree first.
 
+## Sharing the App's key
+
+The private key lets anyone holding it act as the App on this repo: push commits, edit PRs, run workflows. So:
+
+- **Keep it in `secrets/`, never in git.** `secrets/theseus.private-key.pem` with
+  `GITHUB_APP_PRIVATE_KEY_PATH=secrets/theseus.private-key.pem` in `.env`. `.gitignore` covers `secrets/`; on a
+  branch made before that line existed, add `secrets/` to `.git/info/exclude` too. The repo goes public, and a
+  key once committed stays in its history.
+- **Give each person their own key.** On the App's settings page
+  (`https://github.com/settings/apps/theseus-graph-review`), **Generate a private key** downloads a new one; an
+  App can have several at once. Deleting one there revokes only that person's, and guest-box keeps working.
+  Only the App's owner can do this.
+- **If you must pass one on,** use a password manager's shared vault or an end-to-end encrypted message, never
+  an issue, a PR, a chat channel or email.
+- **Most of the time no one needs it locally.** Tests mock GitHub, and guest-box has its own copy. A laptop needs
+  it only to call GitHub as the App, and then also `GITHUB_WEBHOOK_SECRET` and `THESEUS_TOKEN`, shared the same
+  way.
+
 ## Rotating a secret
 
 Edit `~/theseus/.env` on the host, then `bash ~/theseus/deploy/run.sh restart`. For a key that was exposed,
