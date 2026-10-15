@@ -169,9 +169,23 @@ def _signed(body: bytes, signature: str | None, secret: str) -> bool:
 
 def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
     """Posts a `success` check when the PR changes nothing under the world root, so every PR gets the check
-    the ruleset requires. Returns whether it did."""
-    if gh.touches_world_root(repo, number):
-        return False
+    the ruleset requires. Returns whether it did.
+
+    A check belongs to a commit, not a PR, and two PRs can share a head while targeting different bases. So
+    the check passes only when no open PR with this head changes the world root: a second PR never replaces
+    the first one's review with a pass."""
+    for pr in sorted({number, *gh.open_pulls_at(repo, head_sha)}):
+        if gh.touches_world_root(repo, pr):
+            if pr != number:
+                log.warning(
+                    "%s#%d: shares head %s with #%d, which changes %s/; leaving its check to the review",
+                    repo,
+                    number,
+                    head_sha[:7],
+                    pr,
+                    gh.world_root,
+                )
+            return False
     root = gh.world_root
     gh.upsert_check(
         repo,

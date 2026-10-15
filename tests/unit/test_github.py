@@ -73,6 +73,9 @@ class FakeGitHub:
         self.checks: list[dict[str, Any]] = []
         self.reruns: list[int] = []
         self.files = ["demo-infra/terraform/people.tf"]
+        # PR 8 is open only when a test adds it; it may share PR 7's head and target another base.
+        self.files_8: list[str] = []
+        self.open_prs: list[dict[str, Any]] = [{"number": 7, "head": {"sha": HEAD}}]
         self.permission = "write"
         self.runs: list[dict[str, Any]] = [{"id": 99, "status": "completed", "head_sha": HEAD}]
         self.head = HEAD
@@ -82,6 +85,8 @@ class FakeGitHub:
         r.post(f"/app/installations/{INSTALLATION}/access_tokens").mock(side_effect=self._token)
         r.get(f"/repos/{REPO}/pulls/7").mock(side_effect=self._pull)
         r.get(f"/repos/{REPO}/pulls/7/files").mock(side_effect=self._files)
+        r.get(f"/repos/{REPO}/pulls/8/files").mock(side_effect=self._files_8)
+        r.get(f"/repos/{REPO}/pulls").mock(side_effect=self._open_pulls)
         r.get(f"/repos/{REPO}/issues/7/comments").mock(side_effect=self._list_comments)
         r.post(f"/repos/{REPO}/issues/7/comments").mock(side_effect=self._create_comment)
         r.patch(url__regex=rf"/repos/{REPO}/issues/comments/(?P<cid>\d+)$").mock(
@@ -126,6 +131,15 @@ class FakeGitHub:
         page = int(request.url.params.get("page", "1"))
         rows = [{"filename": f} for f in self.files] if page == 1 else []
         return httpx.Response(200, json=rows)
+
+    def _files_8(self, request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=[{"filename": f} for f in self.files_8] if page == 1 else [])
+
+    def _open_pulls(self, request: httpx.Request) -> httpx.Response:
+        assert request.url.params["state"] == "open"
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=self.open_prs if page == 1 else [])
 
     def _list_comments(self, request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page", "1"))
@@ -407,6 +421,29 @@ def test_a_pr_outside_the_world_root_gets_a_success_check(client: TestClient, fa
     assert webhook(client, "pull_request", pull_request()).status_code == 204
     [check] = fake.checks
     assert (check["conclusion"], check["output"]["title"]) == ("success", "Nothing under demo-infra changed")
+
+
+def test_a_pr_sharing_its_head_never_passes_a_failing_review(client: TestClient, fake: FakeGitHub) -> None:
+    """PR 8 opens PR 7's head against a base where nothing under the world root differs. The check belongs
+    to the commit, so PR 8 must not replace PR 7's failing review with a pass."""
+    fake.files = ["demo-infra/terraform/people.tf"]
+    fake.files_8 = ["README.md"]
+    fake.open_prs.append({"number": 8, "head": {"sha": HEAD}})
+    fake.checks.append(
+        {"id": 500, "name": "Theseus", "head_sha": HEAD, "status": "completed", "conclusion": "failure"}
+    )
+    event = {**pull_request(), "number": 8, "pull_request": {"number": 8, "head": {"sha": HEAD}}}
+    assert webhook(client, "pull_request", event).status_code == 204
+    assert [(c["id"], c["conclusion"]) for c in fake.checks] == [(500, "failure")]
+
+
+def test_a_pr_alone_on_its_head_still_gets_its_pass(client: TestClient, fake: FakeGitHub) -> None:
+    fake.files = ["README.md"]
+    fake.files_8 = ["docs/x.md"]
+    fake.open_prs.append({"number": 8, "head": {"sha": "c" * 40}})
+    assert webhook(client, "pull_request", pull_request()).status_code == 204
+    [check] = fake.checks
+    assert check["conclusion"] == "success"
 
 
 def test_a_pr_inside_the_world_root_is_left_to_the_action(client: TestClient, fake: FakeGitHub) -> None:

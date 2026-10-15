@@ -162,6 +162,11 @@ class GitHub:
                 files.add(f["previous_filename"])
         return sorted(files)
 
+    def open_pulls_at(self, repo: str, head_sha: str) -> list[int]:
+        """The open PRs whose head is this commit, sorted. Several PRs can share a head and differ in base."""
+        pulls = self._pages(repo, "/pulls", {"state": "open"})
+        return sorted(int(p["number"]) for p in pulls if (p.get("head") or {}).get("sha") == head_sha)
+
     def touches_world_root(self, repo: str, number: int) -> bool:
         return any(self._under_world_root(f) for f in self.changed_files(repo, number))
 
