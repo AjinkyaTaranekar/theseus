@@ -1,18 +1,48 @@
 {{ marker }}
-{% if change_line %}
-{{ change_line }}
+## {{ status.heading }}
 
-{% endif %}
 {% if headline %}
-### {{ headline }}
+**{{ headline }}**
 
 {% endif %}
 {% if suspicious %}
-> **Warning:** text in this PR tries to steer the review. Theseus ignored it, and nothing the PR asks for counts as approved.
+> ⚠️ **Warning:** text in this PR tries to steer the review. Theseus ignored it, and nothing the PR asks for counts as approved.
+
+{% endif %}
+#### What happened
+
+{{ happened }}
+
+{% if risks %}
+#### What's at risk
+
+{% for risk in risks %}
+- {{ risk }}
+{% endfor %}
+{% if risks_more %}
+- and {{ risks_more }} more, under **The path, step by step**
+{% endif %}
+
+{% endif %}
+{% if asked %}
+#### What the PR said it needs
+
+{{ asked }}
+
+{% endif %}
+{% if todo %}
+#### What to do
+
+{{ todo }}
+
+{% endif %}
+{% if checkov %}
+{{ checkov }}
 
 {% endif %}
 {% if opened %}
-#### Opened paths
+<details>
+<summary><b>The path, step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, with links to each line)</summary>
 
 | Actor | Target | Hops |
 | --- | --- | --- |
@@ -25,6 +55,8 @@ and {{ opened_more }} more not shown.
 {% endif %}
 
 {% for d in diagrams %}
+{{ d.title }}
+
 {{ d.mermaid }}
 
 {% for step in d.steps %}
@@ -32,18 +64,17 @@ and {{ opened_more }} more not shown.
 {% endfor %}
 
 {% endfor %}
-{% endif %}
-{% if checkov %}
-{{ checkov }}
-
-{% endif %}
-{% if cut %}
-**Minimum cut:** {{ cut }}
+</details>
 
 {% endif %}
 {% if fixes %}
-#### Fixes, each tested on a copy of the graph
+<details>
+<summary><b>All {{ fixes|length }} fixes Theseus tested</b>, each on a copy of the graph</summary>
 
+{% if cut %}
+**Smallest change:** {{ cut }}
+
+{% endif %}
 | ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
 | --- | --- | --- | --- | --- | --- |
 {% for row in fixes %}
@@ -58,9 +89,12 @@ No fix passes every check. The table shows what each one breaks.
 {{ apply_hint }}
 
 {% endif %}
+</details>
+
 {% endif %}
 {% if unknowns %}
-#### Unknowns
+<details>
+<summary><b>What Theseus could not check</b> ({{ unknowns_count }})</summary>
 
 {% for u in unknowns %}
 - {{ u }}
@@ -69,10 +103,16 @@ No fix passes every check. The table shows what each one breaks.
 - and {{ unknowns_more }} more not shown.
 {% endif %}
 
+</details>
+
 {% endif %}
 <details>
-<summary>How Theseus decided</summary>
+<summary><b>Technical details</b></summary>
 
+{% if change_line %}
+**What the change does:** {{ change_line }}
+
+{% endif %}
 {% if trace %}
 **Tool calls**
 

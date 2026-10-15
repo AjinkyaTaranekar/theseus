@@ -1,8 +1,14 @@
 <!-- theseus:pr-comment -->
-### GHSA-demo-0001 reaches db:customer-db.
+## 🟢 No new access to sensitive data
+
+**GHSA-demo-0001 reaches db:customer-db.**
+
+#### What happened
+
+It opens no new way to reach sensitive data.
 
 <details>
-<summary>How Theseus decided</summary>
+<summary><b>Technical details</b></summary>
 
 Coverage: not recorded.
 

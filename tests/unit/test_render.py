@@ -1,7 +1,7 @@
 """The PR comment (docs/spec/05-contracts.md, "The PR comment"), rendered from results like the engine's.
 
-Snapshots live in tests/unit/snapshots/render/. After a deliberate change to the comment, regenerate them and
-read the diff:
+The comment is a card in plain words on top, then folded sections. Snapshots live in
+tests/unit/snapshots/render/. After a deliberate change to the comment, regenerate them and read the diff:
 
     UPDATE_SNAPSHOTS=1 pytest -q tests/unit/test_render.py
 """
@@ -19,6 +19,7 @@ import pytest
 from theseus.agent.render import (
     MARKER,
     MAX_CHARS,
+    at_risk,
     change_line,
     checkov_line,
     code,
@@ -27,16 +28,24 @@ from theseus.agent.render import (
     mermaid,
     pick_diagrams,
     render_comment,
+    story,
+    verdict,
+    what_happened,
+    what_pr_says,
+    what_to_do,
 )
 from theseus.api.stub import result_from_expected
 from theseus.contracts.result import (
     AnalysisResult,
+    BeyondIntent,
     Candidate,
     Coverage,
     CutEdge,
     Evidence,
+    Grant,
     Intent,
     MinCut,
+    NodeInfo,
     PathRecord,
     PathStep,
     ResourceChange,
@@ -47,8 +56,10 @@ from theseus.contracts.result import (
 REPO = "owner/theseus"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 BLOB = f"https://github.com/{REPO}/blob/{SHA}/demo-infra/"
+CHECKOV = {"passed": 52, "failed": 0, "skipped": 0, "checkov_version": "3.2.255"}
 SNAPSHOTS = Path(__file__).with_name("snapshots") / "render"
 FIXTURES = sorted(Path("fixtures").glob("*/expected.json"))
+BR = "<br>\n"
 
 # Spec 05's intern example, word for word.
 INTERN_EXPECTED: dict[str, Any] = {
@@ -90,26 +101,18 @@ EVIDENCE = {
     "E1": Evidence(
         address="aws_iam_user_group_membership.priya_support", file="terraform/people.tf", line=20
     ),
-    "E2": Evidence(
-        address="aws_iam_group_policy.support_assume",
-        part="AssumeProdSupport",
-        file="terraform/people.tf",
-        line=30,
-    ),
-    "E3": Evidence(
-        address="aws_iam_role_policy.prod_support_read",
-        part="ReadDbSecret",
-        file="terraform/roles.tf",
-        line=31,
-    ),
+    "E2": Evidence(address="aws_iam_group_policy.support_assume", file="terraform/people.tf", line=30),
+    "E3": Evidence(address="aws_iam_role_policy.prod_support_read", file="terraform/roles.tf", line=31),
     "E4": Evidence(address="aws_secretsmanager_secret.prod_db", file="terraform/data.tf", line=12),
-    "E5": Evidence(
-        address="aws_iam_role_policy.prod_support_read",
-        part="ReadInvoices",
-        file="terraform/roles.tf",
-        line=24,
-    ),
+    "E5": Evidence(address="aws_iam_role_policy.prod_support_read", file="terraform/roles.tf", line=24),
     "E6": Evidence(address="inferred", file="unknown", note="the secret's db_instance tag"),
+}
+NODES = {
+    "db:customer-db": NodeInfo(category="database", sensitivity="regulated"),
+    "secret:prod-db-credentials": NodeInfo(category="secret", sensitivity="regulated"),
+    "secret:payments-api-key": NodeInfo(category="secret", sensitivity="regulated"),
+    "s3://demo-company-files/invoices/": NodeInfo(category="object_store", sensitivity="confidential"),
+    "s3://demo-app-logs/": NodeInfo(category="object_store", sensitivity="internal"),
 }
 
 
@@ -146,15 +149,12 @@ def candidate(cid: str, verdict: str, **extra: Any) -> Candidate:
     )
 
 
+DB = ("CAN", "secret:prod-db-credentials", "E3"), ("UNLOCKS", "db:customer-db", "E6")
+
+
 def intern() -> AnalysisResult:
     """The intern scenario as the engine will report it: three opened paths, four fixes, one unknown."""
-    db = path(
-        1,
-        "db:customer-db",
-        "regulated",
-        ("CAN", "secret:prod-db-credentials", "E3"),
-        ("UNLOCKS", "db:customer-db", "E6"),
-    )
+    db = path(1, "db:customer-db", "regulated", *DB)
     secret = path(2, "secret:prod-db-credentials", "regulated", ("CAN", "secret:prod-db-credentials", "E3"))
     invoices = path(
         3,
@@ -167,7 +167,10 @@ def intern() -> AnalysisResult:
         mode="pr",
         repo=REPO,
         pr_number=42,
-        intent=Intent(purpose="Let Priya read the app logs.", grants=[]),
+        intent=Intent(
+            purpose="Let Priya read the app logs.",
+            grants=[Grant(principal=PRIYA[0], access="read", resource="s3://demo-app-logs/")],
+        ),
         changes=[
             ResourceChange(
                 address="aws_iam_user_group_membership.priya_support",
@@ -175,7 +178,10 @@ def intern() -> AnalysisResult:
                 action="create",
             )
         ],
-        headline="Your PR says Priya reads the app logs. Your change grants db:customer-db.",
+        headline=(
+            "Your PR says it lets Priya read the app logs."
+            " Your change also lets priya-intern reach customer-db."
+        ),
         opened=[db, secret, invoices],
         unchanged=[path(4, "s3://demo-app-logs/", "internal")],
         unknowns=["aws_kms_key.main: key policy conditions are not modeled"],
@@ -184,10 +190,7 @@ def intern() -> AnalysisResult:
             candidate("A", "fail", requirements_broken=["I1"], title="Revert the membership"),
             candidate("B", "pass", recommended=True, title="A new support-logs-read role for Priya"),
             candidate(
-                "C",
-                "unknown",
-                unknown=["Deny with a principal condition"],
-                title="Deny Priya on prod-support",
+                "C", "unknown", unknown=["a Deny with a condition"], title="Deny Priya on prod-support"
             ),
             candidate(
                 "D",
@@ -217,15 +220,52 @@ def intern() -> AnalysisResult:
             },
         ),
         models={"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"},
+        nodes=NODES,
     )
 
 
-def render(result: AnalysisResult, checkov: dict[str, Any] | None = None) -> str:
+def code_pr() -> AnalysisResult:
+    """A code change that starts reading the customer database, with no IAM change and no fix to test."""
+    return AnalysisResult(
+        scenario="code-pr",
+        mode="pr",
+        intent=Intent(purpose="Fix a typo on the support page.", grants=[]),
+        headline="Your PR says: fix a typo. Your code now reads customer-db.",
+        use_beyond_intent=[
+            BeyondIntent(
+                workload="workload:billing-api",
+                resource="db:customer-db",
+                access="read",
+                file="services/billing_api/app.py",
+                line=12,
+            )
+        ],
+        nodes=NODES,
+    )
+
+
+def needs_a_look() -> AnalysisResult:
+    return AnalysisResult(
+        mode="pr",
+        intent=Intent(purpose="Rotate the KMS key."),
+        headline="This change matches its stated purpose.",
+        unknowns=["aws_kms_key.main: key policy conditions are not modeled"],
+    )
+
+
+def render(result: AnalysisResult, checkov: dict[str, Any] | None = CHECKOV) -> str:
     return render_comment(result, REPO, SHA, checkov=checkov)
 
 
-def details(comment: str) -> str:
-    return comment.split("<details>", 1)[1].split("</details>", 1)[0]
+def card(comment: str) -> str:
+    """Everything a reader sees before opening anything."""
+    return comment.split("<details>", 1)[0]
+
+
+def folded(comment: str, title: str) -> str:
+    """The body of the folded section whose summary starts with `title`."""
+    start = comment.index(f"<summary><b>{title}")
+    return comment[start : comment.index("</details>", start)]
 
 
 def matches_snapshot(name: str, text: str) -> None:
@@ -238,97 +278,196 @@ def matches_snapshot(name: str, text: str) -> None:
     assert text == snapshot.read_text(encoding="utf-8"), f"{name} changed; regenerate with UPDATE_SNAPSHOTS=1"
 
 
-# Structure ------------------------------------------------------------------------------------------------
+# The layout -------------------------------------------------------------------------------------------------
 
 
-def test_the_marker_comes_first_and_the_sections_follow_in_spec_order() -> None:
-    comment = render(intern(), {"passed": 52, "failed": 0, "skipped": 0, "checkov_version": "3.2.255"})
-    assert comment.startswith(MARKER + "\n")
+def test_the_card_comes_first_and_the_sections_follow_in_spec_order() -> None:
+    comment = render(intern())
+    assert comment.startswith(MARKER + "\n## 🔴 Merge blocked\n")
     order = [
-        "Adds `aws_iam_user_group_membership.priya_support`",
-        "Your PR says Priya reads the app logs",
-        "| Actor | Target | Hops |",
-        "```mermaid",
-        "Checkov 3.2.255",
-        "No single permission can be removed without breaking required access.",
-        "| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |",
-        "Reply `/theseus apply B` to commit a fix.",
-        "aws\\_kms\\_key",
-        "<details>",
+        "**Your PR says it lets Priya read the app logs.",
+        "#### What happened",
+        "#### What's at risk",
+        "#### What the PR said it needs",
+        "#### What to do",
+        "Checkov 3.2.255 passed this commit",
+        "<summary><b>The path, step by step</b> (3 ways in",
+        "<summary><b>All 4 fixes Theseus tested</b>",
+        "<summary><b>What Theseus could not check</b> (1)",
+        "<summary><b>Technical details</b>",
     ]
     positions = [comment.index(part) for part in order]
     assert positions == sorted(positions)
-    assert comment.count(MARKER) == 1 and comment.count("<details>") == 1
+    assert comment.count(MARKER) == 1
+    assert comment.count("<details>") == comment.count("</details>") == 4
 
 
-def test_a_pr_with_nothing_opened_shows_no_paths_cut_or_fixes() -> None:
-    result = intern().model_copy(
-        update={
-            "opened": [],
-            "candidates": [],
-            "min_cut": None,
-            "headline": "This change matches its stated purpose.",
-        }
+def test_everything_technical_is_folded_away() -> None:
+    top = card(render(intern()))
+    for technical in ("```mermaid", "| ID | Fix |", "Tool calls", "terraform/people.tf", "Read 46 resources"):
+        assert technical not in top
+
+
+# The verdict ------------------------------------------------------------------------------------------------
+
+
+def test_the_verdict_matches_the_check_run() -> None:
+    blocked = verdict(intern())
+    assert (blocked.level, blocked.conclusion) == ("blocked", "failure")
+    assert blocked.title == "Merge blocked: priya-intern can reach customer-db"
+    assert verdict(code_pr()).title == "Merge blocked: billing-api's code now reads customer-db"
+    look = verdict(needs_a_look())
+    assert (look.conclusion, look.heading, look.title) == (
+        "neutral",
+        "🟡 Needs a look",
+        "Needs a look: Theseus could not check 1 thing",
     )
-    comment = render(result)
-    assert "Opens 0 dangerous paths, closes 0." in comment
-    for absent in ("```mermaid", "| ID | Fix |", "/theseus apply", "No single permission"):
-        assert absent not in comment
+    clear = verdict(AnalysisResult(mode="pr"))
+    assert (clear.conclusion, clear.title) == ("success", "No new access to sensitive data")
+    finding = verdict(AnalysisResult(mode="finding", opened=intern().opened))
+    assert finding.heading == "🔴 Sensitive data at risk"
 
 
-# What the change does -------------------------------------------------------------------------------------
+# What happened ----------------------------------------------------------------------------------------------
 
 
-def change(action: str, *names: str) -> list[ResourceChange]:
-    return [ResourceChange(address=n, type=n.split(".")[0], action=action) for n in names]  # type: ignore[arg-type]
-
-
-def test_the_change_line_names_what_is_added_updated_and_deleted() -> None:
-    result = intern().model_copy(
-        update={
-            "changes": change("create", "aws_iam_role.a", "aws_iam_role.b")
-            + change("update", "aws_iam_role_policy.c")
-            + change(
-                "delete",
-                "aws_s3_bucket.d",
-                "aws_s3_bucket.e",
-                "aws_s3_bucket.f",
-                "aws_s3_bucket.g",
-                "aws_s3_bucket.h",
-            ),
-            "closed": [path(9, "s3://demo-app-logs/", "internal")],
-        }
-    )
-    assert change_line(result) == (
-        "Adds `aws_iam_role.a` and `aws_iam_role.b`; updates `aws_iam_role_policy.c`;"
-        " deletes `aws_s3_bucket.d`,"
-        " `aws_s3_bucket.e`, `aws_s3_bucket.f` and 2 more. Opens 3 dangerous paths, closes 1."
+def test_the_story_follows_the_path_in_plain_words() -> None:
+    assert story(intern().opened[0], intern()) == (
+        f"**priya-intern** (a user) is a member of the **support-engineers** group,{BR}"
+        f"→ which can switch into the **prod-support** role,{BR}"
+        f"→ which can read the **prod-db-credentials** secret,{BR}"
+        "→ which unlocks the **customer-db** database."
     )
 
 
-def test_with_no_change_list_the_line_gives_only_the_counts() -> None:
-    result = intern().model_copy(update={"changes": [], "opened": intern().opened[:1]})
-    assert change_line(result) == "Opens 1 dangerous path, closes 0."
+def test_what_happened_leads_with_the_change_and_the_most_serious_path() -> None:
+    lines = what_happened(intern(), REPO, SHA, "demo-infra")
+    assert lines[0] == "This PR adds `aws_iam_user_group_membership.priya_support`."
+    assert lines[1] == "Because of that, 3 new ways to reach sensitive data open. The most serious:"
+    assert lines[2] == story(intern().opened[0], intern())
+    assert lines[3] == "Each of the 3 is under **The path, step by step** below."
+    one = intern().model_copy(update={"opened": intern().opened[:1], "changes": []})
+    assert (
+        what_happened(one, REPO, SHA, "demo-infra")[0]
+        == "Because of that, a new way to reach sensitive data opens:"
+    )
 
 
-# Headline -------------------------------------------------------------------------------------------------
+def test_code_that_reads_beyond_intent_is_named_with_its_line() -> None:
+    assert what_happened(code_pr(), REPO, SHA, "demo-infra")[0] == (
+        "The code of the **billing-api** service now reads the **customer-db** database"
+        f" ([services/billing\\_api/app.py:12]({BLOB}services/billing_api/app.py#L12)), and the PR does not"
+        " mention it."
+    )
 
 
-def test_a_suspicious_intent_gets_a_warning_after_the_headline() -> None:
-    result = intern().model_copy(update={"intent": Intent(purpose="p", suspicious=True)})
-    comment = render(result)
+def test_a_clear_pr_says_nothing_opened() -> None:
+    clear = intern().model_copy(update={"opened": [], "candidates": [], "min_cut": None, "unknowns": []})
+    assert what_happened(clear, REPO, SHA, "demo-infra")[-1] == "It opens no new way to reach sensitive data."
+
+
+# What's at risk ---------------------------------------------------------------------------------------------
+
+
+def test_what_is_at_risk_is_said_in_plain_words_most_sensitive_first() -> None:
+    lines, more = at_risk(intern())
+    assert lines == [
+        "**customer-db**, a database: personal, payment or health data, or a key that opens it",
+        "**prod-db-credentials**, a secret: the key that opens **customer-db**",
+        "**demo-company-files/invoices/**, a storage location: business-sensitive data, such as invoices or"
+        " contracts",
+    ]
+    assert more == 0
+
+
+def test_without_node_info_a_resource_is_a_data_store() -> None:
+    lines, _ = at_risk(intern().model_copy(update={"nodes": {}}))
+    assert (
+        lines[0] == "**customer-db**, a data store: personal, payment or health data, or a key that opens it"
+    )
+
+
+def test_more_than_five_risks_are_counted_not_listed() -> None:
+    many = [path(n, f"db:db-{n}", "regulated", ("CAN", f"db:db-{n}", "E3")) for n in range(8)]
+    lines, more = at_risk(intern().model_copy(update={"opened": many}))
+    assert (len(lines), more) == (5, 3)
+    assert "- and 3 more, under **The path, step by step**" in render(
+        intern().model_copy(update={"opened": many})
+    )
+
+
+# What the PR said it needs ----------------------------------------------------------------------------------
+
+
+def test_what_the_pr_said_it_needs() -> None:
+    assert what_pr_says(intern()) == [
+        '"Let Priya read the app logs."',
+        "It asks only for: **priya-intern** to read **demo-app-logs/**.",
+    ]
+    assert what_pr_says(code_pr()) == ['"Fix a typo on the support page."', "It says it changes no access."]
+    unstated = intern().model_copy(update={"intent": Intent(purpose="", stated=False)})
+    assert what_pr_says(unstated) == [
+        "The PR doesn't say what it's for, so Theseus can't check the change against a purpose."
+        " Ask the author to describe it."
+    ]
+    assert what_pr_says(intern().model_copy(update={"intent": None})) is None
+
+
+def test_a_suspicious_pr_gets_a_warning_under_the_headline() -> None:
+    comment = render(intern().model_copy(update={"intent": Intent(purpose="p", suspicious=True)}))
     warning = comment.index("tries to steer the review")
-    assert comment.index("Your PR says") < warning < comment.index("| Actor |")
+    assert comment.index("**Your PR says") < warning < comment.index("#### What happened")
     assert "Warning" not in render(intern())
 
 
-def test_the_unstated_headline_passes_through() -> None:
-    headline = "This PR doesn't say what it's for. Your change grants db:customer-db."
-    result = intern().model_copy(update={"headline": headline, "intent": Intent(purpose="", stated=False)})
-    assert "This PR doesn't say what it's for. Your change grants db:customer-db." in render(result)
+# What to do -------------------------------------------------------------------------------------------------
 
 
-# Paths and diagrams -------------------------------------------------------------------------------------
+def test_what_to_do_names_the_recommended_fix_and_what_it_was_tested_for() -> None:
+    assert what_to_do(intern(), "blocked") == [
+        "✅ **Reply `/theseus apply B`** to commit fix B: A new support-logs-read role for Priya.",
+        "Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.",
+        "Or ask the author to change the PR.",
+    ]
+
+
+def test_what_to_do_when_no_fix_can_be_applied_as_is() -> None:
+    vetoed = [
+        c.model_copy(update={"recommended": False, "needs_closer_look": c.id == "B"})
+        for c in intern().candidates
+    ]
+    assert what_to_do(intern().model_copy(update={"candidates": vetoed}), "blocked")[0] == (
+        "⚠️ `B` passes Theseus's checks but needs a closer look first. Then reply `/theseus apply <ID>`."
+    )
+    failing = [c.model_copy(update={"verdict": "fail", "recommended": False}) for c in intern().candidates]
+    assert what_to_do(intern().model_copy(update={"candidates": failing}), "blocked")[0].startswith(
+        "❗ No fix Theseus tested passes every check."
+    )
+    assert what_to_do(code_pr(), "blocked") == [
+        "Ask the author why the change needs this access. If it should have it, an owner adds it to"
+        " `theseus.yaml`."
+    ]
+    assert what_to_do(needs_a_look(), "look")[0].startswith(
+        "Check the items under **What Theseus could not check**"
+    )
+    assert what_to_do(AnalysisResult(mode="pr"), "clear") == [
+        "Nothing. Theseus found no new access to sensitive data."
+    ]
+
+
+def test_the_checkov_line_says_why_it_can_pass() -> None:
+    assert checkov_line(CHECKOV, opened=True) == (
+        "Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a"
+        " path that crosses several."
+    )
+    assert checkov_line(CHECKOV) == "Checkov 3.2.255 passed this commit (52 checks)."
+    assert checkov_line({"passed": 50, "failed": 2}) == (
+        "Checkov found 2 problems on this commit (50 checks passed); see its own report."
+    )
+    assert checkov_line(None) == "Checkov did not run on this commit."
+
+
+# The path, step by step -------------------------------------------------------------------------------------
 
 
 def test_at_most_three_diagrams_the_most_sensitive_first() -> None:
@@ -336,8 +475,9 @@ def test_at_most_three_diagrams_the_most_sensitive_first() -> None:
     extra = path(5, "secret:payments-api-key", "regulated", ("CAN", "secret:payments-api-key", "E3"))
     picked = pick_diagrams([*result.opened, extra])
     assert [p.id for p in picked] == ["P1", "P2", "P5"]  # the database before the secret that unlocks it
-    comment = render(result.model_copy(update={"opened": [*result.opened, extra]}))
-    assert comment.count("```mermaid") == 3
+    section = folded(render(result.model_copy(update={"opened": [*result.opened, extra]})), "The path")
+    assert section.count("```mermaid") == 3
+    assert "How **priya-intern** reaches **customer-db**" in section
 
 
 def test_mermaid_node_ids_are_plain_and_labels_cannot_break_the_block() -> None:
@@ -356,7 +496,7 @@ def test_every_step_links_to_its_line_at_the_head_commit() -> None:
     comment = render(intern())
     links = re.findall(r"\]\((https://[^)]+)\)", comment)
     assert links and all(link.startswith(BLOB) for link in links)
-    assert f"{BLOB}terraform/people.tf#L20" in links
+    assert f"{BLOB}terraform/people.tf#L20" in folded(comment, "The path")
 
 
 def test_a_step_with_unknown_evidence_says_so_and_has_no_link() -> None:
@@ -365,14 +505,11 @@ def test_a_step_with_unknown_evidence_says_so_and_has_no_link() -> None:
     assert "unknown](" not in comment
 
 
-# Checkov and the cut ------------------------------------------------------------------------------------
+# All fixes Theseus tested -----------------------------------------------------------------------------------
 
 
-def test_the_checkov_line_reads_its_summary_or_says_it_did_not_run() -> None:
-    assert checkov_line({"passed": 52, "failed": 0, "skipped": 1, "checkov_version": "3.2.255"}) == (
-        "Checkov 3.2.255 on this commit: 52 passed, 0 failed, 1 skipped."
-    )
-    assert checkov_line(None) == "Checkov did not run on this commit."
+def fix_rows(comment: str) -> list[str]:
+    return [line for line in comment.splitlines() if re.match(r"^\| (\*\*)?[A-Z]\d*(\*\*)? \|", line)]
 
 
 def test_the_cut_sentence_has_three_forms() -> None:
@@ -400,29 +537,25 @@ def test_the_cut_sentence_has_three_forms() -> None:
     )
     assert f"({BLOB}terraform/people.tf#L20)" in sentence
     two = one.model_copy(
-        update={"value": 2, "cut": [*one.cut, one.cut[0].model_copy(update={"eid": "e10", "dst": "role:x"})]}
+        update={"cut": [*one.cut, one.cut[0].model_copy(update={"eid": "e10", "dst": "role:x"})]}
     )
     assert cut_sentence(intern().model_copy(update={"min_cut": two}), REPO, SHA, "demo-infra").startswith(
         "2 changes close every path:"
     )
 
 
-# Fixes ----------------------------------------------------------------------------------------------------
-
-
-def fix_rows(comment: str) -> list[str]:
-    return [line for line in comment.splitlines() if re.match(r"^\| (\*\*)?[A-Z]\d*(\*\*)? \|", line)]
-
-
 def test_the_fix_table_shows_every_candidate_with_the_recommended_row_bold() -> None:
-    rows = fix_rows(render(intern()))
-    assert [re.match(r"^\| (?:\*\*)?(\w+)", r).group(1) for r in rows] == ["A", "B", "C", "D"]  # type: ignore[union-attr]
-    assert rows[1] == (
+    section = folded(render(intern()), "All 4 fixes")
+    assert "**Smallest change:** No single permission can be removed" in section
+    rows = fix_rows(section)
+    assert rows == [
+        "| A | Revert the membership (rule) | all closed | breaks I1 | kept | fail |",
         "| **B** | **A new support-logs-read role for Priya (zai-org/GLM-5.3)** | **all closed** | **kept**"
-        " | **kept** | **pass** |"
-    )
-    assert rows[0] == "| A | Revert the membership (rule) | all closed | breaks I1 | kept | fail |"
-    assert rows[3] == "| D | Remove AssumeProdSupport (rule) | 1 left | breaks R2, R3 | kept | fail |"
+        " | **kept** | **pass** |",
+        "| C | Deny Priya on prod-support (rule) | all closed | kept | kept | unknown |",
+        "| D | Remove AssumeProdSupport (rule) | 1 left | breaks R2, R3 | kept | fail |",
+    ]
+    assert "Reply `/theseus apply B` to commit a fix." in section
 
 
 def test_a_vetoed_pass_needs_a_closer_look_and_nothing_passing_is_said_plainly() -> None:
@@ -438,20 +571,15 @@ def test_a_vetoed_pass_needs_a_closer_look_and_nothing_passing_is_said_plainly()
     assert "No fix passes every check" in comment and "/theseus apply" not in comment
 
 
-def test_the_apply_hint_names_only_passing_fixes_recommended_first() -> None:
-    candidates = [*intern().candidates, candidate("S", "pass", title="Scope down")]
-    comment = render(intern().model_copy(update={"candidates": candidates}))
-    assert "Reply `/theseus apply B` to commit a fix. `S` also passes." in comment
+# What Theseus could not check, and technical details --------------------------------------------------------
 
 
-# Unknowns and details ---------------------------------------------------------------------------------------
-
-
-def test_unknowns_trace_coverage_timings_and_versions() -> None:
+def test_unknowns_and_technical_details_are_folded() -> None:
     comment = render(intern())
-    assert "- `aws_kms_key.main`: key policy conditions are not modeled" not in comment  # not reformatted
-    assert "- aws\\_kms\\_key.main: key policy conditions are not modeled" in comment
-    inside = details(comment)
+    assert "- aws\\_kms\\_key.main: key policy conditions are not modeled" in folded(comment, "What Theseus")
+    inside = folded(comment, "Technical details")
+    assert "**What the change does:** Adds `aws_iam_user_group_membership.priya_support`." in inside
+    assert "Opens 3 dangerous paths, closes 0." in inside
     assert "| 1 | `explain_path` | P1: 5 hops to db:customer-db | 12 |" in inside
     assert "| `user:priya-intern` | `s3://demo-app-logs/` (internal) | 2 |" in inside
     assert (
@@ -460,13 +588,32 @@ def test_unknowns_trace_coverage_timings_and_versions() -> None:
     ) in inside
     assert "Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s." in inside
     assert "Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`." in inside
+    assert "Models: not recorded." in render(intern().model_copy(update={"models": {}}))
 
 
-def test_missing_versions_are_said_to_be_unrecorded() -> None:
-    assert "Models: not recorded." in details(render(intern().model_copy(update={"models": {}})))
+def test_the_change_line_names_what_is_added_updated_and_deleted() -> None:
+    def change(action: str, *names: str) -> list[ResourceChange]:
+        return [ResourceChange(address=n, type=n.split(".")[0], action=action) for n in names]  # type: ignore[arg-type]
+
+    result = intern().model_copy(
+        update={
+            "changes": change("create", "aws_iam_role.a", "aws_iam_role.b")
+            + change("update", "aws_iam_role_policy.c")
+            + change("delete", *(f"aws_s3_bucket.{x}" for x in "defgh")),
+            "closed": [path(9, "s3://demo-app-logs/", "internal")],
+        }
+    )
+    assert change_line(result) == (
+        "Adds `aws_iam_role.a` and `aws_iam_role.b`; updates `aws_iam_role_policy.c`;"
+        " deletes `aws_s3_bucket.d`, `aws_s3_bucket.e`, `aws_s3_bucket.f` and 2 more."
+        " Opens 3 dangerous paths, closes 1."
+    )
+    assert change_line(result.model_copy(update={"changes": [], "opened": result.opened[:1]})) == (
+        "Opens 1 dangerous path, closes 1."
+    )
 
 
-# Untrusted text -----------------------------------------------------------------------------------------
+# Untrusted text ---------------------------------------------------------------------------------------------
 
 
 HOSTILE = (
@@ -479,13 +626,14 @@ def test_text_from_prs_and_models_cannot_change_the_comment_s_structure() -> Non
     result = intern().model_copy(
         update={
             "headline": HOSTILE,
+            "intent": Intent(purpose=HOSTILE, grants=[]),
             "candidates": [c.model_copy(update={"title": HOSTILE}) for c in intern().candidates],
             "tool_trace": [ToolCall(tool="explain_path", input={}, summary=HOSTILE, ms=1)],
             "unknowns": [HOSTILE],
         }
     )
     comment = render(result)
-    assert comment.count("<details>") == 1 and comment.count("</details>") == 1
+    assert comment.count("<details>") == comment.count("</details>") == 4
     assert comment.count("<!--") == 1 and comment.count(MARKER) == 1
     assert "<img" not in comment and "](https://evil" not in comment
     assert re.search(r"(?<!`)@security-team", comment) is None
@@ -516,37 +664,38 @@ def test_a_huge_result_stays_under_github_s_limit() -> None:
     assert "and 480 more" in comment
 
 
-# Every kind of result -----------------------------------------------------------------------------------
+# Every kind of result ---------------------------------------------------------------------------------------
 
 
 def test_spec_05_s_intern_example_renders_through_the_stub() -> None:
     comment = render(result_from_expected(INTERN_EXPECTED))
-    assert comment.count("```mermaid") == 1 and len(fix_rows(comment)) == 4
+    assert comment.startswith(MARKER + "\n## 🔴 Merge blocked")
+    assert folded(comment, "The path").count("```mermaid") == 1
+    assert len(fix_rows(comment)) == 4
     assert f"{BLOB}terraform/roles.tf#L31" in comment
 
 
 def test_finding_and_scan_results_render() -> None:
     finding = AnalysisResult(
-        mode="finding",
-        headline="GHSA-demo-0001 reaches db:customer-db.",
-        rotate=["secret:prod-db-credentials"],
+        mode="finding", headline="GHSA-demo-0001 reaches db:customer-db.", opened=intern().opened
     )
     scan = AnalysisResult(mode="scan", headline="1 grant is never called.")
     for result in (finding, scan):
         comment = render(result)
-        assert comment.startswith(MARKER) and "Opens" not in comment
+        assert comment.startswith(MARKER)
+        assert "#### What to do" not in comment and "Checkov" not in comment
 
 
 SNAPSHOT_CASES = {
-    "intern": lambda: intern(),
+    "intern": intern,
     "unstated": lambda: intern().model_copy(
         update={
             "intent": Intent(purpose="", stated=False),
-            "headline": "This PR doesn't say what it's for. Your change grants db:customer-db.",
+            "headline": "This PR doesn't say what it's for. Your change lets priya-intern reach customer-db.",
         }
     ),
     "suspicious": lambda: intern().model_copy(
-        update={"intent": Intent(purpose="Publish previews.", suspicious=True)}
+        update={"intent": Intent(purpose="Let Priya read the app logs.", suspicious=True)}
     ),
     "nothing-opened": lambda: intern().model_copy(
         update={
@@ -557,6 +706,8 @@ SNAPSHOT_CASES = {
             "headline": "This change matches its stated purpose.",
         }
     ),
+    "code-pr": code_pr,
+    "needs-a-look": needs_a_look,
     "finding": lambda: AnalysisResult(
         mode="finding", headline="GHSA-demo-0001 reaches db:customer-db.", models={"jev": "jev-1.13.0"}
     ),
@@ -565,12 +716,7 @@ SNAPSHOT_CASES = {
 
 @pytest.mark.parametrize("name", sorted(SNAPSHOT_CASES))
 def test_the_comment_matches_its_snapshot(name: str) -> None:
-    matches_snapshot(
-        name,
-        render(
-            SNAPSHOT_CASES[name](), {"passed": 52, "failed": 0, "skipped": 0, "checkov_version": "3.2.255"}
-        ),
-    )
+    matches_snapshot(name, render(SNAPSHOT_CASES[name]()))
 
 
 @pytest.mark.parametrize("expected", FIXTURES, ids=lambda p: p.parent.name)

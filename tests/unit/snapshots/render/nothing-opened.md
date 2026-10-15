@@ -1,12 +1,28 @@
 <!-- theseus:pr-comment -->
-Adds `aws_iam_user_group_membership.priya_support`. Opens 0 dangerous paths, closes 0.
+## 🟢 No new access to sensitive data
 
-### This change matches its stated purpose.
+**This change matches its stated purpose.**
 
-Checkov 3.2.255 on this commit: 52 passed, 0 failed.
+#### What happened
+
+This PR adds `aws_iam_user_group_membership.priya_support`.<br>
+It opens no new way to reach sensitive data.
+
+#### What the PR said it needs
+
+"Let Priya read the app logs."<br>
+It asks only for: **priya-intern** to read **demo-app-logs/**.
+
+#### What to do
+
+Nothing. Theseus found no new access to sensitive data.
+
+Checkov 3.2.255 passed this commit (52 checks).
 
 <details>
-<summary>How Theseus decided</summary>
+<summary><b>Technical details</b></summary>
+
+**What the change does:** Adds `aws_iam_user_group_membership.priya_support`. Opens 0 dangerous paths, closes 0.
 
 **Tool calls**
 
