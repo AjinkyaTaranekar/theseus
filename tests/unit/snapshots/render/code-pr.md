@@ -13,7 +13,7 @@ The code of the **billing-api** service now reads the **customer-db** database (
 
 #### What the PR said it needs
 
-"Fix a typo on the support page."<br>
+"Fix a typo on the support page."\
 It says it changes no access.
 
 #### What to do

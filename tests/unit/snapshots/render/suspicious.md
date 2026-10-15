@@ -7,12 +7,12 @@
 
 #### What happened
 
-This PR adds `aws_iam_user_group_membership.priya_support`.<br>
-Because of that, 3 new ways to reach sensitive data open. The most serious:<br>
-**priya-intern** (a user) is a member of the **support-engineers** group,<br>
-→ which can switch into the **prod-support** role,<br>
-→ which can read the **prod-db-credentials** secret,<br>
-→ which unlocks the **customer-db** database.<br>
+This PR adds `aws_iam_user_group_membership.priya_support`.\
+Because of that, 3 new ways to reach sensitive data open. The most serious:\
+**priya-intern** (a user) is a member of the **support-engineers** group,\
+→ which can switch into the **prod-support** role,\
+→ which can read the **prod-db-credentials** secret,\
+→ which unlocks the **customer-db** database.\
 Each of the 3 is under **The path, step by step** below.
 
 #### What's at risk
@@ -23,13 +23,13 @@ Each of the 3 is under **The path, step by step** below.
 
 #### What the PR said it needs
 
-"Let Priya read the app logs."<br>
+"Let Priya read the app logs."\
 It says it changes no access.
 
 #### What to do
 
-✅ **Reply `/theseus apply B`** to commit fix B: A new support-logs-read role for Priya.<br>
-Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.<br>
+✅ **Reply `/theseus apply B`** to commit fix B: A new support-logs-read role for Priya.\
+Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.\
 Or ask the author to change the PR.
 
 Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.

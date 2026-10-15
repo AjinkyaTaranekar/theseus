@@ -5,12 +5,12 @@
 
 #### What happened
 
-This PR adds `aws_iam_user_group_membership.priya_support`.<br>
+This PR adds `aws_iam_user_group_membership.priya_support`.\
 It opens no new way to reach sensitive data.
 
 #### What the PR said it needs
 
-"Let Priya read the app logs."<br>
+"Let Priya read the app logs."\
 It asks only for: **priya-intern** to read **demo-app-logs/**.
 
 #### What to do

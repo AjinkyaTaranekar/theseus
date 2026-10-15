@@ -38,7 +38,8 @@ _PUNCTUATION = re.compile(r"([\\`*_{}\[\]()#+!|~])")
 _URL_OR_MENTION = re.compile(r"(?:https?://|www\.)[^\s|<>]+|(?<![\w.])@[A-Za-z0-9][\w-]*")
 _BACKTICKS = re.compile(r"`+")
 _MERMAID = {'"': "#quot;", "`": "#96;", "<": "#lt;", ">": "#gt;"}
-_BREAK = "<br>\n"
+# A line break in both GitHub comments and plain markdown; a newline alone doubles in comments.
+_BREAK = "\\\n"
 
 
 class Md(str):

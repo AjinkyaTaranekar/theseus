@@ -9,7 +9,7 @@ It opens no new way to reach sensitive data.
 
 #### What the PR said it needs
 
-"Rotate the KMS key."<br>
+"Rotate the KMS key."\
 It says it changes no access.
 
 #### What to do

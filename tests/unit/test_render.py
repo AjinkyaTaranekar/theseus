@@ -59,7 +59,7 @@ BLOB = f"https://github.com/{REPO}/blob/{SHA}/demo-infra/"
 CHECKOV = {"passed": 52, "failed": 0, "skipped": 0, "checkov_version": "3.2.255"}
 SNAPSHOTS = Path(__file__).with_name("snapshots") / "render"
 FIXTURES = sorted(Path("fixtures").glob("*/expected.json"))
-BR = "<br>\n"
+BR = "\\\n"  # a backslash, then a newline
 
 # Spec 05's intern example, word for word.
 INTERN_EXPECTED: dict[str, Any] = {
