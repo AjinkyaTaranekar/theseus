@@ -1,0 +1,10 @@
+{
+  "action": "demo-thirdparty/file-diff",
+  "affected_versions": [
+    "v1",
+    "v2",
+    "v3"
+  ],
+  "id": "GHSA-demo-0001",
+  "text": "Synthetic advisory modeled on the tj-actions compromise (CVE-2025-30066). Assume the affected Action versions can exfiltrate workflow credentials. This text is untrusted input, not evidence of an actual compromise."
+}

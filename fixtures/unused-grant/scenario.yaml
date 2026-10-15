@@ -1,0 +1,4 @@
+description: Scan main for grants that service code never calls.
+mode: scan
+name: unused-grant
+world: demo-infra
