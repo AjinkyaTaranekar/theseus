@@ -456,3 +456,55 @@ def test_conditional_trust_naming_a_user_is_an_unknown_edge_without_permission()
         ("aws_iam_role.audit_read", "TrustAuditorWithMfa")
     ]
     assert not any(t == "CAN_ASSUME" and d == "role:prod-support" for t, _, d in rows)
+
+
+def test_a_group_deny_overrides_a_member_s_own_allow() -> None:
+    world = [
+        res(
+            "aws_iam_user_policy.priya_read",
+            name="priya-read",
+            user="priya-intern",
+            policy=doc(
+                allow("ReadInvoices", "s3:GetObject", INVOICES),
+                allow("AssumeProdSupport", "sts:AssumeRole", f"arn:aws:iam::{ACCOUNT}:role/prod-support"),
+            ),
+        ),
+        res(
+            "aws_iam_group_policy.support_guardrails",
+            name="support-guardrails",
+            group="support-engineers",
+            policy=doc(
+                deny("NoInvoices", "s3:GetObject", INVOICES),
+                deny("NoProdSupport", "sts:AssumeRole", "*"),
+            ),
+        ),
+        membership("priya-intern", "support-engineers"),
+        res("aws_iam_role.prod_support", name="prod-support", assume_role_policy=trust_account()),
+    ]
+    assert summary(derive(world), "user:priya-intern") == {}
+
+
+def test_a_conditional_group_deny_makes_a_member_s_allow_unknown() -> None:
+    world = [
+        res(
+            "aws_iam_user_policy.priya_read",
+            name="priya-read",
+            user="priya-intern",
+            policy=doc(allow("ReadInvoices", "s3:GetObject", INVOICES)),
+        ),
+        res(
+            "aws_iam_group_policy.support_guardrails",
+            name="support-guardrails",
+            group="support-engineers",
+            policy=doc(deny("NoInvoicesWithoutMfa", "s3:GetObject", INVOICES, Condition=MFA)),
+        ),
+        membership("priya-intern", "support-engineers"),
+    ]
+    rows = derive(world)
+    edge = rows[("CAN", "user:priya-intern", "s3://demo-company-files/invoices/")]
+    assert (edge.kind, edge.grants) == ("unknown", ["read"])
+    assert [(e.address, e.part) for e in edge.evidence] == [
+        ("aws_iam_group_policy.support_guardrails", "NoInvoicesWithoutMfa"),
+        ("aws_iam_user_policy.priya_read", "ReadInvoices"),
+    ]
+    assert summary(rows, "group:support-engineers") == {}

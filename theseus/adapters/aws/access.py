@@ -127,6 +127,16 @@ def _assume_edge(
     )
 
 
+def _memberships(resources: list[IacResource]) -> dict[str, list[str]]:
+    """Each user's groups, as node IDs, from `aws_iam_user_group_membership`."""
+    out: dict[str, set[str]] = {}
+    for r in resources:
+        if r.type == "aws_iam_user_group_membership" and (user := iam_name(r.values.get("user"))):
+            groups = r.values.get("groups") or []
+            out.setdefault(f"user:{user}", set()).update(f"group:{iam_name(g)}" for g in groups)
+    return {user: sorted(groups) for user, groups in out.items()}
+
+
 def _boundaries(resources: list[IacResource], locate: Locate) -> dict[str, Evidence]:
     """Principals with a permissions boundary, which the subset does not model, and the evidence naming it."""
     out = {}
@@ -164,6 +174,10 @@ def derive_access_edges(
     roles = [n for n in principals if parse_id(n.id)[0] == "role"]
 
     held = {n.id: statements_for(*parse_id(n.id), resources, account, locate) for n in principals}
+    # A group's Deny applies to its members as well, so it overrides a member's own Allow (section 5).
+    for user, groups in _memberships(resources).items():
+        if user in held:
+            held[user] = held[user] + [p for g in groups for p in held.get(g, []) if p[0].effect == "Deny"]
     role_resources = {iam_name(r.values.get("name")): r for r in resources if r.type == "aws_iam_role"}
     trust: dict[str, Pairs] = {}
     for role in roles:

@@ -84,6 +84,13 @@ holds `AWSLambdaBasicExecutionRole` and `AmazonECSTaskExecutionRolePolicy`, whic
 other AWS-managed ARN, or a customer ARN not in the plan, counts as an unknown policy (section 2). A group's
 statements are evaluated on the group; its members reach them through `MEMBER_OF`.
 
+**A group's `Deny` binds its members.** IAM evaluates a user with every policy of every group it is in, so each
+group's `Deny` statements, conditional ones included, are added to each member's own statements: a group `Deny`
+overrides a member's direct `Allow`, or makes it unknown. The reverse is not modeled: a member's own `Deny`, or
+one group's `Deny` against another group's `Allow`, does not remove what the member reaches through
+`MEMBER_OF`, because that edge serves every member. Such a path is reported though IAM would deny it, so
+Theseus may report a path that does not exist there, never miss one.
+
 **`evaluate(statements, action, arn)`** returns one of:
 
 | Result | When |
@@ -121,7 +128,7 @@ caller needs no permission from it, so a condition on it makes the edge unknown,
 | Edge | Rule |
 | --- | --- |
 | `MEMBER_OF` | One per group listed in each `aws_iam_user_group_membership` |
-| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and no `Allow` in R's trust names P's ARN. Kind `unknown` if either is unknown, or if `d` is `none` and `t` is not `explicit` (the trust naming P has a condition, or a `Deny` that might apply). Without a permission of P's own, the evidence is the trust that names P |
+| `CAN_ASSUME` | For every principal P and role R (P not R): `d = evaluate(P's statements, sts:AssumeRole, R.arn)`; `t = trust_kind(R's trust, P.arn)` (for a group, use the account form). P's statements include its groups' `Deny` statements (section 5). No edge if `d` is `deny` or `t` is none, or if `d` is `none` and no `Allow` in R's trust names P's ARN. Kind `unknown` if either is unknown, or if `d` is `none` and `t` is not `explicit` (the trust naming P has a condition, or a `Deny` that might apply). Without a permission of P's own, the evidence is the trust that names P |
 | `CAN` | For every principal with statements, every resource, every modeled action that applies to that resource kind: `allow` makes a configured edge, `unknown` an unknown one. Grants of the same principal and resource merge into one edge. Evidence for a statement in an attached policy names the `aws_iam_policy` and Sid, with note `attached by <attachment address>` |
 | `CAN` from `entry:internet` | From `aws_s3_bucket_policy` statements whose principal is `"*"` or `{"AWS": "*"}`, evaluated like identity statements against the bucket's locations |
 | `UNLOCKS` | From a secret to `db:<tag value>` when the secret has tag `db_instance` and that database exists. Grants read and write. Kind inferred |
