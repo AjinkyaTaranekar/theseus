@@ -285,6 +285,8 @@ class AnalysisResult(Contract):
     tool_trace: list[ToolCall] = Field(default_factory=list)
     timings: Timings = Field(default_factory=Timings)
     coverage: Coverage = Field(default_factory=Coverage)
+    # The models that answered, such as {"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}: shown, not compared.
+    models: dict[str, str] = Field(default_factory=dict)
 
 
 # Golden tests ---------------------------------------------------------------------------------------------

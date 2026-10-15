@@ -189,6 +189,12 @@ def test_analysis_result_round_trips_through_json() -> None:
     assert again == result
 
 
+def test_the_model_versions_round_trip_and_are_never_compared() -> None:
+    result = intern_result().model_copy(update={"models": {"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}})
+    assert AnalysisResult.model_validate_json(result.model_dump_json()).models == result.models
+    assert "models" not in project(result)
+
+
 def test_path_step_serializes_as_from_and_to() -> None:
     step = PathStep(src="user:a", type="MEMBER_OF", dst="group:b", evidence="E1")
     dumped = json.loads(step.model_dump_json())
