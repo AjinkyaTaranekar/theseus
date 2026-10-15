@@ -1,7 +1,7 @@
 """Command line: `python -m theseus analyze | finding | scan | serve`.
 
-Each command prints "not implemented yet" and exits 2 until the task that builds it lands
-(analyze: E3, finding: FM3, scan: C3, serve: F3).
+`serve` runs the API (F3). The others print "not implemented yet" and exit 2 until the task that builds them
+lands (analyze: E3, finding: FM3, scan: C3). A composition root (docs/spec/08-core-and-adapters.md).
 """
 
 from __future__ import annotations
@@ -9,7 +9,12 @@ from __future__ import annotations
 import argparse
 import sys
 
+import uvicorn
+
 from theseus import __version__
+from theseus.config import get_settings
+from theseus.errors import GraphError
+from theseus.graph.client import get_client
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,15 +28,28 @@ def build_parser() -> argparse.ArgumentParser:
         ("scan", "list dangerous paths and unused grants in main"),
     ):
         commands.add_parser(name, help=text).add_argument("fixture", help="a folder under fixtures/")
-    commands.add_parser("serve", help="run the API on http://localhost:8000")
+    commands.add_parser("serve", help="run the API on http://localhost:8000; needs FalkorDB")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     """Run one command and return its exit code."""
     args = build_parser().parse_args(argv)
+    if args.command == "serve":
+        return serve()
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
     return 2
+
+
+def serve() -> int:
+    """Run the API on localhost:8000, or exit 1 when FalkorDB cannot be reached (rule 3)."""
+    try:
+        get_client(get_settings())
+    except GraphError as e:
+        print(f"theseus serve: {e}", file=sys.stderr)
+        return 1
+    uvicorn.run("theseus.api.app:app", host="127.0.0.1", port=8000)
+    return 0
 
 
 def run() -> None:

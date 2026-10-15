@@ -1,0 +1,24 @@
+{
+  "scenario": "intern",
+  "mode": "pr",
+  "intent": {"grants": [["user:priya-intern", "read", "s3://demo-app-logs/"]], "suspicious": false},
+  "opened": [
+    {"actor": "user:priya-intern", "target": "db:customer-db",
+     "route": ["user:priya-intern", "group:support-engineers", "role:prod-support",
+               "secret:prod-db-credentials", "db:customer-db"],
+     "cites": ["terraform/people.tf:20", "terraform/people.tf:30", "terraform/roles.tf:31", "terraform/data.tf:12"]},
+    {"actor": "user:priya-intern", "target": "s3://demo-company-files/invoices/",
+     "route": ["user:priya-intern", "group:support-engineers", "role:prod-support",
+               "s3://demo-company-files/invoices/"],
+     "cites": ["terraform/people.tf:20", "terraform/people.tf:30", "unknown"]}
+  ],
+  "closed": [],
+  "requirements": {"R1": "satisfied", "R2": "satisfied", "R3": "satisfied", "I1": "satisfied"},
+  "min_cut": {"cuttable": false, "value_at_least": 1000000},
+  "candidates": {"A": "fail", "B": "pass", "C": "unknown", "D": "fail"},
+  "recommended": "B",
+  "rotate": [],
+  "unused_grants": [],
+  "use_beyond_intent": [],
+  "staging_to_prod": []
+}
