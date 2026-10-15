@@ -18,14 +18,12 @@ KINDS = {
     "action": "GitHub Action",
     "entry": "entry point",
 }
-# Resource categories, keyed by a normalized name so both spellings work ("object_store", "ObjectStorage").
+# Resource categories (RESOURCE_CATEGORIES), keyed by their lowercase name.
 CATEGORIES = {
-    "objectstore": "storage location",
     "objectstorage": "storage location",
     "filestorage": "file share",
     "blockstorage": "disk",
     "database": "database",
-    "table": "database table",
     "secret": "secret",
     "encryptionkey": "encryption key",
     "aimodel": "AI model",

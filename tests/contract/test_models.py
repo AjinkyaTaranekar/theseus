@@ -191,7 +191,7 @@ def test_analysis_result_round_trips_through_json() -> None:
 
 
 def test_node_info_round_trips_and_is_never_compared() -> None:
-    nodes = {"db:customer-db": NodeInfo(category="database", sensitivity="regulated")}
+    nodes = {"db:customer-db": NodeInfo(category="Database", sensitivity="regulated")}
     result = intern_result().model_copy(update={"nodes": nodes})
     assert AnalysisResult.model_validate_json(result.model_dump_json()).nodes == nodes
     assert "nodes" not in project(result)
