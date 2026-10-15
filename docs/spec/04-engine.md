@@ -70,11 +70,14 @@ When a value is missing or unknown, the importer builds the canonical ARN:
 ## 5. The IAM subset (`adapters/aws/iam.py`)
 
 **Supported:** `Allow` and `Deny`; `Action` and `Resource` as a string or list; wildcards (`*` matches any
-run of characters including `/` and `:`; `?` matches one; case-insensitive); account-root and explicit-ARN
-trust; GitHub OIDC trust on `aud` and `sub` under `StringEquals` and `StringLike`.
+run of characters including `/` and `:`; `?` matches one). As in IAM, actions match without case and resource
+ARNs with it, so `Invoices/` and `invoices/` are different locations. Account-root and explicit-ARN trust;
+GitHub OIDC trust on `aud` and `sub` under `StringEquals` and `StringLike`.
 
 **Unsupported, so UNKNOWN:** any other `Condition`; `NotAction`, `NotResource`, `NotPrincipal`; permission
-boundaries; SCPs; KMS key policies; resource policies other than S3 bucket policies.
+boundaries (every edge from a user or role that has one is unknown); SCPs; KMS key policies; resource policies
+other than S3 bucket policies. The demo world has no SCP, KMS key policy or other resource policy; those types
+are skipped and counted in `coverage`.
 
 **A principal's statements** are its inline policies (`aws_iam_user_policy`, `aws_iam_group_policy`,
 `aws_iam_role_policy`), plus every attached customer-managed policy (a `*_policy_attachment` whose `policy_arn`
@@ -88,11 +91,13 @@ statements are evaluated on the group; its members reach them through `MEMBER_OF
 | Result | When |
 | --- | --- |
 | `deny` | An unconditional matching `Deny` exists |
-| `allow` | An unconditional matching `Allow` exists, and no conditional `Deny` or unsupported statement could match |
-| `unknown` | A matching `Allow` exists only with a condition, or alongside a conditional `Deny` or an unsupported statement |
+| `allow` | An unconditional matching `Allow` exists, and no conditional or unsupported `Deny` could match |
+| `unknown` | A matching `Allow` exists only with a condition or unsupported, or an unconditional one faces a conditional or unsupported `Deny` that could match |
 | `none` | Nothing matches |
 
-It also returns the statements that decided it; those become the edge's evidence.
+It also returns the statements that decided it; those become the edge's evidence. An uncertain `Allow` can only
+add access, so it never weakens a definite allow; only a `Deny` can. An unsupported statement "could match"
+when the parts it does state match (a `NotAction` statement could match any action).
 
 **Modeled actions and the access they grant:**
 
