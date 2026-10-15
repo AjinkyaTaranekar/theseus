@@ -205,4 +205,10 @@ Tailscale's certificate: the only public way in, which GitHub's webhooks and the
 API runs from a venv on `127.0.0.1:8000` under `deploy/run.sh`, which restarts it when it exits;
 `deploy/deploy-funnel.sh` deploys a commit and rolls back if the public `/health` never answers. Secrets live in
 `.env` on the host, readable by `dev` only. `deploy/README.md` has the setup.
+
+**Deploys are manual.** The `Deploy` workflow (`.github/workflows/deploy.yml`, `workflow_dispatch` with a
+`ref`) runs that script from GitHub: the runner joins the tailnet as an ephemeral `tag:ci` node through a
+Tailscale OAuth client and logs in over Tailscale SSH, which the tailnet policy allows for `tag:ci` as `dev` on
+`tag:server`. No SSH key is stored in GitHub, and the OAuth secret sits in the `production` environment, which
+only workflows on `main` may use.
 Rate-limit `POST /try/*` to 10 requests a minute per IP.

@@ -1,54 +1,158 @@
 # Deploying Theseus
 
-The API runs on **guest-box**, a container on an Oracle ARM host, reachable only through our tailnet. Tailscale
-Funnel publishes it at **https://guest-box.tail27b7c5.ts.net**, with Tailscale's certificate, so there is no
-domain to buy, no Caddy and no open port. FalkorDB is on FalkorDB Cloud. guest-box has no Docker and no
-systemd, so the API runs from a venv under `deploy/run.sh`, which restarts it if it exits.
+The API runs on **guest-box**, a container on an Oracle ARM host that is reachable only through our Tailscale
+network (tailnet). Tailscale Funnel publishes it at **https://guest-box.tail27b7c5.ts.net**, with Tailscale's
+certificate, so there is no domain to buy, no Caddy and no open port. FalkorDB is on FalkorDB Cloud. guest-box
+has no Docker and no systemd, so the API runs from a venv under `deploy/run.sh`, which restarts it if it exits.
 
-A host with Docker and public ports 80 and 443 can run the Compose stack instead (`deploy/docker-compose.yml`
-with Caddy, deployed by `deploy.sh`); see the end of this file.
+Deploy by hand with `deploy/deploy-funnel.sh`, or from GitHub with the **Deploy** workflow (Actions, Deploy,
+Run workflow). A host with Docker and public ports 80 and 443 can run the Compose stack instead; see the end of
+this file.
 
 ## The host
 
 | Item | Value |
 | --- | --- |
-| Host | `guest-box`: Ubuntu 24.04 in a container on an Oracle ARM host; 4 cores, 22 GB, 50 GB disk |
-| SSH | `ssh dev@100.104.51.40`, from a machine on the tailnet |
+| Host | `guest-box`: Ubuntu 24.04 in a container on an Oracle ARM host; 4 cores, 22 GB, 50 GB disk; Python 3.12 |
+| Tailnet | `tail27b7c5.ts.net`, owned by `ajinkyataranekar26@gmail.com` |
+| SSH | `ssh dev@100.104.51.40` over Tailscale SSH, from a device on the tailnet; no key needed |
 | Public URL (`DOMAIN`) | `https://guest-box.tail27b7c5.ts.net`, through Tailscale Funnel |
-| Deploy clone | `~/theseus`, a read-only deploy key ("guest-box (read-only deploy)") |
+| API | `127.0.0.1:8000` on the host, under `deploy/run.sh` |
+| Deploy clone | `~/theseus` on the host, pulled with a read-only deploy key ("guest-box (read-only deploy)") |
+| Secrets | `~/theseus/.env`, `chmod 600`; the App's key in `~/theseus/secrets/` |
 | Logs | `~/theseus-logs/api.log` |
 
-## One-time setup
+## Setting up guest-box from scratch
 
-1. **Tailscale.** The host is in our tailnet; join it to reach SSH. In the admin console, turn on HTTPS
-   certificates and Funnel. On the host, let `dev` manage it once: `sudo tailscale set --operator=dev`.
-2. **The repo.** The repo is private, so the host has its own read-only deploy key. `git clone
-   git@github.com:<owner>/theseus.git ~/theseus`, then `python3 -m venv ~/theseus/.venv` and
-   `~/theseus/.venv/bin/pip install ~/theseus`.
-3. **Secrets.** Copy your `.env` to `~/theseus/.env` and run `chmod 600 ~/theseus/.env`. Set
-   `DOMAIN=guest-box.tail27b7c5.ts.net`. Never commit it.
-4. **Start and publish.** `bash ~/theseus/deploy/run.sh start`, then `tailscale funnel --bg 8000`. Funnel keeps
-   its setting across restarts; the runner does not survive the container restarting, so start it again then,
-   or add `su dev -c 'bash ~/theseus/deploy/run.sh start'` to the container's start script.
-5. **FalkorDB Cloud.** If the instance has an IP allowlist, add the host's public address (`curl ifconfig.me`).
+Do these once, in order. Steps 1 to 4 need a person: they sign in to Tailscale or type a password.
 
-## Deploy
+1. **Join the tailnet.** Install Tailscale and sign in with an account in the tailnet above.
+   - Windows: the Tailscale app, or in a terminal
+     `"C:\Program Files\Tailscale\tailscale.exe" login --login-server=https://controlplane.tailscale.com`
+     and open the link it prints. A machine that was set up for another tailnet (a university VPN, say) keeps
+     that profile; `tailscale switch --list` shows both, and `tailscale switch <ID>` moves between them.
+   - Check it worked: `tailscale status` lists `guest-box` at `100.104.51.40`. If the list is empty, you are
+     signed in to a different tailnet: compare the tailnet name in `tailscale switch --list`.
+2. **SSH in.** `ssh dev@100.104.51.40`. Tailscale SSH answers (the banner says `SSH-2.0-Tailscale`) and
+   decides by your tailnet identity and the tailnet policy, so no key is needed. If the policy's rule is a
+   `check`, the first login opens a browser to confirm.
+3. **Let `dev` manage Tailscale on the host.** Once, with `dev`'s sudo password:
+   `ssh -t dev@100.104.51.40 "sudo tailscale set --operator=dev"`. Without it, `tailscale funnel` fails with
+   "Access denied: serve config denied". Someone with access to the Oracle host can do the same with
+   `docker exec <container> tailscale set --operator=dev`.
+4. **Allow Funnel in the tailnet.** In the Tailscale admin console, under DNS, turn on MagicDNS and HTTPS
+   certificates. The first `tailscale funnel` on the host prints a link to enable Funnel for that machine;
+   open it and approve. (The policy file then holds a `nodeAttrs` entry with `"attr": ["funnel"]`.)
+5. **Clone the repo.** It is private, so the host has its own key, added to the repo as a read-only deploy key:
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C "guest-box deploy" -f ~/.ssh/id_ed25519   # on the host
+   gh repo deploy-key add <the .pub file> --title "guest-box (read-only deploy)"   # where gh is signed in
+   ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts                    # on the host
+   git clone git@github.com:<owner>/theseus.git ~/theseus
+   ```
+6. **Install.** `python3 -m venv ~/theseus/.venv && ~/theseus/.venv/bin/pip install ~/theseus`.
+7. **Secrets.** Copy your `.env` without printing it, then lock it down and set the public name:
+   ```bash
+   ssh dev@100.104.51.40 'umask 077; cat > ~/theseus/.env' < .env
+   ssh dev@100.104.51.40 'chmod 600 ~/theseus/.env; sed -i "s/^DOMAIN=.*/DOMAIN=guest-box.tail27b7c5.ts.net/" ~/theseus/.env'
+   ```
+   If FalkorDB Cloud has an IP allowlist, add the host's public address (`curl ifconfig.me` on the host).
+8. **Start the API.** `bash ~/theseus/deploy/run.sh start`, then `bash ~/theseus/deploy/run.sh status`: it
+   should print `{"status":"ok","falkordb":"4.22.0",...}`. The API will not start without FalkorDB.
+9. **Publish it.** `tailscale funnel --bg 8000`; `tailscale funnel status` shows
+   `https://guest-box.tail27b7c5.ts.net (Funnel on)`. The setting survives restarts.
+10. **Check it from outside the tailnet.** A device on the tailnet reaches the name through MagicDNS, not
+    Funnel, so ask public DNS for the address and connect to that. A new name can take up to about 10
+    minutes to appear in public DNS.
+    ```bash
+    IP=$(curl -s "https://dns.google/resolve?name=guest-box.tail27b7c5.ts.net&type=A" | python -c "import json,sys; print(json.load(sys.stdin)['Answer'][0]['data'])")
+    curl --resolve guest-box.tail27b7c5.ts.net:443:$IP https://guest-box.tail27b7c5.ts.net/health
+    ```
+11. **Survive a container restart.** The runner does not: start it again, or have whoever owns the container
+    add `su dev -c 'bash ~/theseus/deploy/run.sh start'` to its start script (`/usr/local/bin/start.sh`).
 
-From a machine on the tailnet, after the PR is merged to `main`:
+`deploy/run.sh start | stop | restart | status` manages the API; it writes to `~/theseus-logs/api.log`.
+
+## Deploy by hand
+
+From a device on the tailnet:
 
 ```bash
-deploy/deploy-funnel.sh dev@100.104.51.40    # exits 0 only once https://<DOMAIN>/health answers
-THESEUS_REF=f7-action-app deploy/deploy-funnel.sh dev@100.104.51.40    # try a branch before it merges
+deploy/deploy-funnel.sh dev@100.104.51.40                              # main
+THESEUS_REF=f7-action-app deploy/deploy-funnel.sh dev@100.104.51.40    # a branch, before it merges
 ```
 
 It records the running commit, resets the clone to `origin/<THESEUS_REF>` (default `main`), installs it into the
-venv, restarts the runner, and waits for the API's own `/health`, then for the public one. If either never
-answers, it returns to the previous commit and says whether that recovered (`ROLLED_BACK`) or not
-(`ROLLBACK_FAILED`).
+venv, restarts the API, and waits for the API's own `/health`, then for `https://<DOMAIN>/health`. If either
+never answers, it returns to the previous commit and says whether that recovered (`ROLLED_BACK`) or not
+(`ROLLBACK_FAILED`). It accepts only a branch, tag or commit name as the ref.
 
-The API will not start without FalkorDB: startup connects and fails if it cannot. `/health` returns 503 with
-`"falkordb": "unreachable"` if FalkorDB Cloud stops answering later. So a failed deploy can also mean the
-database is down: read `~/theseus-logs/api.log`.
+## Deploying from GitHub
+
+`.github/workflows/deploy.yml` runs the same script from GitHub, only when a person starts it: **Actions**,
+**Deploy**, **Run workflow**, choose the ref (default `main`). From a terminal:
+`gh workflow run deploy.yml -f ref=main`, then `gh run watch`. The workflow must be on `main` before GitHub
+shows the button.
+
+**What it does.** The runner joins the tailnet as an ephemeral node tagged `tag:ci` (Tailscale's GitHub
+Action, with an OAuth client), pins guest-box's host key, and runs `deploy/deploy-funnel.sh` over Tailscale SSH.
+Only one deploy runs at a time; a second waits. The ephemeral node leaves the tailnet when the job ends.
+
+**Why it is safe to leave set up.** No SSH key is stored in GitHub: the tailnet policy is what lets `tag:ci`
+log in, and only as `dev`, only to `tag:server`. The OAuth secret is in the `production` environment, which only
+workflows on `main` can use, so a workflow edited on a PR branch never sees it. Only people with write access
+can start a workflow.
+
+**One-time setup.** The GitHub side is done: the `production` environment (branch `main` only) holds the
+variables `DEPLOY_HOST` (`dev@100.104.51.40`), `DEPLOY_TAILNET_IP` and `DEPLOY_KNOWN_HOSTS` (guest-box's
+Tailscale SSH host key, from `ssh-keyscan -t ed25519 100.104.51.40`). The tailnet's admin does the rest:
+
+1. **Tag guest-box.** Admin console, Machines, guest-box, **Edit ACL tags**: `tag:server`. Tailscale lets a
+   tagged device such as the runner SSH only into tagged devices, so the host needs a tag.
+2. **Update the tailnet policy** (Access controls). Merge this into the existing file; keep its other rules:
+   ```jsonc
+   "tagOwners": {
+     "tag:ci":     ["autogroup:admin"],
+     "tag:server": ["autogroup:admin"]
+   },
+   "nodeAttrs": [
+     // guest-box is now tagged, so it is no longer covered by an autogroup:member Funnel entry
+     {"target": ["autogroup:member", "tag:server"], "attr": ["funnel"]}
+   ],
+   "ssh": [
+     // people on the tailnet, into guest-box (a tagged device is no longer anyone's autogroup:self)
+     {"action": "accept", "src": ["autogroup:member"], "dst": ["tag:server"], "users": ["dev"]},
+     // the Deploy workflow
+     {"action": "accept", "src": ["tag:ci"], "dst": ["tag:server"], "users": ["dev"]}
+   ]
+   ```
+   If the policy restricts network access (`acls` or `grants` other than allow-all), also let `tag:ci` reach
+   `tag:server` on port 22.
+3. **Create an OAuth client.** Admin console, Settings, OAuth clients, **Generate OAuth client**: scope
+   **Auth Keys** (write), tag `tag:ci`. Store both values in the environment, pasting each when asked:
+   ```bash
+   gh secret set TS_OAUTH_CLIENT_ID --env production
+   gh secret set TS_OAUTH_SECRET --env production
+   ```
+4. **Try it:** `gh workflow run deploy.yml -f ref=main`. The log should end with
+   `LIVE: https://guest-box.tail27b7c5.ts.net/health`.
+
+If guest-box's host key ever changes (a new container), refresh it:
+`ssh-keyscan -t ed25519 100.104.51.40 | grep -v '^#' | gh variable set DEPLOY_KNOWN_HOSTS --env production`.
+
+## When something goes wrong
+
+| Symptom | Cause | Fix |
+| --- | --- | --- |
+| `tailscale status` shows no `guest-box` | Signed in to another tailnet | `tailscale switch --list`, then sign in to the one above |
+| `ssh` times out | Not on the tailnet, or the policy does not allow you | Check `tailscale status`; check the `ssh` rules |
+| `serve config denied` | `dev` is not Tailscale's operator | Step 3 |
+| `Funnel is not enabled on your tailnet` | Funnel not allowed for this machine | Open the link it prints (step 4); after tagging, check `nodeAttrs` |
+| Public DNS has no address yet | A new Funnel name takes a few minutes | Wait up to 10 minutes; step 10 |
+| `/health` is 503, `"falkordb": "unreachable"` | FalkorDB Cloud is down or refuses the host | Read `~/theseus-logs/api.log`; check the allowlist |
+| The Deploy workflow fails at "Join the tailnet" | OAuth client missing, or its tag is not `tag:ci` | Setup step 3 |
+| It fails at "Deploy" with permission denied | The `ssh` rule for `tag:ci` is missing, or guest-box is untagged | Setup steps 1 and 2 |
+| The API is down after the container restarted | The runner does not survive it | `bash ~/theseus/deploy/run.sh start`; step 11 |
 
 ## The GitHub App
 

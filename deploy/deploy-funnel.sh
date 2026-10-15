@@ -23,6 +23,12 @@ if [[ -z "$VM" ]]; then
   echo "usage: deploy/deploy-funnel.sh user@host (or set THESEUS_VM)" >&2
   exit 2
 fi
+# The ref reaches `git fetch` on the host, and the Deploy workflow takes it from a person's input: allow only a
+# branch, tag or commit name, never something git would read as an option.
+if [[ ! "$REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ || "$REF" == *..* ]]; then
+  echo "not a branch, tag or commit name: $REF" >&2
+  exit 2
+fi
 
 # Runs on the host: bash -s -- <deploy|rollback> <dir> <ref or commit> <tries>.
 read -r -d '' REMOTE <<'SCRIPT' || true
