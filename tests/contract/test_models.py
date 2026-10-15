@@ -21,6 +21,7 @@ from theseus.contracts.result import (
     PathRecord,
     PathStep,
     RequirementStatus,
+    ResourceChange,
     StagingToProd,
     UnusedGrant,
     compare,
@@ -153,7 +154,9 @@ EXPECTED_PROJECTION = {
         "purpose": "Let Priya read the app logs.",
         "grants": [["user:priya-intern", "read", "s3://demo-app-logs/"]],
         "suspicious": False,
+        "stated": True,
     },
+    "changes": [],
     "opened": [
         {
             "actor": "user:priya-intern",
@@ -325,3 +328,29 @@ def test_a_candidate_says_who_proposed_it() -> None:
     assert (human.id, human.source, human.proposed_by) == ("H1", "human", "sakshichitnis27")
     with pytest.raises(ValidationError):
         Candidate(id="A", source="rule", title="Revert", verdict="fail")
+
+
+def test_silence_is_not_a_claim_of_no_access() -> None:
+    unstated = Intent(purpose="The PR does not say what it is for.", stated=False)
+    assert project(AnalysisResult(mode="pr", intent=unstated))["intent"]["stated"] is False
+    assert Intent(purpose="Rename files; no access changes.").stated is True
+
+
+def test_changes_project_as_action_and_address() -> None:
+    result = AnalysisResult(
+        mode="pr",
+        changes=[
+            ResourceChange(
+                address="aws_iam_user_group_membership.priya_support",
+                type="aws_iam_user_group_membership",
+                action="create",
+            ),
+            ResourceChange(
+                address="aws_iam_role_policy.prod_support_read", type="aws_iam_role_policy", action="update"
+            ),
+        ],
+    )
+    assert project(result)["changes"] == [
+        ["create", "aws_iam_user_group_membership.priya_support"],
+        ["update", "aws_iam_role_policy.prod_support_read"],
+    ]
