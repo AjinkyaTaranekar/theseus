@@ -7,6 +7,7 @@ and fails if it cannot, so the API never runs without FalkorDB however it is lau
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,8 +24,10 @@ from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
+from theseus.agent.replayed import ReplayedIntent, ReplayedJev
 from theseus.api import routes
 from theseus.api.github import GitHub
+from theseus.cli import analyze_fixture
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
@@ -75,6 +78,20 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
     return review
 
 
+def build_try(store: GraphStore, settings: Settings) -> routes.Try:
+    """The engine behind `/try/{preset}` (task S4): `analyze_fixture` on the preset's fixture folder in this
+    store, with the models replayed whatever mode the server runs in, so a visit costs no LLM or Jev call. One
+    run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once."""
+    replay = settings.model_copy(update={"theseus_mode": "replay"})
+    llm, jev, lock = ReplayedIntent(), ReplayedJev(replay), threading.Lock()
+
+    def run(preset: str) -> AnalysisResult:
+        with lock:
+            return analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
+
+    return run
+
+
 def connect_falkordb() -> Any:
     """A FalkorDB client from the environment and .env. Raises GraphError when it cannot connect."""
     return get_client(get_settings())
@@ -108,6 +125,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         llm = Llm(settings)
         app.state.store = FalkorStore(app.state.falkordb)
         app.state.review = build_review(app.state.store, llm, Jev(settings, llm=llm), settings)
+        app.state.try_preset = build_try(app.state.store, settings)
+        app.state.try_limiter = routes.RateLimit()
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)
