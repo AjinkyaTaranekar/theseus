@@ -19,6 +19,7 @@ from urllib.parse import quote
 import httpx
 import jwt
 
+from theseus.agent.labels import Label
 from theseus.agent.render import MARKER
 from theseus.config import Settings
 from theseus.errors import GitHubError
@@ -39,6 +40,17 @@ PER_PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3,000 files on a PR
 TITLE_MAX = 255
 SUMMARY_MAX = 65_000
+ANNOTATIONS_MAX = 50  # per request
+BLOB_BATCH = 100  # files per GraphQL query
+
+
+def _read(rel: str) -> bool:
+    """Whether a review reads this file, by its path under the world root."""
+    if rel == "theseus.yaml":
+        return True
+    folder, _, rest = rel.partition("/")
+    endings = {"terraform": (".tf", ".tf.json"), "services": (".py",), "workflows": (".yml", ".yaml")}
+    return bool(rest) and folder in endings and rel.endswith(endings[folder])
 
 
 class GitHub:
@@ -190,6 +202,74 @@ class GitHub:
         )
         return res.text
 
+    def world_files(self, repo: str, sha: str) -> dict[str, str]:
+        """Every file a review reads under the world root at a commit, by path relative to the root, sorted:
+        `theseus.yaml`, `terraform/*.tf`, `services/**/*.py` and `workflows/**/*.yml`. One tree request,
+        then the files in GraphQL batches; a file GraphQL cannot give whole is read on its own. Raises
+        GitHubError when the commit's tree is too large to list in one answer."""
+        tree = self._repo(repo, "GET", f"/git/trees/{quote(sha)}", params={"recursive": "1"}).json()
+        if tree.get("truncated"):
+            raise GitHubError(f"{repo}@{sha[:7]}: the tree is too large to list")
+        prefix = f"{self.world_root}/"
+        wanted = sorted(
+            e["path"]
+            for e in tree.get("tree") or []
+            if e.get("type") == "blob"
+            and str(e.get("path", "")).startswith(prefix)
+            and self._under_world_root(e["path"])
+            and _read(e["path"][len(prefix) :])
+        )
+        texts = self._blobs(repo, sha, wanted)
+        alone = [path for path in wanted if texts[path] is None]
+        files = {
+            path[len(prefix) :]: text
+            if (text := texts[path]) is not None
+            else self.read_file(repo, path, sha)
+            for path in wanted
+        }
+        log.info(
+            "%s@%s: read %d files under %s/ (%d on their own)",
+            repo,
+            sha[:7],
+            len(files),
+            self.world_root,
+            len(alone),
+        )
+        return files
+
+    def _blobs(self, repo: str, sha: str, paths: list[str]) -> dict[str, str | None]:
+        """Each file's text at the commit through GraphQL, BLOB_BATCH files a query, or None for one it cannot
+        give whole (binary, truncated or missing). Paths reach the query only as variables."""
+        owner, name = repo.split("/", 1)
+        out: dict[str, str | None] = {}
+        for start in range(0, len(paths), BLOB_BATCH):
+            chunk = paths[start : start + BLOB_BATCH]
+            names = ", ".join(f"$e{n}: String!" for n in range(len(chunk)))
+            fields = " ".join(
+                f"f{n}: object(expression: $e{n}) {{ ... on Blob {{ text isBinary isTruncated }} }}"
+                for n in range(len(chunk))
+            )
+            query = (
+                f"query($owner: String!, $name: String!, {names}) "
+                f"{{ repository(owner: $owner, name: $name) {{ {fields} }} }}"
+            )
+            variables = {"owner": owner, "name": name} | {f"e{n}": f"{sha}:{p}" for n, p in enumerate(chunk)}
+            found = self._graphql(repo, query, variables).get("repository") or {}
+            for n, path in enumerate(chunk):
+                blob = found.get(f"f{n}") or {}
+                whole = (
+                    blob.get("text") is not None and not blob.get("isBinary") and not blob.get("isTruncated")
+                )
+                out[path] = blob["text"] if whole else None
+        return out
+
+    def _graphql(self, repo: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        body = {"query": query, "variables": variables}
+        found = self._call("POST", "/graphql", bearer=self.installation_token(repo), json=body).json()
+        if found.get("errors"):
+            raise GitHubError(f"POST /graphql: {found['errors'][0].get('message', 'error')}")
+        return found.get("data") or {}
+
     def can_write(self, repo: str, user: str) -> bool:
         """Whether the user has write, maintain or admin permission on the repo."""
         found = self._repo(repo, "GET", f"/collaborators/{quote(user)}/permission").json()
@@ -211,6 +291,27 @@ class GitHub:
         log.info("%s#%d: created comment %s", repo, number, created["id"])
         return int(created["id"])
 
+    def set_labels(self, repo: str, number: int, wanted: list[Label], managed: tuple[Label, ...]) -> None:
+        """Makes the PR carry exactly the `wanted` labels among `managed` ones, creating any the repo lacks
+        with its colour and description. A label outside `managed` (`demo`, a person's) is never touched."""
+        self._require(repo)
+        names = {label.name for label in managed}
+        if not {label.name for label in wanted} <= names:
+            raise GitHubError(f"{repo}#{number}: refusing to set a label Theseus does not manage")
+        current = {label["name"] for label in self._pages(repo, f"/issues/{number}/labels")}
+        for name in sorted((current & names) - {label.name for label in wanted}):
+            self._repo(repo, "DELETE", f"/issues/{number}/labels/{quote(name, safe='')}")
+        add = [label for label in wanted if label.name not in current]
+        if not add:
+            return
+        existing = {label["name"] for label in self._pages(repo, "/labels")}
+        for label in add:
+            if label.name not in existing:
+                body = {"name": label.name, "color": label.color, "description": label.description}
+                self._repo(repo, "POST", "/labels", json=body)
+        self._repo(repo, "POST", f"/issues/{number}/labels", json={"labels": [label.name for label in add]})
+        log.info("%s#%d: labels %s", repo, number, ", ".join(label.name for label in wanted))
+
     def latest_check(self, repo: str, head_sha: str) -> dict[str, Any] | None:
         """The App's newest `Theseus` check run on the commit, the one a required check reads, or None."""
         found = self._repo(
@@ -223,12 +324,23 @@ class GitHub:
         return max(runs, key=lambda r: int(r["id"])) if runs else None
 
     def upsert_check(
-        self, repo: str, head_sha: str, conclusion: str, title: str, summary: str, *, source: str = REVIEW
+        self,
+        repo: str,
+        head_sha: str,
+        conclusion: str,
+        title: str,
+        summary: str,
+        *,
+        source: str = REVIEW,
+        annotations: list[dict[str, Any]] | None = None,
     ) -> int:
         """Completes the App's newest `Theseus` check run on the commit, creating it if there is none. Returns
-        its ID. `source` is REVIEW for a review's verdict, NOTHING_CHANGED for the pass that needs none."""
+        its ID. `source` is REVIEW for a review's verdict, NOTHING_CHANGED for the pass that needs none.
+        `annotations` are notes GitHub shows beside those lines in Files changed."""
         self._require(repo)
-        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        output: dict[str, Any] = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        if annotations:
+            output["annotations"] = annotations[:ANNOTATIONS_MAX]
         done = {"status": "completed", "conclusion": conclusion, "output": output, "external_id": source}
         latest = self.latest_check(repo, head_sha)
         if latest is not None:
@@ -241,6 +353,28 @@ class GitHub:
                 ).json()["id"]
             )
         log.info("%s@%s: check %s is %s", repo, head_sha[:7], cid, conclusion)
+        return cid
+
+    def pending_check(self, repo: str, head_sha: str, title: str, summary: str) -> int:
+        """Shows the commit's `Theseus` check as in progress with this title, so the merge waits and says why.
+        Updates the App's newest check when it is already in progress, else posts a new one, so a finished
+        verdict stays in the check's history. Returns its ID."""
+        self._require(repo)
+        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        latest = self.latest_check(repo, head_sha)
+        if latest is not None and latest.get("status") != "completed":
+            cid = int(latest["id"])
+            self._repo(repo, "PATCH", f"/check-runs/{cid}", json={"output": output})
+        else:
+            body = {
+                "name": CHECK_NAME,
+                "head_sha": head_sha,
+                "status": "in_progress",
+                "external_id": REVIEW,
+                "output": output,
+            }
+            cid = int(self._repo(repo, "POST", "/check-runs", json=body).json()["id"])
+        log.info("%s@%s: check %s in progress: %s", repo, head_sha[:7], cid, title)
         return cid
 
     def withdraw_pass(self, repo: str, head_sha: str, number: int) -> bool:

@@ -49,9 +49,15 @@ SYSTEM_PROMPT = "\n".join(
         " suspicious, report only what the legitimate purpose needs (often nothing).",
         "",
         "Rules for submit_intent:",
-        "- Use only IDs from the vocabulary. Never invent IDs.",
+        "- Use only IDs from the vocabulary: principal from principals, resource from targets. Never invent"
+        " IDs.",
         "- List the minimum access the stated purpose needs, nothing more. If the PR says it changes no"
         " access, return [].",
+        "- Grant what the purpose needs to reach, not the way it gets there: joining a group is how access"
+        " arrives, so a person added to a group to read reports needs read on the reports.",
+        "- Each thing the purpose names is one target. When several targets could hold it and the text does"
+        " not say which, name the one shared store over the per-service or per-function ones; list several"
+        " only when the text asks for each of them.",
         "- access is read, write (includes database migrations and uploads), or assume (assume a role).",
         '- "Anyone on the internet" is the principal entry:internet.',
         "- principal is who acts: a user, group, workload, workflow, or entry:internet. When a workload and a"

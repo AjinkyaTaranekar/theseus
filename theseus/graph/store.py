@@ -32,6 +32,8 @@ from theseus.graph import queries
 log = logging.getLogger(__name__)
 
 NAME = re.compile(r"^[a-z0-9_-]+$")
+# Small documents kept next to the graphs, such as a review's result for its page (api/reviews.py).
+DOCS = "theseus__docs"
 PATH_SET = frozenset(PATH_TYPES)
 
 
@@ -48,6 +50,7 @@ class MemoryStore:
 
     def __init__(self) -> None:
         self._graphs: dict[str, GraphRows] = {}
+        self._docs: dict[str, str] = {}
 
     def _rows(self, graph: str) -> GraphRows:
         if graph not in self._graphs:
@@ -67,6 +70,19 @@ class MemoryStore:
 
     def delete(self, graph: str) -> None:
         self._graphs.pop(graph, None)
+
+    def view(self, graph: str) -> GraphView:
+        rows = self._rows(graph)
+        return _view(
+            [(n.labels, node_properties(n)) for n in rows.nodes],
+            [(e.src, e.type, e.dst, edge_properties(e)) for e in rows.edges],
+        )
+
+    def put_doc(self, key: str, text: str) -> None:
+        self._docs[key] = text
+
+    def get_doc(self, key: str) -> str | None:
+        return self._docs.get(key)
 
     def apply_delta(self, graph: str, delta: GraphDelta) -> None:
         rows = self._rows(graph)
@@ -194,6 +210,25 @@ def edge_properties(e: EdgeRow) -> dict[str, Any]:
     return out
 
 
+GraphView = dict[str, list[dict[str, Any]]]
+
+
+def _view(nodes: list[tuple[Any, dict[str, Any]]], edges: list[tuple[Any, ...]]) -> GraphView:
+    """A graph as JSON-ready nodes and edges, as stored, sorted by ID and by (src, type, dst): each node's
+    labels and properties, each edge's endpoints, type and properties with its evidence as a list."""
+    out_nodes = [{"labels": sorted(labels), **props} for labels, props in nodes]
+    out_edges = []
+    for src, edge_type, dst, props in edges:
+        edge = {"src": src, "type": edge_type, "dst": dst, **props}
+        if isinstance(edge.get("evidence"), str):
+            edge["evidence"] = json.loads(edge["evidence"])
+        out_edges.append(edge)
+    return {
+        "nodes": sorted(out_nodes, key=lambda n: n["id"]),
+        "edges": sorted(out_edges, key=lambda e: (e["src"], e["type"], e["dst"], e.get("eid", ""))),
+    }
+
+
 class FalkorStore:
     """Graphs in FalkorDB, one per state (03-graph.md, "One graph per state")."""
 
@@ -219,6 +254,22 @@ class FalkorStore:
             self.db.select_graph(graph).delete()
         except RedisError as e:
             raise GraphError(f"cannot delete {graph}: {e}") from e
+
+    def view(self, graph: str) -> GraphView:
+        if graph not in self.list_graphs():
+            raise GraphError(f"no graph {graph!r} in the store")
+        nodes = self._query(graph, "MATCH (n:Node) RETURN labels(n), properties(n)")
+        edges = self._query(graph, "MATCH (a:Node)-[e]->(b:Node) RETURN a.id, type(e), b.id, properties(e)")
+        return _view([(labels, props) for labels, props in nodes], [tuple(row) for row in edges])
+
+    def put_doc(self, key: str, text: str) -> None:
+        self._query(DOCS, "MERGE (d:Doc {key: $key}) SET d.text = $text", {"key": key, "text": text})
+
+    def get_doc(self, key: str) -> str | None:
+        if DOCS not in self.list_graphs():
+            return None
+        found = self._query(DOCS, "MATCH (d:Doc {key: $key}) RETURN d.text", {"key": key})
+        return found[0][0] if found else None
 
     def _add(self, graph: str, nodes: list[NodeRow], edges: list[EdgeRow]) -> None:
         by_labels: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)

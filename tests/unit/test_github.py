@@ -7,9 +7,10 @@ import hashlib
 import hmac
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 import jwt
@@ -26,6 +27,7 @@ from theseus.api.app import create_app
 from theseus.api.github import API, GitHub
 from theseus.config import Settings
 from theseus.errors import GitHubError
+from theseus.graph.store import MemoryStore
 
 REPO = "demo-org/theseus"
 APP_ID = 123
@@ -81,6 +83,8 @@ class FakeGitHub:
         self.runs: list[dict[str, Any]] = [{"id": 99, "status": "completed", "head_sha": HEAD}]
         self.head = HEAD
         self.token_calls = 0
+        self.pr_labels: list[str] = []
+        self.repo_labels: dict[str, dict[str, Any]] = {}
         r = self.router
         r.get(f"/repos/{REPO}/installation").mock(side_effect=self._installation)
         r.post(f"/app/installations/{INSTALLATION}/access_tokens").mock(side_effect=self._token)
@@ -104,6 +108,13 @@ class FakeGitHub:
             side_effect=self._permission
         )
         r.get(url__regex=rf"/repos/{REPO}/contents/(?P<path>[^?]+)").mock(side_effect=self._contents)
+        r.get(f"/repos/{REPO}/issues/7/labels").mock(side_effect=self._list_pr_labels)
+        r.post(f"/repos/{REPO}/issues/7/labels").mock(side_effect=self._add_pr_labels)
+        r.delete(url__regex=rf"/repos/{REPO}/issues/7/labels/(?P<name>[^?]+)$").mock(
+            side_effect=self._remove_pr_label
+        )
+        r.get(f"/repos/{REPO}/labels").mock(side_effect=self._list_repo_labels)
+        r.post(f"/repos/{REPO}/labels").mock(side_effect=self._create_repo_label)
 
     # Auth -------------------------------------------------------------------------------------------------
 
@@ -198,6 +209,31 @@ class FakeGitHub:
         assert request.headers["Accept"] == "application/vnd.github.raw+json"
         return httpx.Response(200, text=f"# {path}\n")
 
+    # Labels -----------------------------------------------------------------------------------------------
+
+    def _list_pr_labels(self, request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=[{"name": n} for n in self.pr_labels] if page == 1 else [])
+
+    def _add_pr_labels(self, request: httpx.Request) -> httpx.Response:
+        for name in json.loads(request.content)["labels"]:
+            assert name in self.repo_labels, f"{name} added before it was created"
+            self.pr_labels.append(name)
+        return httpx.Response(200, json=[{"name": n} for n in self.pr_labels])
+
+    def _remove_pr_label(self, request: httpx.Request, name: str) -> httpx.Response:
+        self.pr_labels.remove(unquote(name))
+        return httpx.Response(200, json=[])
+
+    def _list_repo_labels(self, request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=list(self.repo_labels.values()) if page == 1 else [])
+
+    def _create_repo_label(self, request: httpx.Request) -> httpx.Response:
+        label = json.loads(request.content)
+        self.repo_labels[label["name"]] = label
+        return httpx.Response(201, json=label)
+
     @property
     def calls(self) -> int:
         return len(self.router.calls)
@@ -214,11 +250,43 @@ def gh(settings: Settings, fake: FakeGitHub) -> GitHub:
     return GitHub(settings, client=client, clock=lambda: NOW)
 
 
+class SampleReview:
+    """The review step, answering with the sample result and recording each call: these tests are about
+    GitHub, so the real review (tests/e2e/test_analyze_route.py) stays out of them."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+        self.error: Exception | None = None
+        # `seen` reads GitHub's state while the review runs; `state` keeps what it read.
+        self.seen: Callable[[], Any] | None = None
+        self.state: Any = None
+
+    def __call__(self, gh: GitHub, *args: Any) -> Any:
+        self.calls.append(args)
+        if self.seen is not None:
+            self.state = self.seen()
+        if self.error is not None:
+            raise self.error
+        return routes.stub_for("sample", "pr")
+
+
 @pytest.fixture
-def client(settings: Settings, gh: GitHub) -> Iterator[TestClient]:
+def review() -> SampleReview:
+    return SampleReview()
+
+
+@pytest.fixture
+def store() -> MemoryStore:
+    return MemoryStore()
+
+
+@pytest.fixture
+def client(settings: Settings, gh: GitHub, review: SampleReview, store: MemoryStore) -> Iterator[TestClient]:
     app = create_app(connect=lambda: object())
     app.dependency_overrides[routes.get_settings] = lambda: settings
     app.dependency_overrides[routes.get_github] = lambda: gh
+    app.dependency_overrides[routes.get_review] = lambda: review
+    app.dependency_overrides[routes.get_store] = lambda: store
     with TestClient(app) as c:
         yield c
 
@@ -309,7 +377,6 @@ def test_the_check_run_carries_the_verdict_and_an_opened_path_fails_it(
 ) -> None:
     res = analyze(client)
     assert res.status_code == 200 and res.json()["opened"]
-    analyze(client)
     [check] = fake.checks
     assert (check["name"], check["head_sha"], check["status"], check["conclusion"]) == (
         "Theseus",
@@ -320,6 +387,59 @@ def test_the_check_run_carries_the_verdict_and_an_opened_path_fails_it(
     assert check["output"]["title"].startswith("Merge blocked: ")
     summary = check["output"]["summary"]
     assert "Merge blocked" in summary and "<details>" not in summary and MARKER not in summary
+    assert "```mermaid" not in summary  # the Checks tab draws no diagrams
+
+
+def test_the_review_gets_the_pr_as_the_api_has_it_and_the_action_s_plans(
+    client: TestClient, review: SampleReview
+) -> None:
+    """The title and body come from the API, never from the request (07, "When Theseus reviews")."""
+    assert analyze(client, pr_title="stale", base_plan={"b": 1}, head_plan={"h": 1}).status_code == 200
+    ((repo, number, head, pr, base_plan, head_plan),) = review.calls
+    assert (repo, number, head) == (REPO, 7, HEAD)
+    assert (pr["title"], pr["body"]) == ("t", "b") and (base_plan, head_plan) == ({"b": 1}, {"h": 1})
+
+
+@pytest.mark.parametrize("missing", ["base_plan", "head_plan"])
+def test_a_review_needs_both_plans(client: TestClient, review: SampleReview, missing: str) -> None:
+    assert analyze(client, **{missing: None}).status_code == 422
+    assert review.calls == []
+
+
+def test_a_review_shows_it_is_tracing_paths_then_completes_the_same_check(
+    client: TestClient, fake: FakeGitHub, review: SampleReview
+) -> None:
+    review.seen = lambda: [(c["status"], c["output"]["title"]) for c in fake.checks]
+    assert analyze(client).status_code == 200
+    assert review.state == [("in_progress", "Reviewing: tracing paths in FalkorDB")]
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+
+
+def test_a_second_review_of_a_commit_keeps_the_first_verdict_in_the_history(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert analyze(client).status_code == 200
+    assert analyze(client).status_code == 200
+    assert [(c["status"], c["conclusion"]) for c in fake.checks] == [("completed", "failure")] * 2
+
+
+def test_a_review_that_cannot_finish_fails_the_check_with_its_reason(
+    client: TestClient, fake: FakeGitHub, review: SampleReview
+) -> None:
+    """It fails closed and says why: the merge waits for a review that finishes, and the PR shows the
+    reason and how to try again."""
+    from theseus.errors import IngestError
+
+    review.error = IngestError("no theseus.yaml at the head")
+    res = analyze(client)
+    assert res.status_code == 500 and "no theseus.yaml" in res.json()["detail"]
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+    assert check["output"]["title"] == "Review could not finish"
+    summary = check["output"]["summary"]
+    assert "`no theseus.yaml at the head`" in summary and "/theseus review" in summary
+    assert fake.comments == []
 
 
 def test_a_stale_run_updates_its_own_check_but_not_the_comment(client: TestClient, fake: FakeGitHub) -> None:
@@ -455,7 +575,7 @@ def test_a_pass_is_withdrawn_when_a_pr_with_its_head_needs_a_review(
     assert webhook(client, "pull_request", event).status_code == 204
     newest = max(fake.checks, key=lambda c: c["id"])
     assert (newest["status"], newest.get("conclusion")) == ("in_progress", None)
-    assert newest["output"]["title"] == "Review pending" and "#8" in newest["output"]["summary"]
+    assert newest["output"]["title"] == "Reviewing: planning both commits"
 
     # Another event for PR 7 does not bring the pass back while PR 8 needs its review.
     assert webhook(client, "pull_request", pull_request("synchronize")).status_code == 204
@@ -495,10 +615,92 @@ def test_a_pr_alone_on_its_head_still_gets_its_pass(client: TestClient, fake: Fa
     assert check["conclusion"] == "success"
 
 
-def test_a_pr_inside_the_world_root_is_left_to_the_action(client: TestClient, fake: FakeGitHub) -> None:
+@pytest.mark.parametrize("action", ["opened", "synchronize", "reopened", "edited"])
+def test_a_pr_inside_the_world_root_shows_its_review_in_progress_at_once(
+    client: TestClient, fake: FakeGitHub, action: str
+) -> None:
+    """The Action is planning both commits now; the required check says so, and the merge waits."""
     fake.files = ["README.md", "demo-infra/terraform/people.tf"]
-    assert webhook(client, "pull_request", pull_request("synchronize")).status_code == 204
-    assert fake.checks == []
+    assert webhook(client, "pull_request", pull_request(action)).status_code == 204
+    [check] = fake.checks
+    assert (check["head_sha"], check["status"], check["external_id"]) == (HEAD, "in_progress", "review")
+    assert check["output"]["title"] == "Reviewing: planning both commits"
+    assert "merge waits" in check["output"]["summary"] and "FalkorDB" in check["output"]["summary"]
+
+
+def test_another_event_while_a_review_runs_keeps_one_check(client: TestClient, fake: FakeGitHub) -> None:
+    assert webhook(client, "pull_request", pull_request("opened")).status_code == 204
+    assert webhook(client, "pull_request", pull_request("edited")).status_code == 204
+    assert [c["status"] for c in fake.checks] == ["in_progress"]
+
+
+def test_a_pr_inside_the_world_root_replaces_no_verdict_in_place(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    """An edit re-runs the review: a new check shows it in progress, and the earlier verdict stays in the
+    commit's history."""
+    fake.checks.append(
+        {"id": 500, "name": "Theseus", "head_sha": HEAD, "status": "completed", "conclusion": "failure"}
+    )
+    assert webhook(client, "pull_request", pull_request("edited")).status_code == 204
+    assert [(c["id"], c["status"]) for c in fake.checks] == [(500, "completed"), (501, "in_progress")]
+
+
+def test_reviewing_again_shows_the_check_in_progress(client: TestClient, fake: FakeGitHub) -> None:
+    fake.checks.append(
+        {"id": 500, "name": "Theseus", "head_sha": HEAD, "status": "completed", "conclusion": "failure"}
+    )
+    assert webhook(client, "issue_comment", review_comment()).status_code == 204
+    assert fake.reruns == [99]
+    newest = max(fake.checks, key=lambda c: c["id"])
+    assert (newest["status"], newest["output"]["title"]) == (
+        "in_progress",
+        "Reviewing again: planning both commits",
+    )
+
+
+def review_failed(client: TestClient, token: str | None = TOKEN, **extra: Any) -> httpx.Response:
+    headers = {"X-Theseus-Token": token} if token is not None else {}
+    run = f"https://github.com/{REPO}/actions/runs/123"
+    body = {"repo": REPO, "head_sha": HEAD, "run_url": run, **extra}
+    return client.post("/review-failed", json=body, headers=headers)
+
+
+def test_a_failed_workflow_fails_the_pending_check_with_a_link_to_its_run(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert webhook(client, "pull_request", pull_request()).status_code == 204
+    assert review_failed(client).status_code == 204
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+    assert check["output"]["title"] == "Review could not run"
+    assert f"[See the run](https://github.com/{REPO}/actions/runs/123)" in check["output"]["summary"]
+
+
+def test_a_failed_workflow_leaves_a_verdict_already_on_the_commit(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert analyze(client).status_code == 200
+    assert review_failed(client).status_code == 204
+    [check] = fake.checks
+    assert check["output"]["title"].startswith("Merge blocked")
+
+
+@pytest.mark.parametrize(
+    "url", ["https://evil.example/actions/runs/1", f"https://github.com/{REPO}/pulls/1", "javascript:x"]
+)
+def test_a_failed_workflow_links_only_to_a_run_of_this_repo(
+    client: TestClient, fake: FakeGitHub, url: str
+) -> None:
+    assert review_failed(client, run_url=url).status_code == 204
+    [check] = fake.checks
+    assert "See the run" not in check["output"]["summary"] and url not in check["output"]["summary"]
+
+
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_review_failed_needs_the_token(client: TestClient, fake: FakeGitHub, token: str | None) -> None:
+    assert review_failed(client, token=token).status_code == 401
+    assert fake.calls == 0
 
 
 def test_rerunning_the_check_of_a_pr_outside_the_world_root_posts_it_again(
@@ -593,9 +795,22 @@ def test_the_publisher_runs_from_main_after_the_action_and_only_for_its_successe
 ) -> None:
     assert publish[True] == {"workflow_run": {"workflows": ["Theseus"], "types": ["completed"]}}
     assert publish["permissions"] == {"actions": "read", "contents": "read"}
-    [job] = publish["jobs"].values()
+    assert list(publish["jobs"]) == ["publish", "failed"]
+    job = publish["jobs"]["publish"]
     assert "workflow_run.event == 'pull_request'" in job["if"]
     assert "workflow_run.conclusion == 'success'" in job["if"]
+
+
+def test_a_failed_run_is_reported_so_the_check_never_hangs(publish: dict[Any, Any]) -> None:
+    """A cancelled run is left alone: a newer push cancelled it, and that push's own run reviews."""
+    job = publish["jobs"]["failed"]
+    assert "workflow_run.event == 'pull_request'" in job["if"]
+    assert "conclusion == 'failure'" in job["if"] and "conclusion == 'timed_out'" in job["if"]
+    assert "cancelled" not in job["if"]
+    [step] = job["steps"]
+    assert step["env"]["HEAD_SHA"] == "${{ github.event.workflow_run.head_sha }}"
+    assert step["env"]["RUN_URL"] == "${{ github.event.workflow_run.html_url }}"
+    assert "/review-failed" in step["run"] and "X-Theseus-Token" in step["run"]
 
 
 def test_the_publisher_never_runs_pr_code_and_takes_the_commit_from_its_event(
@@ -605,7 +820,7 @@ def test_the_publisher_never_runs_pr_code_and_takes_the_commit_from_its_event(
     assert not any(s.get("uses", "").startswith("actions/checkout") for s in steps)
     download = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact"))
     assert download["with"]["run-id"] == "${{ github.event.workflow_run.id }}"
-    send = next(s for s in steps if "run" in s)
+    send = next(s for s in publish["jobs"]["publish"]["steps"] if "run" in s)
     assert send["env"]["HEAD_SHA"] == "${{ github.event.workflow_run.head_sha }}"
     assert send["env"]["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
     run = send["run"]
@@ -639,3 +854,108 @@ def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:
     assert sorted(manifest["default_events"]) == ["check_run", "issue_comment", "pull_request", "push"]
     assert manifest["hook_attributes"]["url"] == "https://<DOMAIN>/webhooks/github"
     assert manifest["public"] is False
+
+
+# Labels -----------------------------------------------------------------------------------------------------
+
+
+def test_labels_change_only_theseus_s_own_and_are_created_with_their_colour(
+    gh: GitHub, fake: FakeGitHub
+) -> None:
+    from theseus.agent.labels import LABELS, SEVERITY, VERDICT
+
+    fake.pr_labels = ["demo", "theseus: S6", "someone's label"]
+    fake.repo_labels = {
+        n: {"name": n} for n in ("demo", "theseus: S6", "someone's label", "theseus: blocked")
+    }
+    gh.set_labels(REPO, 7, [SEVERITY[1], VERDICT["blocked"]], LABELS)
+    assert sorted(fake.pr_labels) == ["demo", "someone's label", "theseus: S1", "theseus: blocked"]
+    assert fake.repo_labels["theseus: S1"] == {
+        "name": "theseus: S1",
+        "color": SEVERITY[1].color,
+        "description": SEVERITY[1].description,
+    }
+    assert fake.repo_labels["theseus: blocked"] == {"name": "theseus: blocked"}  # left as it was
+
+
+def test_labels_already_right_cost_one_request(gh: GitHub, fake: FakeGitHub) -> None:
+    from theseus.agent.labels import LABELS, SEVERITY
+
+    fake.pr_labels = ["theseus: S6"]
+    gh.installation_token(REPO)
+    before = fake.calls
+    gh.set_labels(REPO, 7, [SEVERITY[6]], LABELS)
+    assert fake.calls - before == 1 and fake.pr_labels == ["theseus: S6"]
+
+
+def test_a_label_theseus_does_not_manage_is_refused_before_any_request(gh: GitHub, fake: FakeGitHub) -> None:
+    from theseus.agent.labels import LABELS, Label
+
+    with pytest.raises(GitHubError, match="does not manage"):
+        gh.set_labels(REPO, 7, [Label(name="demo", color="ededed", description="")], LABELS)
+    assert fake.calls == 0
+
+
+def test_a_review_labels_the_pr_and_a_stale_run_does_not(client: TestClient, fake: FakeGitHub) -> None:
+    assert analyze(client).status_code == 200
+    assert "theseus: blocked" in fake.pr_labels and any(n.startswith("theseus: S") for n in fake.pr_labels)
+    fake.pr_labels = []
+    fake.head = "c" * 40
+    assert analyze(client).status_code == 200
+    assert fake.pr_labels == []
+
+
+# Reading a commit's world -----------------------------------------------------------------------------------
+
+
+def tree_of(*paths: str) -> dict[str, Any]:
+    return {"sha": HEAD, "truncated": False, "tree": [{"path": p, "type": "blob"} for p in paths]}
+
+
+def test_a_commit_s_world_is_read_in_one_query_and_a_large_file_on_its_own(
+    gh: GitHub, fake: FakeGitHub
+) -> None:
+    fake.router.get(f"/repos/{REPO}/git/trees/{HEAD}").respond(
+        200,
+        json=tree_of(
+            "demo-infra/theseus.yaml",
+            "demo-infra/terraform/people.tf",
+            "demo-infra/terraform/big.tf",
+            "demo-infra/README.md",
+            "theseus/config.py",
+        ),
+    )
+    queries: list[dict[str, Any]] = []
+
+    def graphql(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        queries.append(body)
+        found = {}
+        for key, expression in body["variables"].items():
+            if key.startswith("e"):
+                path = expression.partition(":")[2]
+                big = path.endswith("big.tf")
+                found[f"f{key[1:]}"] = {
+                    "text": "x" if big else f"# {path}",
+                    "isBinary": False,
+                    "isTruncated": big,
+                }
+        return httpx.Response(200, json={"data": {"repository": found}})
+
+    fake.router.post("/graphql").mock(side_effect=graphql)
+    files = gh.world_files(REPO, HEAD)
+    assert files == {
+        "terraform/big.tf": "# demo-infra/terraform/big.tf\n",  # from the contents API
+        "terraform/people.tf": "# demo-infra/terraform/people.tf",
+        "theseus.yaml": "# demo-infra/theseus.yaml",
+    }
+    [query] = queries
+    assert query["variables"]["owner"] == "demo-org" and query["variables"]["name"] == "theseus"
+    assert "demo-infra" not in query["query"]  # paths travel only as variables
+
+
+def test_a_graphql_error_is_a_github_error(gh: GitHub, fake: FakeGitHub) -> None:
+    fake.router.get(f"/repos/{REPO}/git/trees/{HEAD}").respond(200, json=tree_of("demo-infra/theseus.yaml"))
+    fake.router.post("/graphql").respond(200, json={"errors": [{"message": "Something went wrong"}]})
+    with pytest.raises(GitHubError, match="POST /graphql: Something went wrong"):
+        gh.world_files(REPO, HEAD)

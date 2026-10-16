@@ -68,3 +68,34 @@ jobs:
             -H "X-Theseus-Token: $THESEUS_TOKEN" \
             --data-binary @request.json -o response.json
           jq -r '.headline // "Theseus reviewed this commit."' response.json
+
+  # A run that failed before its review (often a plan error) would leave the required check in progress.
+  # This tells the backend, which fails the check with a link to the run unless a verdict is already there.
+  failed:
+    if: >-
+      github.event.workflow_run.event == 'pull_request' &&
+      (github.event.workflow_run.conclusion == 'failure' || github.event.workflow_run.conclusion == 'timed_out')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Tell Theseus the review could not run
+        env:
+          THESEUS_URL: ${{ vars.THESEUS_URL }}
+          THESEUS_TOKEN: ${{ secrets.THESEUS_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          if [ -z "$THESEUS_URL" ] || [ -z "$THESEUS_TOKEN" ]; then
+            echo "::error::Set the repo variable THESEUS_URL and the secret THESEUS_TOKEN"
+            exit 1
+          fi
+          jq -n --arg repo "$REPO" --arg head_sha "$HEAD_SHA" --arg run_url "$RUN_URL" \
+            '{repo: $repo, head_sha: $head_sha, run_url: $run_url}' > request.json
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            -X POST "${THESEUS_URL%/}/review-failed" \
+            -H "Content-Type: application/json" \
+            -H "X-Theseus-Token: $THESEUS_TOKEN" \
+            --data-binary @request.json

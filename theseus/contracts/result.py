@@ -147,6 +147,9 @@ class PathStep(Contract):
     type: EdgeType
     dst: str = Field(alias="to")
     evidence: str
+    # The access this hop's own edge grants (a CAN edge's read or write), sorted; the path's `grants` are its
+    # last edge's. Empty when not recorded.
+    grants: list[str] = Field(default_factory=list)
 
 
 class PathRecord(Contract):
@@ -276,6 +279,9 @@ class Coverage(Contract):
     modeled: int = 0
     skipped_types: dict[str, int] = Field(default_factory=dict)
     code_calls_skipped: int = 0
+    # The head graph's size in the store, for the comment's FalkorDB line; 0 when not recorded.
+    nodes: int = 0
+    edges: int = 0
 
 
 class AnalysisResult(Contract):

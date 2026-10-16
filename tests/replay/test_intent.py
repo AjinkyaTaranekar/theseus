@@ -7,16 +7,24 @@ Record or refresh the recordings with the Crusoe key in .env:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
 import pytest
 import yaml
 
-from theseus.agent.intent import Vocabulary, extract_intent
+from theseus.adapters.aws.adapter import AwsAdapter
+from theseus.adapters.github.adapter import GithubAdapter
+from theseus.adapters.python.adapter import PythonAdapter
+from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.agent.intent import Vocabulary, extract_intent, vocabulary
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm
 from theseus.config import get_settings
+from theseus.contracts.adapters import Adapters
+from theseus.importer.build import build_rows
+from theseus.importer.world import load_world
 
 CASES_FILE = Path(__file__).with_name("intents.yaml")
 TEMPLATE = Path(".github/pull_request_template.md").read_text(encoding="utf-8")
@@ -73,6 +81,17 @@ def test_every_gold_grant_uses_the_vocabulary() -> None:
             assert access in ("read", "write", "assume"), (case["id"], access)
         if case.get("stated") is False:
             assert case["grants"] == [], f"{case['id']}: a PR that states nothing asks for nothing"
+
+
+def test_the_vocabulary_is_the_one_the_demo_world_sends() -> None:
+    """A resource added to the world reaches the cases, so the prompt is measured on the IDs it sees live."""
+    root = Path("fixtures/intern/head")
+    config = yaml.safe_load((root / "theseus.yaml").read_text(encoding="utf-8"))
+    adapters = Adapters(
+        iac=TerraformAdapter(), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
+    )
+    plan = json.loads(root.with_name("head.plan.json").read_text(encoding="utf-8"))
+    assert vocabulary(build_rows(load_world(root, plan, adapters), {}, adapters)) == VOCAB
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c["id"])

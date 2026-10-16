@@ -64,7 +64,7 @@ def most_sensitive_use(uses: list[BeyondIntent], nodes: dict[str, NodeInfo]) -> 
     )
 
 
-def _says(purpose: str) -> str:
+def says(purpose: str) -> str:
     """The purpose as the middle of a sentence: no full stop, and a first capital lowered unless it starts an
     acronym or a name."""
     text = purpose.strip().rstrip(".").strip()
@@ -90,9 +90,9 @@ def headline(
     if named is not None and named in asked:
         return f"Your PR asks for {describe(named, nodes)}. {OWNER}"
     if target is not None:
-        return f"Your PR says: {_says(intent.purpose)}. Your change grants {describe(target.target, nodes)}."
+        return f"Your PR says: {says(intent.purpose)}. Your change grants {describe(target.target, nodes)}."
     if use is not None:
-        return f"Your PR says: {_says(intent.purpose)}. Your code now reads {describe(use.resource, nodes)}."
+        return f"Your PR says: {says(intent.purpose)}. Your code now reads {describe(use.resource, nodes)}."
     return "This change matches its stated purpose."
 
 
