@@ -214,6 +214,10 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
     # secret opens the database to reads and changes.
     assert "**priya-intern**, a user, could read and change **customer-db**, a database" in body
     assert "can read **prod-db-credentials** → unlocks **customer-db**" in body
+    # Above the folds, one diagram of the connections, the membership this PR adds drawn in red.
+    diagram = body.split("```mermaid", 1)[1].split("```", 1)[0]
+    assert body.index("```mermaid") < body.index("<details>")
+    assert '-->|"is a member of, added here"|' in diagram and "linkStyle 0 stroke:#cf222e" in diagram
     for target in ("db:customer-db", "s3://demo-company-files/invoices/", "secret:prod-db-credentials"):
         assert f"| `user:priya-intern` | `{target}` (" in body
     # The graph Theseus reasoned on lives in the store, and the comment says how big it is.

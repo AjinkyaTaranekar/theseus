@@ -25,6 +25,7 @@ from theseus.engine.intent_effect import says
 MARKER = "<!-- theseus:pr-comment -->"
 MAX_CHARS = 65_536  # GitHub's limit on a comment body
 DIAGRAMS = 3
+DIAGRAM_NODES = 12  # more and the card's diagram draws only the most serious paths
 NAMES_PER_ACTION = 3
 RISKS = 5
 ANNOTATIONS = 50  # GitHub takes at most 50 per request
@@ -432,7 +433,7 @@ def checkov_line(checkov: dict[str, Any] | None, opened: bool = False) -> Md:
 
 
 def pick_diagrams(paths: list[PathRecord]) -> list[PathRecord]:
-    """The paths worth a diagram: at most three, in `_rank` order."""
+    """The paths whose steps the comment lists one by one: at most three, in `_rank` order."""
     return sorted(paths, key=_rank)[:DIAGRAMS]
 
 
@@ -440,19 +441,48 @@ def _label(node: str) -> str:
     return "".join(_MERMAID.get(c, c) for c in " ".join(node.split()))
 
 
-def mermaid(path: PathRecord) -> Md:
-    """A `flowchart LR` of the path. Node IDs are n1, n2...: IDs with `:` or `/` break Mermaid."""
+def connections(result: AnalysisResult) -> Md | None:
+    """Every opened path drawn as one `flowchart LR`, for the card: each node in plain words, each hop with
+    its own access, the hop this change adds or edits as a thick red arrow, and sensitive data shaded. When
+    the paths together have more than DIAGRAM_NODES nodes, only the most serious ones are drawn. Node IDs
+    are n1, n2...: IDs with `:` or `/` break Mermaid."""
+    ranked = sorted(result.opened, key=_rank)
+    if not ranked:
+        return None
+    paths = ranked
+    for count in (len(ranked), DIAGRAMS, 1):
+        paths = ranked[:count]
+        if len({n for p in paths for n in p.route}) <= DIAGRAM_NODES:
+            break
+    changed = {c.address for c in result.changes}
     ids: dict[str, str] = {}
-    for node in path.route:
-        ids.setdefault(node, f"n{len(ids) + 1}")
+    hops: dict[tuple[str, str, str], tuple[str, bool]] = {}
+    sensitive: set[str] = set()
+    for p in paths:
+        for node in p.route:
+            ids.setdefault(node, f"n{len(ids) + 1}")
+        if p.sensitivity in SENSITIVE_RANK:
+            sensitive.add(p.target)
+        for s in p.steps:
+            ev = result.evidence.get(s.evidence)
+            new = ev is not None and ev.address in changed
+            key = (s.src, s.type, s.dst)
+            verb, was_new = hops.get(key, (_step_verb(s, p).removeprefix("can "), False))
+            hops[key] = (verb, was_new or new)
     lines = ["```mermaid", "flowchart LR"]
-    lines += [f'  {nid}["{_label(node)}"]' for node, nid in ids.items()]
-    lines += [f"  {ids[s.src]} -->|{s.type}| {ids[s.dst]}" for s in path.steps]
-    if path.sensitivity in SENSITIVE_RANK:
-        lines += [
-            "  classDef sensitive fill:#fde2e1,stroke:#c0392b,color:#1f2328",
-            f"  class {ids[path.target]} sensitive",
-        ]
+    for node, nid in ids.items():
+        kind = words.kind(node, result.nodes.get(node))
+        lines.append(f'  {nid}["{_label(words.name(node))}<br/>{_label(kind)}"]')
+    added: list[int] = []
+    for n, ((src, _, dst), (verb, new)) in enumerate(hops.items()):
+        lines.append(f'  {ids[src]} -->|"{_label(verb + (", added here" if new else ""))}"| {ids[dst]}')
+        if new:
+            added.append(n)
+    if sensitive:
+        lines.append("  classDef sensitive fill:#ffebe9,stroke:#cf222e,color:#1f2328")
+        lines.append(f"  class {','.join(ids[t] for t in sorted(sensitive, key=list(ids).index))} sensitive")
+    if added:
+        lines.append(f"  linkStyle {','.join(map(str, added))} stroke:#cf222e,stroke-width:3px")
     lines.append("```")
     return Md("\n".join(lines))
 
@@ -641,10 +671,10 @@ def _context(
         "falkordb": falkordb_line(result, falkordb),
         "opened": [_path_row(p) for p in opened[: caps["opened"]]],
         "opened_more": max(0, len(opened) - caps["opened"]),
+        "connections": connections(result),
         "diagrams": [
             {
                 "title": Md(f"How {_bold(p.actor)} reaches {_bold(p.target)}"),
-                "mermaid": mermaid(p),
                 "steps": step_links(p, result, repo, head_sha, world_root),
             }
             for p in pick_diagrams(result.opened)

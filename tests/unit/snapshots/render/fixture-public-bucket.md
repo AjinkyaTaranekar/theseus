@@ -8,6 +8,15 @@
 **Why:** **anyone on the internet** can read **demo-company-files/invoices/**.\
 **Do:** reply `/theseus apply S` to commit fix S (Candidate S). Theseus tested it on a copy of the graph: it closes all 1 way in and breaks nothing.
 
+```mermaid
+flowchart LR
+  n1["anyone on the internet<br/>entry point"]
+  n2["demo-company-files/invoices/<br/>data store"]
+  n1 -->|"read"| n2
+```
+
+<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+
 <details>
 <summary><b>The path, step by step</b> (1 way in, with links to each line)</summary>
 
@@ -20,13 +29,6 @@
 | `entry:internet` | `s3://demo-company-files/invoices/` | 1 |
 
 How **anyone on the internet** reaches **demo-company-files/invoices/**
-
-```mermaid
-flowchart LR
-  n1["entry:internet"]
-  n2["s3://demo-company-files/invoices/"]
-  n1 -->|CAN| n2
-```
 
 1. `entry:internet` → `s3://demo-company-files/invoices/` (CAN): [terraform/data.tf:105](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/data.tf#L105)
 

@@ -8,6 +8,23 @@
 **Why:** **priya-intern** is a member of **support-engineers** → can switch into **prod-support** → can read **prod-db-credentials** → unlocks **customer-db**.\
 **Do:** reply `/theseus apply B` to commit fix B (Candidate B). Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.
 
+```mermaid
+flowchart LR
+  n1["priya-intern<br/>user"]
+  n2["support-engineers<br/>group"]
+  n3["prod-support<br/>role"]
+  n4["prod-db-credentials<br/>data store"]
+  n5["customer-db<br/>data store"]
+  n6["demo-company-files/invoices/<br/>data store"]
+  n1 -->|"is a member of"| n2
+  n2 -->|"switch into"| n3
+  n3 -->|"read"| n4
+  n4 -->|"unlocks"| n5
+  n3 -->|"read"| n6
+```
+
+<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+
 <details>
 <summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
 
@@ -25,19 +42,6 @@
 
 How **priya-intern** reaches **customer-db**
 
-```mermaid
-flowchart LR
-  n1["user:priya-intern"]
-  n2["group:support-engineers"]
-  n3["role:prod-support"]
-  n4["secret:prod-db-credentials"]
-  n5["db:customer-db"]
-  n1 -->|MEMBER_OF| n2
-  n2 -->|CAN_ASSUME| n3
-  n3 -->|CAN| n4
-  n4 -->|UNLOCKS| n5
-```
-
 1. `user:priya-intern` → `group:support-engineers` (MEMBER_OF): [terraform/people.tf:83](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L83)
 2. `group:support-engineers` → `role:prod-support` (CAN_ASSUME): [terraform/people.tf:56](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L56)
 3. `role:prod-support` → `secret:prod-db-credentials` (CAN): [terraform/roles.tf:36](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/roles.tf#L36)
@@ -45,33 +49,11 @@ flowchart LR
 
 How **priya-intern** reaches **demo-company-files/invoices/**
 
-```mermaid
-flowchart LR
-  n1["user:priya-intern"]
-  n2["group:support-engineers"]
-  n3["role:prod-support"]
-  n4["s3://demo-company-files/invoices/"]
-  n1 -->|MEMBER_OF| n2
-  n2 -->|CAN_ASSUME| n3
-  n3 -->|CAN| n4
-```
-
 1. `user:priya-intern` → `group:support-engineers` (MEMBER_OF): [terraform/people.tf:83](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L83)
 2. `group:support-engineers` → `role:prod-support` (CAN_ASSUME): [terraform/people.tf:56](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L56)
 3. `role:prod-support` → `s3://demo-company-files/invoices/` (CAN): [terraform/roles.tf:30](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/roles.tf#L30)
 
 How **priya-intern** reaches **prod-db-credentials**
-
-```mermaid
-flowchart LR
-  n1["user:priya-intern"]
-  n2["group:support-engineers"]
-  n3["role:prod-support"]
-  n4["secret:prod-db-credentials"]
-  n1 -->|MEMBER_OF| n2
-  n2 -->|CAN_ASSUME| n3
-  n3 -->|CAN| n4
-```
 
 1. `user:priya-intern` → `group:support-engineers` (MEMBER_OF): [terraform/people.tf:83](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L83)
 2. `group:support-engineers` → `role:prod-support` (CAN_ASSUME): [terraform/people.tf:56](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L56)
