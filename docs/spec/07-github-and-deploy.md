@@ -5,22 +5,45 @@ repo that change only `demo-infra/`. There is no GitHub org and no second repo.
 
 ## The Theseus Action (`.github/workflows/theseus.yml`, task F7)
 
-Runs on `pull_request` (`opened`, `synchronize`, `reopened`, `edited`) with `paths: ["demo-infra/**"]`, so product
-PRs never trigger it. `edited` is a changed title or description, which intent depends on. One run per PR at a
-time: `concurrency: theseus-<PR number>` with `cancel-in-progress`. Permissions: `contents: read`,
-`pull-requests: read`.
+Two workflows, because planning runs the PR's own Terraform: a `data "external"` block runs a program during the
+plan, and anything it plants (a `BASH_ENV` hook through `GITHUB_ENV`, a file) reaches every later step of that
+job. So the run that plans holds no secret at all, and a separate run that never touches PR code sends the
+result.
 
-1. Check out the head commit, and the base commit into `./base`.
+**`Theseus` (untrusted).** Runs on `pull_request` (`opened`, `synchronize`, `reopened`, `edited`) with
+`paths: ["demo-infra/**"]`, so product PRs never trigger it. `edited` is a changed title or description, which
+intent depends on. One run per PR at a time: `concurrency: theseus-<PR number>` with `cancel-in-progress`.
+Permissions: `contents: read`. No secrets, no `THESEUS_URL`.
+
+1. Check out the head commit, and the base commit into `./base`, without persisting credentials.
 2. Install Terraform 1.16.6, the version P1 checked, with `hashicorp/setup-terraform`.
 3. For base and head, in `demo-infra/terraform`: `terraform init -backend=false`, `terraform plan -out tfplan`,
-   `terraform show -json tfplan > <side>.plan.json`. The provider block's mock credentials and skip flags mean
-   no AWS account is needed (task P1 confirms).
-4. Run Checkov on `demo-infra/terraform/` (a pinned version) and keep its JSON summary.
-5. `POST $THESEUS_URL/analyze` with the repo, PR number, both SHAs, title, body, both plans and the Checkov
-   summary, and the header `X-Theseus-Token: ${{ secrets.THESEUS_TOKEN }}`.
+   `terraform show -json tfplan > <side>.plan.json`, through `tools/plan.sh` from the base commit, never the PR.
+   The provider block's mock credentials and skip flags mean no AWS account is needed (task P1 confirms).
+4. Run Checkov 3.3.29 on `demo-infra/terraform/` and keep its JSON summary.
+5. Write `review.json` (`pr_number`, both plans, the Checkov summary) and upload it as the artifact
+   `theseus-review`.
 
-**Never put `${{ github.event.pull_request.title }}` or `.body` inside a `run:` script.** Pass them through
-`env:` and read them as variables. Inlining them lets a PR title inject shell commands.
+**`Theseus publish` (trusted).** Runs on `workflow_run` when `Theseus` completes, and only when that run came
+from a `pull_request` and succeeded. GitHub always runs main's copy of a `workflow_run` workflow, so a PR cannot
+change it. It holds `THESEUS_TOKEN`, never checks out or runs PR code, and treats the artifact as data: it
+refuses a missing file, a symlink, more than 50 MB or the wrong shape, then builds the request with `jq`. It
+sends `POST $THESEUS_URL/analyze` with the repo, the PR number from the artifact, **the head commit from its own
+event** (`workflow_run.head_sha`), both plans and the Checkov summary, and the header `X-Theseus-Token`.
+
+**Fork PRs** get a review the same way: GitHub withholds secrets from the fork's own run, but not from
+`Theseus publish`. (GitHub may ask a maintainer to approve the first run of a new contributor's fork.)
+
+**What the backend trusts.** The commit comes from the trusted event; the PR number comes from the untrusted
+artifact, so the backend reads the PR from the API and writes the comment only when that PR's head is the
+reviewed commit. The check always goes on the reviewed commit, so a wrong PR number can only check that
+commit, never another PR. The PR's title and body are read from the API, never from the request.
+
+**No `run:` step in either workflow uses `${{ }}`;** values reach the shell through `env:`. Unit tests check
+this, that `Theseus` mentions no secret, and that `Theseus publish` never checks out code.
+
+**Before it is on `main`,** `Theseus publish` does not run, because `workflow_run` workflows run only from the
+default branch.
 
 The backend, not the Action, posts the comment and the check, using the GitHub App. Commits made with the
 Action's `GITHUB_TOKEN` would not trigger a new run; commits made by the App do.
@@ -33,7 +56,7 @@ workflows only from the repo root's `.github/workflows/`, so they never run, and
 
 | Setting | Value |
 | --- | --- |
-| Name | Theseus |
+| Name | Theseus Graph Review (`theseus-graph-review`, App ID 5336067): GitHub reserves "Theseus" for an existing account. The check it posts is still named `Theseus` |
 | Installed on | This repo only (`THESEUS_REPOS`) |
 | Permissions | Contents read and write; Pull requests read and write; Issues read and write; Checks read and write; Actions read and write (to re-run the Theseus workflow); Metadata read |
 | Events | `pull_request`, `issue_comment`, `push`, and `check_run` (sent to any App with Checks write) |
@@ -47,7 +70,10 @@ the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs through
 only files under the world root. The backend checks each path before committing and refuses the whole commit
 otherwise. The App can write to the product code in principle; this rule is why it never does.
 
-**The comment** is created once and then edited in place. Find it by the marker `<!-- theseus:pr-comment -->`.
+**The comment** is created once and then edited in place. Find it by the marker `<!-- theseus:pr-comment -->`,
+in a comment the App itself wrote: a person who pastes the marker into their own comment never gets it edited.
+A review of a commit that is no longer the PR's head (a re-run of an old run) updates that commit's check but
+leaves the comment to the newer run.
 Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terraform/roles.tf#L31`).
 
 **The check run** is named `Theseus`. Conclusion: `success` when nothing opened and no use beyond intent;
@@ -68,6 +94,14 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 | A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
 | A push to `main` | The App (`push`) | A scan of `main` |
 
+**Re-running** repeats the newest Theseus workflow run for the PR's head commit, so the plans are made
+again. If that run is still going, nothing more starts. A check on a PR that changes nothing under the world
+root has no run to repeat; Re-run posts its `success` check again.
+
+**Webhooks** are checked against `GITHUB_WEBHOOK_SECRET` (`X-Hub-Signature-256`) before anything in them is
+read, and an event from a repo outside `THESEUS_REPOS` is refused. Registering the App, installing it and
+setting its secrets: `deploy/README.md`, "The GitHub App", from `deploy/github-app-manifest.json`.
+
 **Requesting a review from the App is not relied on.** GitHub documents review requests for people and teams,
 not Apps. F7 tests it once the App exists; if GitHub allows it, the App treats a `review_requested` event that
 names it like `/theseus review`.
@@ -78,6 +112,12 @@ workflow replays the event that first started it, and that copy may be out of da
 ## Blocking a merge (tasks F7 and A5)
 
 A comment cannot stop a merge; a required check can.
+
+**Today: a review gate.** The ruleset "main: reviewed by the other human" (active) requires a PR with one
+approving review, so the other human signs off every change. A "Request changes" review blocks the merge until it
+is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins may
+bypass it through the PR in an emergency, and GitHub records that. The `Theseus` check below is added to it with
+A5: until then `/analyze` returns a stub that fails every PR changing the world root.
 
 - **One ruleset on `main`** requires the `Theseus` check, with its source set to the Theseus App, so a workflow
   in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and `neutral`
@@ -149,6 +189,8 @@ Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username 
 
 ## Docker Compose (`deploy/docker-compose.yml`, task F3)
 
+For a host with Docker and public ports 80 and 443. guest-box, where we run today, has neither: see "The VM".
+
 | Service | Image | Notes |
 | --- | --- | --- |
 | `api` | Built from `deploy/Dockerfile` (`python:3.12-slim`, `pip install .`, `uvicorn theseus.api.app:app`) | Reads `.env`, including the FalkorDB Cloud settings |
@@ -176,10 +218,21 @@ Linux arm64. It speaks plain TCP on its port, with no TLS, and needs a username 
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
 | `THESEUS_WORLD_ROOT` | `demo-infra` | Folder read for analysis; the only folder the App may write to |
-| `DOMAIN` | | Caddy's public hostname |
+| `DOMAIN` | | The public hostname: the Funnel name on guest-box (`guest-box.tail27b7c5.ts.net`), or Caddy's under Compose |
 
 ## The VM
 
-Oracle Always Free Ampere A1 (2 OCPUs, 12 GB) runs the API and Caddy; FalkorDB is on FalkorDB Cloud. Only port
-443 is public. Secrets live in `.env` on the VM, readable by the deploy user only.
+**guest-box**, a container (Ubuntu 24.04, arm64, 4 cores, 22 GB) on an Oracle ARM host, runs the API; FalkorDB
+is on FalkorDB Cloud. It has no Docker, no systemd and no public port, and is reached over our tailnet
+(`ssh dev@100.104.51.40`). **Tailscale Funnel** publishes the API at `https://guest-box.tail27b7c5.ts.net`, with
+Tailscale's certificate: the only public way in, which GitHub's webhooks and the Action's `THESEUS_URL` use. The
+API runs from a venv on `127.0.0.1:8000` under `deploy/run.sh`, which restarts it when it exits;
+`deploy/deploy-funnel.sh` deploys a commit and rolls back if the public `/health` never answers. Secrets live in
+`.env` on the host, readable by `dev` only. `deploy/README.md` has the setup.
+
+**Deploys are manual.** The `Deploy` workflow (`.github/workflows/deploy.yml`, `workflow_dispatch` with a
+`ref`) runs that script from GitHub: the runner joins the tailnet as an ephemeral `tag:ci` node through a
+Tailscale OAuth client and logs in over Tailscale SSH, which the tailnet policy allows for `tag:ci` as `dev` on
+`tag:server`. No SSH key is stored in GitHub, and the OAuth secret sits in the `production` environment, which
+only workflows on `main` may use.
 Rate-limit `POST /try/*` to 10 requests a minute per IP.

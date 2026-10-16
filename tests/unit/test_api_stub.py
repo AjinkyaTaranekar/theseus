@@ -93,9 +93,16 @@ def test_a_fixture_must_match_the_route_mode(client: TestClient) -> None:
     assert client.post("/finding", json={"fixture": "sample"}).status_code == 400
 
 
-def test_a_repo_request_is_not_built_yet(client: TestClient) -> None:
-    res = client.post("/analyze", json={"repo": "owner/theseus", "pr_number": 1})
-    assert res.status_code == 501
+def test_a_repo_request_without_the_action_s_token_is_refused() -> None:
+    """F7 answers a request from the Action (tests/unit/test_github.py); without the token it does nothing."""
+    from theseus.api import routes
+    from theseus.config import Settings
+
+    app = create_app(connect=lambda: object())
+    app.dependency_overrides[routes.get_settings] = lambda: Settings(_env_file=None, theseus_token="t")
+    with TestClient(app) as c:
+        res = c.post("/analyze", json={"repo": "owner/theseus", "pr_number": 1, "head_sha": "a" * 40})
+    assert res.status_code == 401
 
 
 def test_the_stub_projects_back_to_its_expected_json() -> None:

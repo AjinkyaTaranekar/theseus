@@ -1,0 +1,70 @@
+# The Theseus Action, part 2 of 2: send a finished review to the backend. It runs when `Theseus` completes,
+# always from main's copy of this file (workflow_run), so a PR cannot change it, and it holds THESEUS_TOKEN. It
+# never checks out or runs PR code, and it reads the artifact as data only: a size limit, a shape check, then jq.
+# The commit comes from this event, not the artifact. Fork PRs get a review too, since this run has the secret
+# that GitHub withholds from the fork's own run.
+name: Theseus publish
+
+on:
+  workflow_run:
+    workflows: [Theseus]
+    types: [completed]
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: theseus-publish-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download the review inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: theseus-review
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: review
+
+      - name: Send the review to Theseus
+        env:
+          THESEUS_URL: ${{ vars.THESEUS_URL }}
+          THESEUS_TOKEN: ${{ secrets.THESEUS_TOKEN }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "$THESEUS_URL" ] || [ -z "$THESEUS_TOKEN" ]; then
+            echo "::error::Set the repo variable THESEUS_URL and the secret THESEUS_TOKEN"
+            exit 1
+          fi
+          review=review/review.json
+          if [ ! -f "$review" ] || [ -L "$review" ]; then
+            echo "::error::the artifact holds no review.json"
+            exit 1
+          fi
+          size=$(stat -c %s "$review")
+          if [ "$size" -gt 50000000 ]; then
+            echo "::error::review.json is $size bytes, over the 50 MB limit"
+            exit 1
+          fi
+          jq -e '(.pr_number | type == "number" and . > 0 and floor == .)
+            and ([.base_plan, .head_plan, .checkov] | all(type == "object" or type == "null"))' \
+            "$review" > /dev/null || { echo "::error::review.json does not have the expected shape"; exit 1; }
+          jq --arg repo "$REPO" --arg head_sha "$HEAD_SHA" \
+            '{repo: $repo, head_sha: $head_sha, pr_number: .pr_number,
+              base_plan: .base_plan, head_plan: .head_plan, checkov: .checkov}' \
+            "$review" > request.json
+          curl --fail-with-body --silent --show-error --max-time 300 \
+            --retry 2 --retry-delay 5 --retry-all-errors \
+            -X POST "${THESEUS_URL%/}/analyze" \
+            -H "Content-Type: application/json" \
+            -H "X-Theseus-Token: $THESEUS_TOKEN" \
+            --data-binary @request.json -o response.json
+          jq -r '.headline // "Theseus reviewed this commit."' response.json
