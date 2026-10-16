@@ -116,6 +116,15 @@ def _litellm_completion() -> Callable[..., Any]:
     return litellm.completion
 
 
+def load_client() -> None:
+    """Loads LiteLLM now, on this thread, then logs one line on a logger it hooks, so the lazy imports of
+    its log filter finish here too. The API calls this before it takes requests. Loaded later on a worker
+    thread, LiteLLM hooks `asyncio`, `httpx` and `uvicorn` mid-import, and the event loop's own logging
+    races that import: seen live as `KeyError: 'litellm'` and a review that never finished."""
+    _litellm_completion()
+    logging.getLogger("httpx").info("LLM client loaded")
+
+
 class Llm:
     """The one way to call the LLM. `completion` and `sleep` are for tests."""
 
