@@ -7,7 +7,7 @@ import hashlib
 import hmac
 import json
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -221,9 +221,14 @@ class SampleReview:
     def __init__(self) -> None:
         self.calls: list[tuple[Any, ...]] = []
         self.error: Exception | None = None
+        # `seen` reads GitHub's state while the review runs; `state` keeps what it read.
+        self.seen: Callable[[], Any] | None = None
+        self.state: Any = None
 
     def __call__(self, gh: GitHub, *args: Any) -> Any:
         self.calls.append(args)
+        if self.seen is not None:
+            self.state = self.seen()
         if self.error is not None:
             raise self.error
         return routes.stub_for("sample", "pr")
@@ -330,7 +335,6 @@ def test_the_check_run_carries_the_verdict_and_an_opened_path_fails_it(
 ) -> None:
     res = analyze(client)
     assert res.status_code == 200 and res.json()["opened"]
-    analyze(client)
     [check] = fake.checks
     assert (check["name"], check["head_sha"], check["status"], check["conclusion"]) == (
         "Theseus",
@@ -359,16 +363,40 @@ def test_a_review_needs_both_plans(client: TestClient, review: SampleReview, mis
     assert review.calls == []
 
 
-def test_a_review_that_cannot_finish_posts_no_check(
+def test_a_review_shows_it_is_tracing_paths_then_completes_the_same_check(
     client: TestClient, fake: FakeGitHub, review: SampleReview
 ) -> None:
-    """It fails closed: no check arrives, so the merge waits for a review that finishes."""
+    review.seen = lambda: [(c["status"], c["output"]["title"]) for c in fake.checks]
+    assert analyze(client).status_code == 200
+    assert review.state == [("in_progress", "Reviewing: tracing paths in FalkorDB")]
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+
+
+def test_a_second_review_of_a_commit_keeps_the_first_verdict_in_the_history(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert analyze(client).status_code == 200
+    assert analyze(client).status_code == 200
+    assert [(c["status"], c["conclusion"]) for c in fake.checks] == [("completed", "failure")] * 2
+
+
+def test_a_review_that_cannot_finish_fails_the_check_with_its_reason(
+    client: TestClient, fake: FakeGitHub, review: SampleReview
+) -> None:
+    """It fails closed and says why: the merge waits for a review that finishes, and the PR shows the
+    reason and how to try again."""
     from theseus.errors import IngestError
 
     review.error = IngestError("no theseus.yaml at the head")
     res = analyze(client)
     assert res.status_code == 500 and "no theseus.yaml" in res.json()["detail"]
-    assert fake.checks == [] and fake.comments == []
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+    assert check["output"]["title"] == "Review could not finish"
+    summary = check["output"]["summary"]
+    assert "`no theseus.yaml at the head`" in summary and "/theseus review" in summary
+    assert fake.comments == []
 
 
 def test_a_stale_run_updates_its_own_check_but_not_the_comment(client: TestClient, fake: FakeGitHub) -> None:
@@ -504,7 +532,7 @@ def test_a_pass_is_withdrawn_when_a_pr_with_its_head_needs_a_review(
     assert webhook(client, "pull_request", event).status_code == 204
     newest = max(fake.checks, key=lambda c: c["id"])
     assert (newest["status"], newest.get("conclusion")) == ("in_progress", None)
-    assert newest["output"]["title"] == "Review pending" and "#8" in newest["output"]["summary"]
+    assert newest["output"]["title"] == "Reviewing: planning both commits"
 
     # Another event for PR 7 does not bring the pass back while PR 8 needs its review.
     assert webhook(client, "pull_request", pull_request("synchronize")).status_code == 204
@@ -544,10 +572,92 @@ def test_a_pr_alone_on_its_head_still_gets_its_pass(client: TestClient, fake: Fa
     assert check["conclusion"] == "success"
 
 
-def test_a_pr_inside_the_world_root_is_left_to_the_action(client: TestClient, fake: FakeGitHub) -> None:
+@pytest.mark.parametrize("action", ["opened", "synchronize", "reopened", "edited"])
+def test_a_pr_inside_the_world_root_shows_its_review_in_progress_at_once(
+    client: TestClient, fake: FakeGitHub, action: str
+) -> None:
+    """The Action is planning both commits now; the required check says so, and the merge waits."""
     fake.files = ["README.md", "demo-infra/terraform/people.tf"]
-    assert webhook(client, "pull_request", pull_request("synchronize")).status_code == 204
-    assert fake.checks == []
+    assert webhook(client, "pull_request", pull_request(action)).status_code == 204
+    [check] = fake.checks
+    assert (check["head_sha"], check["status"], check["external_id"]) == (HEAD, "in_progress", "review")
+    assert check["output"]["title"] == "Reviewing: planning both commits"
+    assert "merge waits" in check["output"]["summary"] and "FalkorDB" in check["output"]["summary"]
+
+
+def test_another_event_while_a_review_runs_keeps_one_check(client: TestClient, fake: FakeGitHub) -> None:
+    assert webhook(client, "pull_request", pull_request("opened")).status_code == 204
+    assert webhook(client, "pull_request", pull_request("edited")).status_code == 204
+    assert [c["status"] for c in fake.checks] == ["in_progress"]
+
+
+def test_a_pr_inside_the_world_root_replaces_no_verdict_in_place(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    """An edit re-runs the review: a new check shows it in progress, and the earlier verdict stays in the
+    commit's history."""
+    fake.checks.append(
+        {"id": 500, "name": "Theseus", "head_sha": HEAD, "status": "completed", "conclusion": "failure"}
+    )
+    assert webhook(client, "pull_request", pull_request("edited")).status_code == 204
+    assert [(c["id"], c["status"]) for c in fake.checks] == [(500, "completed"), (501, "in_progress")]
+
+
+def test_reviewing_again_shows_the_check_in_progress(client: TestClient, fake: FakeGitHub) -> None:
+    fake.checks.append(
+        {"id": 500, "name": "Theseus", "head_sha": HEAD, "status": "completed", "conclusion": "failure"}
+    )
+    assert webhook(client, "issue_comment", review_comment()).status_code == 204
+    assert fake.reruns == [99]
+    newest = max(fake.checks, key=lambda c: c["id"])
+    assert (newest["status"], newest["output"]["title"]) == (
+        "in_progress",
+        "Reviewing again: planning both commits",
+    )
+
+
+def review_failed(client: TestClient, token: str | None = TOKEN, **extra: Any) -> httpx.Response:
+    headers = {"X-Theseus-Token": token} if token is not None else {}
+    run = f"https://github.com/{REPO}/actions/runs/123"
+    body = {"repo": REPO, "head_sha": HEAD, "run_url": run, **extra}
+    return client.post("/review-failed", json=body, headers=headers)
+
+
+def test_a_failed_workflow_fails_the_pending_check_with_a_link_to_its_run(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert webhook(client, "pull_request", pull_request()).status_code == 204
+    assert review_failed(client).status_code == 204
+    [check] = fake.checks
+    assert (check["status"], check["conclusion"]) == ("completed", "failure")
+    assert check["output"]["title"] == "Review could not run"
+    assert f"[See the run](https://github.com/{REPO}/actions/runs/123)" in check["output"]["summary"]
+
+
+def test_a_failed_workflow_leaves_a_verdict_already_on_the_commit(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    assert analyze(client).status_code == 200
+    assert review_failed(client).status_code == 204
+    [check] = fake.checks
+    assert check["output"]["title"].startswith("Merge blocked")
+
+
+@pytest.mark.parametrize(
+    "url", ["https://evil.example/actions/runs/1", f"https://github.com/{REPO}/pulls/1", "javascript:x"]
+)
+def test_a_failed_workflow_links_only_to_a_run_of_this_repo(
+    client: TestClient, fake: FakeGitHub, url: str
+) -> None:
+    assert review_failed(client, run_url=url).status_code == 204
+    [check] = fake.checks
+    assert "See the run" not in check["output"]["summary"] and url not in check["output"]["summary"]
+
+
+@pytest.mark.parametrize("token", [None, "wrong"])
+def test_review_failed_needs_the_token(client: TestClient, fake: FakeGitHub, token: str | None) -> None:
+    assert review_failed(client, token=token).status_code == 401
+    assert fake.calls == 0
 
 
 def test_rerunning_the_check_of_a_pr_outside_the_world_root_posts_it_again(
@@ -642,9 +752,22 @@ def test_the_publisher_runs_from_main_after_the_action_and_only_for_its_successe
 ) -> None:
     assert publish[True] == {"workflow_run": {"workflows": ["Theseus"], "types": ["completed"]}}
     assert publish["permissions"] == {"actions": "read", "contents": "read"}
-    [job] = publish["jobs"].values()
+    assert list(publish["jobs"]) == ["publish", "failed"]
+    job = publish["jobs"]["publish"]
     assert "workflow_run.event == 'pull_request'" in job["if"]
     assert "workflow_run.conclusion == 'success'" in job["if"]
+
+
+def test_a_failed_run_is_reported_so_the_check_never_hangs(publish: dict[Any, Any]) -> None:
+    """A cancelled run is left alone: a newer push cancelled it, and that push's own run reviews."""
+    job = publish["jobs"]["failed"]
+    assert "workflow_run.event == 'pull_request'" in job["if"]
+    assert "conclusion == 'failure'" in job["if"] and "conclusion == 'timed_out'" in job["if"]
+    assert "cancelled" not in job["if"]
+    [step] = job["steps"]
+    assert step["env"]["HEAD_SHA"] == "${{ github.event.workflow_run.head_sha }}"
+    assert step["env"]["RUN_URL"] == "${{ github.event.workflow_run.html_url }}"
+    assert "/review-failed" in step["run"] and "X-Theseus-Token" in step["run"]
 
 
 def test_the_publisher_never_runs_pr_code_and_takes_the_commit_from_its_event(
@@ -654,7 +777,7 @@ def test_the_publisher_never_runs_pr_code_and_takes_the_commit_from_its_event(
     assert not any(s.get("uses", "").startswith("actions/checkout") for s in steps)
     download = next(s for s in steps if s.get("uses", "").startswith("actions/download-artifact"))
     assert download["with"]["run-id"] == "${{ github.event.workflow_run.id }}"
-    send = next(s for s in steps if "run" in s)
+    send = next(s for s in publish["jobs"]["publish"]["steps"] if "run" in s)
     assert send["env"]["HEAD_SHA"] == "${{ github.event.workflow_run.head_sha }}"
     assert send["env"]["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
     run = send["run"]

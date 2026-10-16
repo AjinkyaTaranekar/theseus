@@ -84,19 +84,34 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 | Moment | What starts it | What happens |
 | --- | --- | --- |
-| A PR that changes `demo-infra/` is opened or reopened, drafts included | The Action (`opened`, `reopened`) | A full review: plans, Checkov, analysis, the comment and the check |
+| A PR that changes `demo-infra/` is opened or reopened, drafts included | The Action (`opened`, `reopened`) | A full review: plans, Checkov, analysis, the comment and the check. The App shows the check in progress at once (below) |
 | A commit is pushed to it | The Action (`synchronize`) | A full review of the new head. The newest run cancels an older one still running |
 | Its title or description is edited | The Action (`edited`) | A full review. Intent comes from that text, and the headline asks authors who said nothing to say what the PR is for |
 | A fix is applied with `/theseus apply <ID>` | The App's commit (`synchronize`) | A full review of the fixed head |
 | Someone with write access comments `/theseus review` | The App (`issue_comment`) | The App re-runs the PR's latest Theseus workflow run for the head commit |
 | Someone clicks **Re-run** on the `Theseus` check | The App (`check_run`, `rerequested`) | The same as `/theseus review` |
 | A PR changes nothing under `demo-infra/` | The App (`pull_request`) | No review: a `success` check, "Nothing under demo-infra changed" |
+| The Theseus workflow fails or times out before its review | `Theseus publish` (`POST /review-failed`) | The check fails, "Review could not run", with a link to the run, unless a verdict is already on the commit. A run cancelled by a newer push is left alone |
 | A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
 | A push to `main` | The App (`push`) | A scan of `main` |
 
 **Re-running** repeats the newest Theseus workflow run for the PR's head commit, so the plans are made
 again. If that run is still going, nothing more starts. A check on a PR that changes nothing under the world
 root has no run to repeat; Re-run posts its `success` check again.
+
+**While a review runs, the check says so.** From the moment a PR that changes the world root is opened, pushed
+to, edited or reviewed again, the App shows the commit's `Theseus` check in progress, so the merge box waits
+and says why:
+
+| Stage | Set by | Check title |
+| --- | --- | --- |
+| The Action plans both commits | The `pull_request` webhook | Reviewing: planning both commits |
+| `/theseus review` or Re-run | The webhook, after it re-runs the workflow | Reviewing again: planning both commits |
+| The backend builds the graphs and traces paths | `/analyze`, as it starts | Reviewing: tracing paths in FalkorDB |
+| Done | `/analyze` | The verdict, or "Review could not finish" with the reason |
+
+Each summary says in a sentence what Theseus is doing. A check already in progress is updated; a finished one
+gets a new check run, so the commit's earlier verdict stays in its history.
 
 **Webhooks** are checked against `GITHUB_WEBHOOK_SECRET` (`X-Hub-Signature-256`) before anything in them is
 read, and an event from a repo outside `THESEUS_REPOS` is refused. Registering the App, installing it and
@@ -113,21 +128,21 @@ workflow replays the event that first started it, and that copy may be out of da
 
 A comment cannot stop a merge; a required check can.
 
-**Today: a review gate.** The ruleset "main: reviewed by the other human" (active) requires a PR with one
-approving review, so the other human signs off every change. A "Request changes" review blocks the merge until it
-is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins may
-bypass it through the PR in an emergency, and GitHub records that. The `Theseus` check below is added to it with
-A5: until then `/analyze` returns a stub that fails every PR changing the world root.
+**The ruleset "main: reviewed by the other human"** (active) requires a PR with one approving review, so the
+other human signs off every change, and the `Theseus` check. A "Request changes" review blocks the merge until
+it is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins
+may bypass it through the PR in an emergency, and GitHub records that.
 
-- **One ruleset on `main`** requires the `Theseus` check, with its source set to the Theseus App, so a workflow
-  in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and `neutral`
-  let it through. Repo admins can bypass it in an emergency, and GitHub records the bypass. A person creates
-  the ruleset once the App exists (F7).
+- **The ruleset requires the `Theseus` check,** with its source set to the Theseus App (ID 5336067), so a
+  workflow in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and
+  `neutral` let it through; a check still in progress keeps it waiting. A person added the check to the
+  ruleset with A5.
 - **Every PR gets the check** (the table above). Without that, a PR that never runs the Action would wait for
   the check forever.
 - **A check belongs to one commit.** Each push needs a new review, so a pass never covers code it did not see.
 - **It fails closed.** If the backend is down, no check arrives, and the merge box shows it as expected and
-  waiting. When the backend is back, `/theseus review` starts the review.
+  waiting. When the backend is back, `/theseus review` starts the review. A review that cannot finish, or a
+  workflow that fails before it, fails the check with the reason and how to try again.
 - **Applying a fix unblocks the merge.** The App's commit starts a new review; when the fixed head opens no
   dangerous path, the check passes.
 - **The check's title is the verdict in plain words,** because the merge box shows it. Its summary is the
