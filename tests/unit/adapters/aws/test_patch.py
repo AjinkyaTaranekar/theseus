@@ -17,6 +17,40 @@ ACCOUNT = "111122223333"
 SUB = "token.actions.githubusercontent.com:sub"
 
 
+@pytest.mark.parametrize("length", [1, 63, 64, 65, 80, 128, 129])
+def test_new_role_enforces_aws_name_length(resources: list[IacResource], length: int) -> None:
+    operation = op(
+        "add_role", name="r" * length, trust_principals=["user:priya-intern"], statements=[statement()]
+    )
+    before = [r.model_dump() for r in resources]
+    if length <= 64:
+        assert apply_ops(resources, [operation], account=ACCOUNT)
+    else:
+        with pytest.raises(PatchError):
+            apply_ops(resources, [operation], account=ACCOUNT)
+    assert [r.model_dump() for r in resources] == before
+
+
+@pytest.mark.parametrize("new_in_sequence", [False, True])
+def test_new_role_rejects_case_insensitive_collision(
+    resources: list[IacResource], new_in_sequence: bool
+) -> None:
+    operations = []
+    name = "prod-support"
+    if new_in_sequence:
+        name = "review-role"
+        operations.append(
+            op("add_role", name=name, trust_principals=["user:priya-intern"], statements=[statement()])
+        )
+    operations.append(
+        op("add_role", name=name.upper(), trust_principals=["user:priya-intern"], statements=[statement()])
+    )
+    before = [r.model_dump() for r in resources]
+    with pytest.raises(PatchError):
+        apply_ops(resources, operations, account=ACCOUNT)
+    assert [r.model_dump() for r in resources] == before
+
+
 def op(operation: str, **args: object) -> PatchOp:
     return PatchOp(provider="aws", op=operation, args=args)
 

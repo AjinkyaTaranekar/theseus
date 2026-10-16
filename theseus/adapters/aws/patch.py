@@ -239,7 +239,14 @@ def apply_ops(
             )
         elif isinstance(args, catalog.AddRole):
             _name(args.name)
-            if any(r.type == "aws_iam_role" and r.values.get("name") == args.name for r in result):
+            if len(args.name) > 64:
+                raise PatchError("role names must contain at most 64 characters")
+            if any(
+                r.type == "aws_iam_role"
+                and isinstance(r.values.get("name"), str)
+                and r.values["name"].casefold() == args.name.casefold()
+                for r in result
+            ):
                 raise PatchError(f"role {args.name!r} already exists")
             principals = _strings(args.trust_principals, "trust principals")
             trusted = sorted({_trust_arn(result, identifier, account) for identifier in principals})

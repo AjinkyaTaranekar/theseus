@@ -629,3 +629,37 @@ def test_a_fix_cannot_turn_an_unrelated_actors_unknown_exposure_into_certain_acc
     result = simulate(deps.store, head, candidate, ["user:priya-intern"], reqs, deps.adapters)
     assert result.verdict == "fail"
     assert result.new_paths
+
+
+def invalid_role_name_candidate(name: str) -> CandidateDraft:
+    candidate = fix_b().model_copy(deep=True)
+    candidate.ops[1].args["name"] = name
+    candidate.ops[2].args["statements"][0]["resources"] = [f"arn:aws:iam::111122223333:role/{name}"]
+    return candidate
+
+
+@pytest.mark.parametrize("name", ["r" * 65, "PROD-SUPPORT"])
+def test_invalid_role_name_is_an_invalid_candidate_without_head_mutation(name: str) -> None:
+    deps, head, reqs = intern()
+    load_graph(deps.store, head)
+    snapshot = head.model_dump_json()
+    who = ["user:priya-intern"]
+    before = analyze(deps.store, head, reqs, who)
+    result = simulate(deps.store, head, invalid_role_name_candidate(name), who, reqs, deps.adapters)
+    assert result.verdict == "invalid" and result.reason
+    assert head.model_dump_json() == snapshot
+    assert analyze(deps.store, head, reqs, who) == before
+
+
+@pytest.mark.falkordb
+@pytest.mark.parametrize("name", ["r" * 65, "PROD-SUPPORT"])
+def test_falkordb_rejects_invalid_role_names_without_head_mutation(database: FalkorStore, name: str) -> None:
+    deps, prepared, reqs = intern()
+    head = prepared.model_copy(update={"name": DATABASE_PREFIX + "head"})
+    load_graph(database, head)
+    who = ["user:priya-intern"]
+    before = analyze(database, head, reqs, who)
+    result = simulate(database, head, invalid_role_name_candidate(name), who, reqs, deps.adapters)
+    assert result.verdict == "invalid" and result.reason
+    assert DATABASE_PREFIX + "fix-b" in database.list_graphs()
+    assert analyze(database, head, reqs, who) == before
