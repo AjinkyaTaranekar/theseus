@@ -24,6 +24,11 @@ SPEC = (ROOT / "docs/spec/02-demo-world.md").read_text(encoding="utf-8")
 IAM = "arn:aws:iam::111122223333:"
 DDB = "arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders"
 DB_SECRET = "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-*"
+# F4's modeled files, whose lines every expected.json cites. C1 adds two more modeled files and two skipped.
+F4_MODELED = ("people", "roles", "policies", "ci", "data", "services", "containers")
+C1_MODELED = ("queues", "logs")
+SKIPPED = ("network", "platform")
+SCENARIOS = ["intern", "public-bucket", "compromised-action", "unused-grant", "code-pr"]
 
 # Independent input expectations transcribed from spec 02, not from the generator or an IAM evaluator.
 POLICY_CASES = [
@@ -224,7 +229,91 @@ def test_every_spec_resource_has_its_exact_address_and_name(resources: dict[str,
         f"aws_iam_role_policy_attachment.{name}_logs"
         for name in ("billing_job", "billing_api", "support_portal", "analytics_export")
     )
-    assert set(resources) == expected
+    assert declared(F4_MODELED + C1_MODELED) == expected
+    assert declared(F4_MODELED + C1_MODELED + SKIPPED) == set(resources)
+
+
+def declared(stems: tuple[str, ...]) -> set[str]:
+    """Every resource address the named .tf files declare."""
+    out: set[str] = set()
+    for stem in stems:
+        text = (WORLD / "terraform" / f"{stem}.tf").read_text(encoding="utf-8")
+        out.update(f"{t}.{n}" for t, n in re.findall(r'^resource "(\w+)" "(\w+)"', text, re.M))
+    return out
+
+
+def test_modeled_and_skipped_types_live_in_separate_files() -> None:
+    """Adding to a skipped file never moves a line an expected.json cites."""
+    from theseus.adapters.aws.kinds import MODELED_TYPES
+
+    for stem in SKIPPED:
+        assert not {a.split(".")[0] for a in declared((stem,))} & MODELED_TYPES, stem
+    for stem in C1_MODELED:
+        assert {a.split(".")[0] for a in declared((stem,))} <= MODELED_TYPES, stem
+
+
+def aws_service(resource_type: str) -> str:
+    """The AWS service a resource type belongs to: VPC types are EC2's, CloudWatch is Logs or EventBridge."""
+    word = resource_type.split("_")[1]
+    if word in {"vpc", "subnet", "internet", "route", "security", "default"}:
+        return "ec2"
+    if word == "cloudwatch":
+        return "logs" if resource_type.startswith("aws_cloudwatch_log_") else "events"
+    return word
+
+
+def test_the_world_looks_like_a_real_account(resources: dict[str, Any]) -> None:
+    """About 120 resources across 16 AWS services, as spec 02 says, not a toy."""
+    services = {aws_service(address.split(".")[0]) for address in resources}
+    assert len(resources) >= 115
+    assert len(services) >= 16, sorted(services)
+
+
+def test_every_skipped_resource_spec_02_lists_exists(resources: dict[str, Any]) -> None:
+    for prefix, count in {
+        "aws_subnet.": 4,
+        "aws_security_group.": 2,
+        "aws_route_table_association.": 2,
+        "aws_ecr_repository.": 2,
+        "aws_cloudwatch_event_rule.": 2,
+        "aws_cloudwatch_event_target.": 2,
+        "aws_lambda_permission.": 2,
+        "aws_s3_bucket_versioning.": 4,
+        "aws_s3_bucket_server_side_encryption_configuration.": 4,
+        "aws_s3_bucket_public_access_block.": 4,
+        "aws_route53_record.": 2,
+        "aws_cloudwatch_log_group.": 6,
+        "aws_sqs_queue.": 2,
+    }.items():
+        assert sum(a.startswith(prefix) for a in resources) == count, prefix
+    for address in (
+        "aws_vpc.main",
+        "aws_internet_gateway.main",
+        "aws_route_table.public",
+        "aws_vpc_security_group_ingress_rule.db_from_app",
+        "aws_db_subnet_group.main",
+        "aws_vpc_endpoint.s3",
+        "aws_kms_key.queues",
+        "aws_kms_alias.queues",
+        "aws_sns_topic.invoice_created",
+        "aws_route53_zone.internal",
+        "aws_apigatewayv2_api.billing_internal",
+    ):
+        assert address in resources, address
+    assert resources["aws_db_subnet_group.main"]["name"] == "demo-db-subnets"
+    for bucket in ("app_logs", "company_files", "data_lake", "terraform_state"):
+        block = resources[f"aws_s3_bucket_public_access_block.{bucket}"]
+        assert all(
+            block[k]
+            for k in (
+                "block_public_acls",
+                "block_public_policy",
+                "ignore_public_acls",
+                "restrict_public_buckets",
+            )
+        )
+        rule = resources[f"aws_s3_bucket_server_side_encryption_configuration.{bucket}"]["rule"][0]
+        assert rule["apply_server_side_encryption_by_default"][0]["sse_algorithm"] == "AES256"
 
 
 def has_unknown(value: Any) -> bool:
@@ -235,8 +324,11 @@ def has_unknown(value: Any) -> bool:
     return value is True
 
 
-@pytest.mark.parametrize("scenario", ["intern", "public-bucket", "compromised-action", "unused-grant"])
+@pytest.mark.parametrize("scenario", SCENARIOS)
 def test_all_modeled_fields_are_known(scenario: str) -> None:
+    """Skipped types may reference computed attributes; the importer never reads them."""
+    from theseus.adapters.aws.kinds import MODELED_TYPES
+
     fields = {
         "name",
         "function_name",
@@ -259,15 +351,25 @@ def test_all_modeled_fields_are_known(scenario: str) -> None:
         "url",
         "client_id_list",
     }
+    # P1: computed attributes the importer never reads. A bucket's or secret's `policy` is not a modeled
+    # policy document (bucket policies are their own resource), and a queue is found by its name, not its URL.
+    computed = {
+        "aws_s3_bucket": {"policy"},
+        "aws_secretsmanager_secret": {"policy"},
+        "aws_sns_topic": {"policy"},
+        "aws_sqs_queue": {"policy", "url"},
+    }
     plans = sorted((FIXTURES / scenario).glob("*.plan.json"))
     assert plans
     for path in plans:
         plan = json.loads(path.read_text(encoding="utf-8"))
         assert plan["resource_changes"]
         for resource in plan["resource_changes"]:
+            if resource["type"] not in MODELED_TYPES:
+                continue
             for field in sorted(fields):
-                if field == "policy" and resource["type"] in {"aws_s3_bucket", "aws_secretsmanager_secret"}:
-                    continue  # P1: these computed attributes are not modeled policy documents.
+                if field in computed.get(resource["type"], set()):
+                    continue
                 assert not has_unknown(resource["change"]["after_unknown"].get(field)), (
                     path,
                     resource["address"],
@@ -304,7 +406,8 @@ def test_config_matches_spec_and_all_requirement_ids_exist(resources: dict[str, 
 def test_source_is_literal_and_contains_no_backend_or_data_sources() -> None:
     for path in sorted((WORLD / "terraform").glob("*.tf")):
         text = path.read_text(encoding="utf-8")
-        assert not re.search(r"\baws_\w+\.\w+\.", text), path
+        if path.stem in F4_MODELED + C1_MODELED:
+            assert not re.search(r"\baws_\w+\.\w+\.", text), path
         parsed = hcl2.loads(text)
         assert "data" not in parsed
         for block in parsed.get("terraform", []):
@@ -514,7 +617,13 @@ def test_all_policy_sids_and_managed_attachments_match_spec(resources: dict[str,
 
 
 def test_fixture_metadata_and_pr_text_match_the_approved_formats() -> None:
-    modes = {"intern": "pr", "public-bucket": "pr", "compromised-action": "finding", "unused-grant": "scan"}
+    modes = {
+        "intern": "pr",
+        "public-bucket": "pr",
+        "compromised-action": "finding",
+        "unused-grant": "scan",
+        "code-pr": "pr",
+    }
     for name, mode in modes.items():
         metadata = yaml.safe_load((FIXTURES / name / "scenario.yaml").read_text(encoding="utf-8"))
         assert set(metadata) == {"name", "mode", "world", "description"}
@@ -526,7 +635,7 @@ def test_fixture_metadata_and_pr_text_match_the_approved_formats() -> None:
     assert advisory["id"] == "GHSA-demo-0001"
     assert advisory["action"] == "demo-thirdparty/file-diff"
     assert advisory["affected_versions"] == ["v1", "v2", "v3"]
-    for name in ("intern", "public-bucket"):
+    for name in ("intern", "public-bucket", "code-pr"):
         section = SPEC.split(f"### `{name}`")[1].split("\n### ")[0]
         title = re.search(r'\*\*PR title:\*\* "(.+)"', section)
         body = re.search(r'\*\*PR body:\*\* "(.+)"', section)
@@ -534,7 +643,7 @@ def test_fixture_metadata_and_pr_text_match_the_approved_formats() -> None:
         assert (FIXTURES / name / "pr.md").read_text(encoding="utf-8") == (f"# {title[1]}\n\n{body[1]}\n")
 
 
-@pytest.mark.parametrize("scenario", ["intern", "public-bucket", "compromised-action", "unused-grant"])
+@pytest.mark.parametrize("scenario", SCENARIOS)
 def test_fixture_layout_and_changes_are_exact(scenario: str) -> None:
     root = FIXTURES / scenario
     base = json.loads((root / "base.plan.json").read_text(encoding="utf-8"))
@@ -552,13 +661,57 @@ def test_fixture_layout_and_changes_are_exact(scenario: str) -> None:
         return
     head = json.loads((root / "head.plan.json").read_text(encoding="utf-8"))
     head_resources = {r["address"]: r["values"] for r in head["planned_values"]["root_module"]["resources"]}
+    if scenario == "code-pr":
+        assert set(head_resources) == set(base_resources)
+        portal = "aws_lambda_function.support_portal"
+        env = head_resources[portal]["environment"][0]["variables"]
+        assert env == {
+            **base_resources[portal]["environment"][0]["variables"],
+            "DB_SECRET": "prod-db-credentials",
+        }
+        assert {a: v for a, v in head_resources.items() if a != portal} == {
+            a: v for a, v in base_resources.items() if a != portal
+        }
+        changed = sorted(
+            p.relative_to(root / "head").as_posix()
+            for p in (root / "head").rglob("*")
+            if p.is_file()
+            and (
+                not (root / "base" / p.relative_to(root / "head")).exists()
+                or (root / "base" / p.relative_to(root / "head")).read_bytes() != p.read_bytes()
+            )
+        )
+        assert changed == [
+            "services/support_portal/export.py",
+            "services/support_portal/handler.py",
+            "services/support_portal/views.py",
+            "terraform/services.tf",
+        ]
+        head_text = (root / "head/services/support_portal").joinpath
+        assert "received" in head_text("views.py").read_text(encoding="utf-8")
+        assert "SecretId=DB_SECRET" in head_text("export.py").read_text(encoding="utf-8")
+        assert "psycopg.connect(" in head_text("export.py").read_text(encoding="utf-8")
+        assert "/admin/export" in head_text("handler.py").read_text(encoding="utf-8")
+        return
     added = (
         "aws_iam_user_group_membership.priya_support"
         if scenario == "intern"
         else ("aws_s3_bucket_policy.company_files_public")
     )
+    flipped = "aws_s3_bucket_public_access_block.company_files"
     assert set(head_resources) - set(base_resources) == {added}
-    assert {a: v for a, v in head_resources.items() if a != added} == base_resources
+    assert {a: v for a, v in head_resources.items() if a not in {added, flipped}} == {
+        a: v for a, v in base_resources.items() if a != flipped
+    }
+    if scenario == "public-bucket":
+        # A public policy is rejected while Block Public Access is on, so the PR turns those two settings off.
+        assert head_resources[flipped] == {
+            **base_resources[flipped],
+            "block_public_policy": False,
+            "restrict_public_buckets": False,
+        }
+    else:
+        assert head_resources[flipped] == base_resources[flipped]
     if scenario == "intern":
         assert head_resources[added]["user"] == "priya-intern"
         assert head_resources[added]["groups"] == ["support-engineers"]
@@ -648,11 +801,31 @@ def test_generator_removes_stale_inputs_for_non_pr_mode(
     assert sorted(p.name for p in target.iterdir()) == ["base", "base.plan.json", "scenario.yaml"]
 
 
-def test_generator_rejects_code_pr_until_c1(tmp_path: Path) -> None:
+def test_generator_builds_code_pr_from_the_world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
-    with pytest.raises(IngestError, match="C1"):
-        module["generate"]("code-pr", WORLD, tmp_path / "fixtures")
-    assert not (tmp_path / "fixtures").exists()
+
+    def fake_plan(command: list[str], **kwargs: Any) -> None:
+        Path(command[-1]).write_bytes((FIXTURES / "intern/base.plan.json").read_bytes())
+
+    monkeypatch.setattr(subprocess, "run", fake_plan)
+    module["generate"]("code-pr", WORLD, tmp_path / "fixtures")
+    head = tmp_path / "fixtures/code-pr/head"
+    assert (head / "services/support_portal/export.py").exists()
+    assert "recieved" not in (head / "services/support_portal/views.py").read_text(encoding="utf-8")
+    assert 'DB_SECRET       = "prod-db-credentials"' in (head / "terraform/services.tf").read_text(
+        encoding="utf-8"
+    )
+
+
+@pytest.mark.parametrize("times", [0, 2])
+def test_an_edit_that_does_not_match_exactly_once_is_refused(tmp_path: Path, times: int) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    (tmp_path / "a.txt").write_text("x\n" * times, encoding="utf-8")
+    scenario = module["Scenario"](
+        mode="pr", description="d", edits=[module["Edit"](file="a.txt", find="x\n", replace="y\n")]
+    )
+    with pytest.raises(IngestError, match=f"appears {times} times"):
+        module["apply_changes"](scenario, tmp_path)
 
 
 def test_plan_script_isolates_state_and_preserves_output_on_failure(tmp_path: Path) -> None:
@@ -851,7 +1024,18 @@ def test_head_preserves_all_base_files_and_existing_source_lines(scenario: str, 
     head_files = {p.relative_to(head): p.read_bytes() for p in head.rglob("*") if p.is_file()}
     assert set(base_files) == set(head_files)
     assert head_files[Path(changed)].startswith(base_files[Path(changed)])
-    assert {p for p in base_files if base_files[p] != head_files[p]} == {Path(changed)}
+    flipped = {Path("terraform/platform.tf")} if scenario == "public-bucket" else set()
+    assert {p for p in base_files if base_files[p] != head_files[p]} == {Path(changed)} | flipped
+    for path in flipped:
+        # Two values change in place inside company-files' block, so no line an expected.json cites moves.
+        base_lines = base_files[path].decode("utf-8").splitlines()
+        head_lines = head_files[path].decode("utf-8").splitlines()
+        start = base_lines.index('resource "aws_s3_bucket_public_access_block" "company_files" {')
+        pairs = enumerate(zip(base_lines, head_lines, strict=True))
+        assert [(i - start, h) for i, (b, h) in pairs if b != h] == [
+            (3, "  block_public_policy     = false"),
+            (5, "  restrict_public_buckets = false"),
+        ]
 
 
 def test_failed_rollback_keeps_recovery_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -946,13 +1130,10 @@ def test_cleanup_failure_after_success_is_still_an_error(
     [
         ([], 2, "required"),
         (["unknown"], 2, "invalid choice"),
-        (["code-pr"], 1, "C1"),
         (["--help"], 0, "usage:"),
     ],
 )
-def test_generator_cli_reports_invalid_or_deferred_requests(
-    args: list[str], status: int, expected: str
-) -> None:
+def test_generator_cli_reports_invalid_requests(args: list[str], status: int, expected: str) -> None:
     result = subprocess.run(
         [sys.executable, str(ROOT / "tools/make_fixture.py"), *args], capture_output=True, text=True
     )
@@ -1201,7 +1382,11 @@ def test_resources_remain_in_the_files_assigned_by_spec() -> None:
     for name in ("billing_job", "billing_api", "support_portal", "analytics_export"):
         expected[f"aws_iam_role_policy_attachment.{name}_logs"] = "services.tf"
     actual: dict[str, str] = {}
-    for path in (WORLD / "terraform").glob("*.tf"):
+    paths = sorted((WORLD / "terraform").glob("*.tf"))
+    assert {p.stem for p in paths} == {"providers", *F4_MODELED, *C1_MODELED, *SKIPPED}
+    for path in paths:
+        if path.stem in SKIPPED:
+            continue  # test_every_skipped_resource_spec_02_lists_exists checks these against the skip table
         for kind, name in re.findall(
             r'^resource "([^"]+)" "([^"]+)"', path.read_text(encoding="utf-8"), re.M
         ):

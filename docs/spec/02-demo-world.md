@@ -35,8 +35,10 @@ demo-infra/
 │   ├── data.tf                   buckets, secrets, the database, the orders table              F4
 │   ├── services.tf               Lambda functions and their roles                              F4
 │   ├── containers.tf             ECS cluster, task definitions, services and task roles        F4
+│   ├── queues.tf                 SQS queues and the SNS topic                                  C1
+│   ├── logs.tf                   one CloudWatch log group per workload                         C1
 │   ├── network.tf                VPC, subnets, security groups (not modeled)                   C1
-│   └── platform.tf               KMS, SQS, SNS, ECR, logs, schedules, DNS, bucket settings (not modeled)  C1
+│   └── platform.tf               KMS, ECR, schedules, DNS, API, bucket settings (not modeled)  C1
 ├── services/                     one folder per workload, several modules each                 C1
 │   ├── orders_api/               app.py, store.py, events.py, billing.py
 │   ├── orders_worker/            worker.py, fulfil.py
@@ -57,14 +59,17 @@ fixture the same way.
 
 - **Literal names and ARNs only** in every modeled resource: never `aws_iam_role.x.arn`. Without real state,
   `terraform plan` cannot know computed attributes and would mark the whole policy unknown. The importer still
-  handles unknown values (it reports UNKNOWN); the demo world simply avoids them.
+  handles unknown values (it reports UNKNOWN); the demo world simply avoids them. The skipped files
+  (`network.tf`, `platform.tf`) may use Terraform references such as `aws_s3_bucket.app_logs.bucket`: the importer
+  never reads their types, and the references let a scanner such as Checkov tie a bucket to its settings.
 - **No `data` blocks and no `backend` block.** Data sources call AWS during plan; a backend needs `init`.
   The provider uses mock credentials and skips every AWS call (`skip_credentials_validation`,
   `skip_requesting_account_id`, `skip_metadata_api_check`), so `terraform plan` runs without an account. P1 confirmed
   it for one resource of every type in this file, with Terraform 1.16.6 and AWS provider 6.69.0; pin
   `version = "~> 6.69"` in `providers.tf`.
 - **Modeled and not-modeled resources live in different files.** `network.tf` and `platform.tf` hold only types
-  Theseus skips, so C1 can add them later without moving a line that an `expected.json` cites.
+  Theseus skips, so they grow without moving a line that an `expected.json` cites. `queues.tf` and `logs.tf` hold
+  only modeled types; C1 added them as new files, so they moved no existing line either.
 - **`theseus_code_path` tag** on every Lambda function and ECS service names its folder under `services/`.
 - **Buckets use SSE-S3**, not KMS, so reading them needs no `kms:Decrypt`. KMS key policies are outside the
   supported IAM subset, and the demo stays inside it.
@@ -139,9 +144,9 @@ requirement looks wrong.
 
 | Workload | Runs on | Code | Role, and how it gets its permissions | Env vars and the nodes they name | Code calls | Requirements | Talks to |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `orders-api` | ECS Fargate | `services/orders_api/` | `orders-api-task`: shared policy `orders-table-rw` | `ORDERS_TABLE` → `dynamodb:demo-orders`; `ORDER_EVENTS_QUEUE_URL` (SQS, not modeled); `BILLING_API_URL` → `workload:billing-api` | write and read `demo-orders` | R10 | billing-api |
+| `orders-api` | ECS Fargate | `services/orders_api/` | `orders-api-task`: shared policy `orders-table-rw` | `ORDERS_TABLE` → `dynamodb:demo-orders`; `ORDER_EVENTS_QUEUE_URL` → `sqs:order-events` (no code edge: spec 04 section 7); `BILLING_API_URL` → `workload:billing-api` | write and read `demo-orders` | R10 | billing-api |
 | `orders-worker` | ECS Fargate | `services/orders_worker/` | `orders-worker-task`: shared policy `orders-table-rw` | `ORDERS_TABLE`; `ORDER_EVENTS_QUEUE_URL` | read and write `demo-orders` | R11 | |
-| `billing-job` | Lambda, nightly | `services/billing_job/` | `billing-job`: inline policy | `ORDERS_TABLE`; `INVOICES_BUCKET` → both `demo-company-files` locations; `PAYMENTS_SECRET` → `secret:payments-api-key`; `INVOICE_TOPIC_ARN` (SNS, not modeled) | read `demo-orders`, write `invoices/`, read `payments-api-key` | R7, R8, R9 | the payment provider (external, ignored) |
+| `billing-job` | Lambda, nightly | `services/billing_job/` | `billing-job`: inline policy | `ORDERS_TABLE`; `INVOICES_BUCKET` → both `demo-company-files` locations; `PAYMENTS_SECRET` → `secret:payments-api-key`; `INVOICE_TOPIC_ARN` → `sns:invoice-created` (no code edge) | read `demo-orders`, write `invoices/`, read `payments-api-key` | R7, R8, R9 | the payment provider (external, ignored) |
 | `billing-api` | Lambda, internal API | `services/billing_api/` | `billing-api`: inline policy | `DB_SECRET` → `secret:prod-db-credentials`; `DB_NAME` (no node) | read `prod-db-credentials`, connect to `customer-db` | R6 | |
 | `support-portal` | Lambda | `services/support_portal/` | `support-portal`: inline `LegacyDbSecret`, left over from a migration | `BILLING_API_URL`, `ORDERS_API_URL` → the two workloads | none | none | billing-api, orders-api |
 | `analytics-export` | Lambda, nightly | `services/analytics_export/` | `analytics-export`: inline policy | `ORDERS_TABLE`; `LAKE_BUCKET` → both `demo-data-lake` locations | read `demo-orders`, write and read `raw/`, write `curated/` | R12, R13, R14 | |
@@ -167,6 +172,7 @@ requirement looks wrong.
 | Payments key | `secret:payments-api-key` | The card processor's API key. Expected `regulated` |
 | Customer database | `db:customer-db` | Postgres. Expected `regulated` |
 | Orders table | `dynamodb:demo-orders` | Orders with customer IDs and addresses. Expected `confidential` |
+| Queues, topic, log groups | `sqs:order-events`, `sqs:order-events-dlq`, `sns:invoice-created`, `log-group:/aws/lambda/<function>`, `log-group:/ecs/<service>` | Events and request metadata, never customer data. Override `internal` in `theseus.yaml`, so they open no dangerous path whatever Jev says |
 | Internet | `entry:internet` | Anyone; used by S3 bucket policies with `Principal = "*"` |
 
 The PoC rated older names. Task A2 records Jev on these names. If Jev rates a
@@ -224,11 +230,11 @@ here; write them in full in the files (`arn:aws:iam::111122223333:role/prod-supp
 | `aws_iam_role_policy.terraform_apply` | `terraform-apply` | Sid `TerraformState`: `s3:GetObject`, `s3:PutObject`, `s3:DeleteObject` on `demo-terraform-state/*`; `s3:ListBucket` on `demo-terraform-state`. Sid `ApplyInfra`: control-plane actions only, on `*`: `iam:*`, `lambda:*`, `ecs:*`, `ec2:*`, `rds:*`, `sqs:*`, `sns:*`, `kms:*`, `logs:*`, `events:*`, `ecr:*`, `route53:*`, `apigateway:*`, `dynamodb:CreateTable`, `dynamodb:Describe*`, `dynamodb:UpdateTable`, `dynamodb:TagResource`, `s3:CreateBucket`, `s3:GetBucket*`, `s3:PutBucket*`, `secretsmanager:CreateSecret`, `secretsmanager:DescribeSecret`, `secretsmanager:TagResource` |
 
 Of the `ApplyInfra` actions, only `logs:*`, `sqs:*` and `sns:*` touch modeled data, now that the AWS catalog
-models log groups, queues and topics (C1's `platform.tf`): `terraform-apply` can read and write every log
-group and queue and publish to the topic, besides the state bucket. These are dangerous paths only if those
-resources are sensitive; F4 and F5 decide that with `sensitive_overrides` or requirements before writing
-`expected.json`. Every Lambda and ECS execution role can also write every log group, through its AWS-managed
-policy. The rest of `ApplyInfra` is control-plane.
+models log groups, queues and topics (C1's `queues.tf` and `logs.tf`): `terraform-apply` can read and write every
+log group and queue and publish to the topic, besides the state bucket. None of these is a dangerous path:
+`theseus.yaml` overrides all nine to `internal`, since they carry events and request metadata, never customer
+data. Every Lambda and ECS execution role can also write every log group, through its AWS-managed policy. The
+rest of `ApplyInfra` is control-plane.
 `iam:*` would let it grant itself anything in a real account; privilege escalation through IAM writes is not
 modeled (see "What the world leaves out").
 
@@ -302,19 +308,44 @@ The four `aws_iam_role_policy_attachment.<name>_logs` resources sit next to thei
 | `aws_ecs_service.orders_api` | `orders-api` | `cluster = arn:aws:ecs:eu-west-1:111122223333:cluster/demo-apps`, `task_definition = "orders-api"`, Fargate, desired count 2, literal subnet IDs `subnet-0a1b2c3d4e5f60001` and `...60002`, tag `theseus_code_path = "services/orders_api"` |
 | `aws_ecs_service.orders_worker` | `orders-worker` | As above, `task_definition = "orders-worker"`, desired count 1, tag `services/orders_worker` |
 
-About 60 modeled resources across `people.tf` to `containers.tf`.
+### `queues.tf`
+
+Both queues are encrypted with `alias/demo-queues`, the KMS key in `platform.tf`, named literally.
+
+| Address | Name | What it says |
+| --- | --- | --- |
+| `aws_sqs_queue.order_events` | `order-events` | `order.created` from orders-api to orders-worker. Long polling (20 s), visibility 60 s, 4 days' retention; redrive to `order-events-dlq` after 5 receives |
+| `aws_sqs_queue.order_events_dlq` | `order-events-dlq` | 14 days' retention; the on-call engineer replays it by hand |
+| `aws_sns_topic.invoice_created` | `invoice-created` | One message per invoice billing-job issues; encrypted with `alias/aws/sns` |
+
+### `logs.tf`
+
+One log group per workload, 365 days' retention, CloudWatch's default encryption.
+
+| Address | Name | What it says |
+| --- | --- | --- |
+| `aws_cloudwatch_log_group.billing_job` | `/aws/lambda/billing-job` | |
+| `aws_cloudwatch_log_group.billing_api` | `/aws/lambda/billing-api` | |
+| `aws_cloudwatch_log_group.support_portal` | `/aws/lambda/support-portal` | |
+| `aws_cloudwatch_log_group.analytics_export` | `/aws/lambda/analytics-export` | |
+| `aws_cloudwatch_log_group.orders_api` | `/ecs/orders-api` | |
+| `aws_cloudwatch_log_group.orders_worker` | `/ecs/orders-worker` | |
+
+68 modeled resources across `people.tf` to `logs.tf`.
 
 ## Terraform that Theseus skips (task C1)
 
 These make the account look real. The importer skips every type it does not model and counts it in the result's
-`coverage`; none of them adds a node or an edge. They reference modeled resources by literal name only.
+`coverage`; none of them adds a node or an edge. They may name modeled resources by Terraform reference
+(`aws_s3_bucket.app_logs.bucket`), since the importer never reads them (see "Conventions").
 
 | File | Resources |
 | --- | --- |
-| `network.tf` | `aws_vpc.main`; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
-| `platform.tf` | `aws_kms_key.queues` and its alias (SQS only); `aws_sqs_queue.order_events` and `.order_events_dlq`; `aws_sns_topic.invoice_created`; `aws_ecr_repository.orders_api` and `.orders_worker`; one `aws_cloudwatch_log_group` per workload; `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; `aws_s3_bucket_versioning` and `aws_s3_bucket_server_side_encryption_configuration` (AES256) for every bucket; `aws_s3_bucket_public_access_block` for every bucket except `demo-company-files`; `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
+| `network.tf` | `aws_vpc.main`; `aws_default_security_group.main` with no rules, so nothing can use it; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_egress_rule.app_https` (443 out from the app group); `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
+| `platform.tf` | `aws_kms_key.queues` (rotation on) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
 
-In total the world has about 110 resources across 17 AWS services; about 60 are modeled and about 50 skipped.
+In total the world has 120 resources across 16 AWS services (counting the VPC types as EC2): 68 modeled and 52
+skipped.
 
 ## Services (task C1)
 
@@ -325,11 +356,11 @@ reader (task C2) must turn exactly these calls into edges. Line numbers come fro
 | --- | --- | --- |
 | `orders_api/app.py` | FastAPI app. `POST /orders` → `create_order`: `billing.customer_status`, then `store.put_order`, then `events.publish_order_created`. `GET /orders/{order_id}` → `store.get_order`. `GET /health` | none (calls go through the modules below) |
 | `orders_api/store.py` | `ORDERS_TABLE = os.environ["ORDERS_TABLE"]`; `_ddb = boto3.client("dynamodb")`; `put_order` → `_ddb.put_item(TableName=ORDERS_TABLE, ...)`; `get_order` → `_ddb.get_item(TableName=ORDERS_TABLE, ...)` | `CALLS` write and `CALLS` read to `dynamodb:demo-orders` |
-| `orders_api/events.py` | `_sqs.send_message(QueueUrl=os.environ["ORDER_EVENTS_QUEUE_URL"], ...)` | none; SQS is not modeled, counted as skipped |
+| `orders_api/events.py` | `_sqs.send_message(QueueUrl=os.environ["ORDER_EVENTS_QUEUE_URL"], ...)` | none: the queue is a node, but spec 04 section 7 has no `sqs` pattern; counted as skipped |
 | `orders_api/billing.py` | `BILLING_API_URL = os.environ["BILLING_API_URL"]`; `customer_status` → `httpx.get(f"{BILLING_API_URL}/customers/{customer_id}/status", timeout=2)` | `REQUESTS` to `workload:billing-api` |
 | `orders_worker/worker.py` | `main()`: long-poll `_sqs.receive_message`, call `fulfil.handle`, then `_sqs.delete_message` | none; counted as skipped |
 | `orders_worker/fulfil.py` | `handle`: `_ddb.get_item(TableName=ORDERS_TABLE, ...)`, `reserve_stock` (pure), `_ddb.update_item(TableName=ORDERS_TABLE, ...)` to set `status = "fulfilled"` | `CALLS` read and write to `dynamodb:demo-orders` |
-| `billing_job/handler.py` | `handler(event, context)`: for each order from `invoices.fulfilled_orders`, `invoices.render`, `invoices.store`, `payments.charge`, then `_sns.publish(TopicArn=os.environ["INVOICE_TOPIC_ARN"], ...)` | none of its own; SNS counted as skipped |
+| `billing_job/handler.py` | `handler(event, context)`: for each order from `invoices.fulfilled_orders`, `invoices.render`, `invoices.store`, `payments.charge`, then `_sns.publish(TopicArn=os.environ["INVOICE_TOPIC_ARN"], ...)` | none of its own; the `sns` call is counted as skipped, as above |
 | `billing_job/invoices.py` | `fulfilled_orders` → `_ddb.query(TableName=ORDERS_TABLE, IndexName="by_status", ...)`; `render` builds the PDF bytes; `store` → `_s3.put_object(Bucket=INVOICES_BUCKET, Key=f"invoices/{order_id}.pdf", Body=pdf)` | `CALLS` read to `dynamodb:demo-orders`; `CALLS` write to `s3://demo-company-files/invoices/` |
 | `billing_job/payments.py` | `charge`: `_sm.get_secret_value(SecretId=PAYMENTS_SECRET)`, then `httpx.post("https://api.payments.example/v1/charges", ...)` | `CALLS` read to `secret:payments-api-key`; the external host makes no edge |
 | `billing_api/handler.py` | `handler(event, context)`: routes `GET /invoices/{id}`, `GET /customers/{id}`, `GET /customers/{id}/status` to `queries` with a connection from `db.connect()` | none of its own |
@@ -369,6 +400,16 @@ data_locations:
 sensitive_overrides:             # node ID -> class; a person's override always beats Jev
   "s3://demo-terraform-state/": regulated
   "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
+  # Queues, the topic and the log groups carry events and request metadata, never customer data.
+  "sqs:order-events": internal
+  "sqs:order-events-dlq": internal
+  "sns:invoice-created": internal
+  "log-group:/aws/lambda/analytics-export": internal
+  "log-group:/aws/lambda/billing-api": internal
+  "log-group:/aws/lambda/billing-job": internal
+  "log-group:/aws/lambda/support-portal": internal
+  "log-group:/ecs/orders-api": internal
+  "log-group:/ecs/orders-worker": internal
 environments:                    # anything not listed is prod
   staging:
     - workflow:demo-org/docs-site/preview.yml
@@ -395,7 +436,7 @@ requirements:
 
 ## What `main` looks like
 
-About 60 nodes. Every requirement R1 to R17 is satisfied. Exactly six dangerous paths exist before any PR; they
+About 70 nodes. Every requirement R1 to R17 is satisfied. Exactly six dangerous paths exist before any PR; they
 appear as "unchanged" in every PR diff and are what scan mode reports.
 
 | Actor | Reaches | Why |
@@ -420,6 +461,8 @@ Said in the README's limits section, so judges hear it from us first.
   itself anything. Theseus models data access, not who can rewrite IAM.
 - **Resource policies other than S3 bucket policies**, KMS key policies, permission boundaries and SCPs. Real
   repos that use them get UNKNOWN edges.
+- **Network reachability.** The VPC, security groups and the internal API Gateway are in the plan, but skipped:
+  Theseus models who may read or write data, not which network path reaches a service.
 - **Modules.** The demo is one root module; the importer reads child modules, but evidence lines point to the
   module's file, not the call site.
 
@@ -449,7 +492,9 @@ from `demo-infra/` plus the change below. Humans write `expected.json` from thes
 ### `public-bucket` (PR mode; Try-it preset)
 
 - **Change:** adds `aws_s3_bucket_policy.company_files_public` to `data.tf` with Sid `PublicRead`:
-  `Principal = "*"`, `s3:GetObject` on `arn:aws:s3:::demo-company-files/*`.
+  `Principal = "*"`, `s3:GetObject` on `arn:aws:s3:::demo-company-files/*`. AWS rejects a public policy while
+  Block Public Access is on, so it also sets `block_public_policy` and `restrict_public_buckets` to `false` in
+  company-files' block in `platform.tf`, in place: no line moves.
 - **PR title:** "Make company-files public so marketing can link the pricing PDF"
 - **PR body:** "Marketing wants to link public/pricing.pdf from the website."
 - **Intent:** `entry:internet` read `s3://demo-company-files/public/`.
@@ -496,8 +541,8 @@ not in the advisory text. The existing advisory fields and affected-version matc
 ### `code-pr` (PR mode; Beat 4)
 
 - **Change:** `services/support_portal/views.py` fixes "recieved" to "received". A new module
-  `services/support_portal/export.py` adds `export_customers()`: `get_secret_value(SecretId=os.environ["DB_SECRET"])`,
-  then `psycopg.connect(...)` and a `SELECT` of customer emails. `handler.py` routes `GET /admin/export` to it.
+  `services/support_portal/export.py` reads `DB_SECRET = os.environ["DB_SECRET"]` and adds `export_customers()`:
+  `get_secret_value(SecretId=DB_SECRET)`, then `psycopg.connect(...)` and a `SELECT` of customer emails. `handler.py` routes `GET /admin/export` to it.
   `services.tf` adds `DB_SECRET = "prod-db-credentials"` to `support-portal`'s environment. No IAM change.
 - **PR title:** "Fix a typo on the support page"
 - **PR body:** "Fixes a typo in the refund confirmation text."
