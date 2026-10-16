@@ -9,10 +9,12 @@ from typing import Any, cast
 import yaml
 from pydantic import ValidationError
 
+from theseus.agent.jev import JevAnswer
+from theseus.agent.sensitivity import apply as apply_sensitivity
 from theseus.contracts.adapters import Adapters, CiRead, CodeRead
 from theseus.contracts.engine import World
 from theseus.contracts.result import EdgeRow, Evidence, GraphRows, NodeRow, Requirement, Sensitivity
-from theseus.contracts.schema import SENSITIVE, SENSITIVITY, node_id
+from theseus.contracts.schema import SENSITIVITY, node_id
 from theseus.errors import IngestError
 
 log = logging.getLogger(__name__)
@@ -97,8 +99,18 @@ def _normalized(nodes: list[NodeRow], edges: list[EdgeRow], unknowns: list[str])
     )
 
 
-def build_rows(world: World, labels: dict[str, str], adapters: Adapters) -> GraphRows:
-    """Sorted, evidenced rows from the adapters, sensitivity labels and configured requirements."""
+def build_rows(
+    world: World,
+    labels: dict[str, str],
+    adapters: Adapters,
+    *,
+    answers: dict[str, JevAnswer] | None = None,
+) -> GraphRows:
+    """Sorted, evidenced rows with requirements and sensitivity from typed answers or legacy Jev labels.
+
+    Typed answers retain fallback provenance. Legacy string labels represent Jev classifications; callers
+    with typed answers pass an empty labels mapping instead of discarding the answers' source.
+    """
     ci = adapters.ci.read(world.ci_files) if world.ci_files else CiRead()
     cloud = adapters.cloud.rows(
         world.resources,
@@ -124,9 +136,24 @@ def build_rows(world: World, labels: dict[str, str], adapters: Adapters) -> Grap
         not isinstance(labels, dict)
         or not isinstance(overrides, dict)
         or any(not isinstance(key, str) for key in [*labels, *overrides])
-        or any(v not in SENSITIVITY for v in [*labels.values(), *overrides.values()])
+        or any(
+            not isinstance(v, str) or v not in SENSITIVITY for v in [*labels.values(), *overrides.values()]
+        )
     ):
         raise IngestError("sensitivity labels must be one of the supported classes")
+    if answers is not None:
+        if labels:
+            raise IngestError("provide sensitivity labels or answers, not both")
+        if not isinstance(answers, dict) or any(
+            not isinstance(identifier, str)
+            or not isinstance(answer, JevAnswer)
+            or answer.type != "choice"
+            or (answer.choice is not None and answer.choice not in SENSITIVITY)
+            for identifier, answer in answers.items()
+        ):
+            raise IngestError("sensitivity answers must contain typed supported choices")
+    else:
+        answers = {identifier: JevAnswer(type="choice", choice=label) for identifier, label in labels.items()}
     environments = world.config.get("environments", {})
     if (
         not isinstance(environments, dict)
@@ -137,17 +164,7 @@ def build_rows(world: World, labels: dict[str, str], adapters: Adapters) -> Grap
     staging = environments.get("staging", [])
     for node in nodes:
         node.env = "staging" if node.id in staging else "prod"
-        if "Resource" in node.labels:
-            label = overrides.get(node.id, labels.get(node.id))
-            node.sensitivity = cast(Sensitivity | None, label)
-            node.sensitive = label in SENSITIVE
-            node.sensitivity_source = (
-                ("human" if node.id in overrides else "jev") if label else "unclassified"
-            )
     available = {n.id for n in nodes}
-    resource_ids = {n.id for n in nodes if "Resource" in n.labels}
-    for target in sorted(set(overrides) - resource_ids):
-        log.warning("sensitive_overrides names no resource in this graph: %s", target)
 
     raw_requirements = world.config.get("requirements", [])
     if not isinstance(raw_requirements, list):
@@ -194,4 +211,6 @@ def build_rows(world: World, labels: dict[str, str], adapters: Adapters) -> Grap
                     props={"access": requirement.access} if etype == "NEEDS" else {},
                 )
             )
-    return _normalized(nodes, edges, unknowns)
+    return apply_sensitivity(
+        _normalized(nodes, edges, unknowns), answers, cast(dict[str, Sensitivity], overrides)
+    )

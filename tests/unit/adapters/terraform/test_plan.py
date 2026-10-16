@@ -8,8 +8,18 @@ from typing import Any
 
 import pytest
 
+from theseus.adapters.aws.catalog import load_catalog
 from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.adapters.terraform.plan import READ_FIELDS
 from theseus.errors import IngestError, PatchError
+
+
+def test_every_catalog_read_field_is_tracked_for_unknown_values() -> None:
+    catalog = load_catalog()
+    paths = [entry.name for entry in catalog.data]
+    for entry in catalog.workloads:
+        paths.extend([entry.name, entry.role.field, entry.role.join, entry.role.match])
+    assert {path.split(".")[0] for path in paths if path} <= READ_FIELDS
 
 
 def plan_for(values: dict[str, Any], unknown: dict[str, Any]) -> dict[str, Any]:

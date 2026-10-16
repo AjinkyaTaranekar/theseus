@@ -14,8 +14,9 @@ from theseus.adapters.aws.adapter import AwsAdapter
 from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.agent.jev import JevAnswer
 from theseus.contracts.adapters import Adapters, CiIdentity, CiRead, CodeRead
-from theseus.contracts.result import EdgeRow, Evidence, GraphRows, NodeRow
+from theseus.contracts.result import EdgeRow, Evidence, GraphRows, NodeRow, Sensitivity
 from theseus.errors import IngestError
 from theseus.importer.build import build_rows
 from theseus.importer.world import load_world
@@ -149,6 +150,52 @@ def test_invalid_sensitivity_is_not_a_fact() -> None:
     world, adapters = fixture("base")
     with pytest.raises(IngestError):
         build_rows(world, {"secret:payments-api-key": "top-secret"}, adapters)
+
+
+@pytest.mark.parametrize("label", ["public", "internal", "confidential", "regulated"])
+@pytest.mark.parametrize("source", ["jev", "fallback"])
+@pytest.mark.parametrize("override", [None, "public", "internal", "confidential", "regulated"])
+def test_typed_sensitivity_keeps_source_and_human_precedence(
+    label: Sensitivity, source: str, override: Sensitivity | None
+) -> None:
+    world, adapters = fixture("base")
+    target = "secret:payments-api-key"
+    if override is not None:
+        world.config["sensitive_overrides"][target] = override
+    answers = {target: JevAnswer(type="choice", choice=label, source=source, calibrated=source == "jev")}
+    original_world = world.model_copy(deep=True)
+    original_answer = answers[target].model_copy(deep=True)
+
+    rows = build_rows(world, {}, adapters, answers=answers)
+
+    node = next(n for n in rows.nodes if n.id == target)
+    expected = override or label
+    assert node.sensitivity == expected
+    assert node.sensitive is (expected in {"confidential", "regulated"})
+    assert node.sensitivity_source == ("human" if override else source)
+    assert world == original_world and answers[target] == original_answer
+
+
+def test_typed_sensitivity_does_not_accept_a_flattened_label_too() -> None:
+    world, adapters = fixture("base")
+    target = "secret:payments-api-key"
+    answer = JevAnswer(type="choice", choice="regulated", source="fallback", calibrated=False)
+    with pytest.raises(IngestError, match="labels or answers"):
+        build_rows(world, {target: "public"}, adapters, answers={target: answer})
+
+
+@pytest.mark.parametrize(
+    "answer",
+    [
+        "regulated",
+        JevAnswer(type="choice", choice="top-secret"),
+        JevAnswer(type="noul", noul=0.9),
+    ],
+)
+def test_invalid_typed_sensitivity_is_not_a_fact(answer: Any) -> None:
+    world, adapters = fixture("base")
+    with pytest.raises(IngestError, match="sensitivity answers"):
+        build_rows(world, {}, adapters, answers={"secret:payments-api-key": answer})
 
 
 def test_injected_adapters_receive_identity_and_code_inputs() -> None:
