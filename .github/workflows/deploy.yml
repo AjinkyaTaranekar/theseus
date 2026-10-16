@@ -1,0 +1,52 @@
+# Deploy the API to guest-box, by hand: Actions, Deploy, Run workflow (or `gh workflow run deploy.yml -f ref=main`).
+# The runner joins our tailnet as an ephemeral node tagged tag:ci and logs in to guest-box over Tailscale SSH,
+# which the tailnet policy allows for tag:ci as `dev`; no SSH key is stored in GitHub. It then runs
+# deploy/deploy-funnel.sh, which rolls back if https://<DOMAIN>/health never answers.
+# deploy/README.md, "Deploying from GitHub", has the one-time setup.
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or commit to deploy
+        required: true
+        default: main
+
+permissions:
+  contents: read
+
+# One deploy at a time; a second one waits rather than cancelling a deploy halfway.
+concurrency:
+  group: deploy-guest-box
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # The Tailscale OAuth secret lives in this environment, which only workflows on main may use.
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Join the tailnet as tag:ci
+        uses: tailscale/github-action@v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+          ping: ${{ vars.DEPLOY_TAILNET_IP }}
+
+      - name: Pin guest-box's host key
+        env:
+          DEPLOY_KNOWN_HOSTS: ${{ vars.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy
+        env:
+          THESEUS_REF: ${{ inputs.ref }}
+          THESEUS_VM: ${{ vars.DEPLOY_HOST }}
+        run: deploy/deploy-funnel.sh

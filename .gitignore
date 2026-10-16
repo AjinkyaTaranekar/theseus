@@ -1,5 +1,6 @@
 # Secrets
 .env
+secrets/
 .env.*
 !.env.example
 *.pem

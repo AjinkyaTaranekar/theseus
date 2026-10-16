@@ -7,6 +7,7 @@ lands (analyze: E3, finding: FM3, scan: C3). A composition root (docs/spec/08-co
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 
 import uvicorn
@@ -48,6 +49,8 @@ def serve() -> int:
     except GraphError as e:
         print(f"theseus serve: {e}", file=sys.stderr)
         return 1
+    # Theseus's own messages, and each GitHub call httpx makes; uvicorn configures only its own loggers.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     uvicorn.run("theseus.api.app:app", host="127.0.0.1", port=8000)
     return 0
 
