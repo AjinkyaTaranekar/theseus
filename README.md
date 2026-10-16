@@ -54,7 +54,7 @@ git config core.hooksPath .githooks    # checks every commit message
 1. Pick an issue on the board and open its brief in `docs/tasks/<ID>.md`.
 2. Give your agent the prompt at the bottom of the brief. It reads `AGENTS.md`, the brief and the spec sections
    the brief lists, then writes the tests first and the code after.
-3. The other person reviews the PR against the brief's "Done when" list, then squash-merges it.
+3. The other person reviews the PR against the brief's "Done when" list, then merges it with a merge commit.
 
 Commits and PR titles read `<type>: <Summary>` (`feat`, `fix`, `docs`, `test`, `refactor`, `chore`) and follow
 [the seven rules](https://cbea.ms/git-commit/); see [`AGENTS.md`](AGENTS.md#commits).
