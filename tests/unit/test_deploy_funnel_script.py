@@ -21,7 +21,17 @@ pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 STUBS = {
     # ssh <host> <command...>: like real ssh, join the rest into one command for the remote shell, so an
     # argument that is not quoted for it splits or vanishes; or fail for one mode.
-    "ssh": 'shift\ncase " $* " in *" ${FAKE_SSH_FAIL:-none} "*) exit 255 ;; esac\nexec bash -c "$*"\n',
+    # The command always runs to the end on the host. FAKE_SSH_DROP then loses the connection after every line
+    # arrived; FAKE_SSH_CUT loses it after the host's first two lines (PREVIOUS and DEPLOYING), so the rest of
+    # its answer never arrives.
+    "ssh": (
+        'shift\ncase " $* " in *" ${FAKE_SSH_FAIL:-none} "*) exit 255 ;; esac\n'
+        'for m in ${FAKE_SSH_DROP:-}; do case " $* " in *" $m "*) bash -c "$*"; exit 255 ;; esac; done\n'
+        'for m in ${FAKE_SSH_CUT:-}; do case " $* " in *" $m "*)\n'
+        '  bash -c "$*" > "$FAKE/answer"\n'
+        '  grep -E "^(PREVIOUS|DEPLOYING)=" "$FAKE/answer"; exit 255 ;; esac; done\n'
+        'exec bash -c "$*"\n'
+    ),
     "sleep": "exit 0\n",
     "git": """
 echo "git $*" >> "$FAKE/log"
@@ -136,11 +146,55 @@ def test_an_unhealthy_new_build_is_rolled_back_on_the_host(tmp_path: Path) -> No
     assert run.out.count("ROLLED_BACK") == 1  # the host's own rollback, not a second one from here
 
 
-def test_a_failed_install_is_rolled_back_on_the_host(tmp_path: Path) -> None:
+def test_a_host_that_cannot_return_to_the_previous_commit_needs_a_person(tmp_path: Path) -> None:
+    """pip fails for the new build and for the rollback: the host says so, so nothing counts as handled."""
     run = deploy(tmp_path, pip_fail=1)
+    assert run.code == 3
+    assert "ROLLBACK_FAILED" in run.out and "UNCERTAIN: the host could not return to old" in run.out
+
+
+def test_a_lost_answer_after_the_restart_is_rolled_back_over_a_new_connection(tmp_path: Path) -> None:
+    """The host restarted the new build and was healthy, but SSH dropped before it said so."""
+    run = deploy(tmp_path, ssh_cut="deploy")
     assert run.code == 1
-    assert "ROLLED_BACK" in run.out or "ROLLBACK_FAILED" in run.out
-    assert run.head == "old"
+    assert "no answer from the host" in run.out and "returning to old" in run.out
+    assert "ROLLED_BACK: old" in run.out and "UNCERTAIN" not in run.out
+    assert (run.head, run.running) == ("old", "old")
+
+
+def test_a_healthy_answer_that_arrived_still_goes_through_the_public_check(tmp_path: Path) -> None:
+    """The host's HEALTHY line arrived before the connection dropped: believe it, and still check publicly."""
+    run = deploy(tmp_path, ssh_drop="deploy")
+    assert run.code == 0, run.out
+    assert "reported HEALTHY before the connection dropped" in run.out and "LIVE:" in run.out
+    assert (run.head, run.running) == ("new", "new")
+
+
+@pytest.mark.parametrize("rollback", ["fail", "cut"])
+def test_an_unconfirmed_rollback_needs_a_person(tmp_path: Path, rollback: str) -> None:
+    """The rollback cannot connect, or its answer is lost too: the state is unknown, so exit 3."""
+    fake = (
+        {"ssh_cut": "deploy", "ssh_fail": "rollback"}
+        if rollback == "fail"
+        else {"ssh_cut": "deploy rollback"}
+    )
+    run = deploy(tmp_path, **fake)
+    assert run.code == 3
+    assert "UNCERTAIN: the rollback was not confirmed" in run.out
+    assert "LIVE" not in run.out
+
+
+def test_a_dead_public_endpoint_with_no_rollback_answer_needs_a_person(tmp_path: Path) -> None:
+    run = deploy(tmp_path, public_new=0, ssh_fail="rollback")
+    assert run.code == 3
+    assert "never answered" in run.out and "UNCERTAIN: the rollback was not confirmed" in run.out
+    assert (run.head, run.running) == ("new", "new")
+
+
+def test_ssh_that_fails_before_the_host_reports_is_uncertain(tmp_path: Path) -> None:
+    run = deploy(tmp_path, ssh_fail="deploy")
+    assert run.code == 3
+    assert "UNCERTAIN: SSH failed before the host reported its commit" in run.out
 
 
 def test_a_failed_fetch_changes_nothing(tmp_path: Path) -> None:

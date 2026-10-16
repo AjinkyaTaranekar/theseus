@@ -87,6 +87,13 @@ venv, restarts the API, and waits for the API's own `/health`, then for `https:/
 never answers, it returns to the previous commit and says whether that recovered (`ROLLED_BACK`) or not
 (`ROLLBACK_FAILED`). It accepts only a branch, tag or commit name as the ref.
 
+It believes only what the host says. If SSH drops after the host reported its commit but before it said
+`HEALTHY`, the script rolls back over a new connection. It exits 0 when the new commit answers publicly, and 1
+when the deploy failed but the host confirmed it is back on its previous commit, or nothing changed. It exits 3
+when the host's state is not confirmed: the host could not return, or the rollback's answer never arrived.
+Then check the host yourself: `ssh dev@100.104.51.40 'cd theseus && git log -1 --oneline && curl -s
+localhost:8000/health'`.
+
 ## Deploying from GitHub
 
 `.github/workflows/deploy.yml` runs the same script from GitHub, only when a person starts it: **Actions**,

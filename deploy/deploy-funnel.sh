@@ -10,9 +10,13 @@
 #    origin/<THESEUS_REF> (default main), install it into its venv, restart deploy/run.sh, and wait for the API's
 #    own /health. If any of that fails, the host returns to the previous commit itself.
 # 3. From here: wait for https://<DOMAIN>/health, the Funnel address. From the restart on, any failure, this one
-#    or anything unexpected, returns the host to the previous commit.
+#    or anything unexpected, returns the host to the previous commit. A failure only counts as handled when the
+#    host's own answer says so: if SSH drops before the host reports, the outcome is unknown, so this script
+#    rolls back over a new connection and believes only the host's ROLLED_BACK line.
 #
-# Exit 0 means the new commit is live publicly; anything else is a failed deploy.
+# Exit 0: the new commit is live publicly.
+# Exit 1: the deploy failed, and the host confirmed it runs its previous commit (or nothing changed).
+# Exit 3: the host's state is not confirmed (its rollback failed, or no answer came back). A person must check.
 set -euo pipefail
 
 VM="${1:-${THESEUS_VM:-}}"
@@ -85,22 +89,44 @@ fi
 # did so itself (the deploy step failed) or the new commit answered publicly.
 prev=""
 settled=1
+uncertain() {
+  echo "UNCERTAIN: $1; check the host by hand, it may still run the new commit" >&2
+  exit 3
+}
 finish() {
-  local status=$?
+  local status=$? back
   if [[ $status -ne 0 && $settled -eq 0 ]]; then
+    settled=1
     echo "the deploy failed after the restart; returning to ${prev:-the previous commit}" >&2
-    remote rollback "$DIR" "$prev" "$TRIES" || true
+    back="$(remote rollback "$DIR" "$prev" "$TRIES")" || true
+    echo "$back"
+    grep -q '^ROLLED_BACK: ' <<< "$back" || uncertain "the rollback was not confirmed"
   fi
   exit "$status"
 }
 trap finish EXIT
 
-if ! out="$(remote deploy "$DIR" "$REF" "$TRIES")"; then
-  echo "$out"
-  exit 1
-fi
+deployed=0
+out="$(remote deploy "$DIR" "$REF" "$TRIES")" || deployed=$?
 echo "$out"
 prev="$(sed -n 's/^PREVIOUS=//p' <<< "$out")"
+if [[ $deployed -ne 0 ]]; then
+  # Believe only what the host said. Its PREVIOUS line comes before it changes anything.
+  if grep -q '^ROLLED_BACK: ' <<< "$out" || grep -q 'nothing changed' <<< "$out"; then exit 1; fi
+  if grep -q '^ROLLBACK_FAILED' <<< "$out"; then uncertain "the host could not return to $prev"; fi
+  if [[ -z "$prev" ]]; then
+    [[ $deployed -eq 255 ]] && uncertain "SSH failed before the host reported its commit"
+    echo "the host refused the deploy; nothing changed" >&2
+    exit 1
+  fi
+  if ! grep -q '^HEALTHY$' <<< "$out"; then
+    # The host started the deploy but its answer was lost: roll back over a new connection.
+    echo "no answer from the host after it started the deploy" >&2
+    settled=0
+    exit 1
+  fi
+  echo "the host reported HEALTHY before the connection dropped; checking publicly" >&2
+fi
 settled=0
 for _ in $(seq 1 "$PUBLIC_TRIES"); do
   if curl -sf -m 10 "https://$domain/health" >/dev/null; then
