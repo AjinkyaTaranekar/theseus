@@ -10,6 +10,7 @@ from theseus.adapters.aws.access import derive_access_edges
 from theseus.adapters.aws.kinds import MODELED_TYPES, PROVIDER, RESOURCE_KINDS
 from theseus.adapters.aws.oidc import trust_edges
 from theseus.adapters.aws.ops import ops_schema
+from theseus.adapters.aws.patch import apply_ops
 from theseus.adapters.aws.resources import structural_rows
 from theseus.contracts.adapters import Change, CiIdentity, IacResource, Locate
 from theseus.contracts.result import GraphRows, PatchOp
@@ -64,8 +65,8 @@ class AwsAdapter:
         raise PatchError("AWS change selection belongs to E6")
 
     def apply_ops(self, resources: list[IacResource], ops: list[PatchOp]) -> list[IacResource]:
-        """Patched resources once E5 implements mutation; currently raises PatchError."""
-        raise PatchError("AWS patch application belongs to E5")
+        """Independent patched resources, or PatchError when an operation cannot apply."""
+        return apply_ops(resources, ops, account=self.config["account"])
 
     def ops_schema(self) -> dict[str, Any]:
         """The schema of the existing typed AWS operation catalog."""
