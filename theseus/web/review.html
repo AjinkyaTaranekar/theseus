@@ -402,7 +402,6 @@ function render(data) {
       : `If merged: ${opened.length} new ${opened.length === 1 ? "way" : "ways"} in.`;
   }
 
-  let full = null;
   // Every access link in the PR's graph, laid out the way access flows: who acts, the groups and roles
   // they pass through, the secrets, then the data. Code calls are left out to keep it readable.
   const ACCESS_TYPES = new Set(["MEMBER_OF", "CAN_ASSUME", "TRUSTS", "RUNS_AS", "CAN", "UNLOCKS"]);
