@@ -69,9 +69,9 @@ Terraform, GitHub Actions, Python) produce each one.
 | `USES` | Workflow to Action | `version`, `line` | configured | A `uses:` line in the workflow file |
 | `CAN` | Principal to Resource | `grants` (list of `read`, `write`) | configured or unknown | Identity policies (inline and attached), and S3 bucket policies for `entry:internet` |
 | `UNLOCKS` | Resource (secret) to Resource (db) | `grants` (`read`, `write`) | inferred | The secret's `db_instance` tag |
-| `CALLS` | Workload to Resource | `action`, `access`, `file`, `line` | configured | Python code (task C2) |
-| `REQUESTS` | Workload to Workload | `file`, `line` | configured | Python code calling another service's URL |
-| `HAS_ENV` | Workload to Resource or Workload | `var` | configured | The Lambda's `environment` block, or the ECS task definition's container `environment` |
+| `CALLS` | Workload to Resource | `grants` (the accesses, `read`, `write`), `actions` (sorted, such as `dynamodb:PutItem`) | configured | Python code (task C2). One edge per (workload, resource) however many calls; each call adds its file and line as evidence |
+| `REQUESTS` | Workload to Workload | none | configured | Python code calling another service's URL. One edge per pair; each call adds its file and line as evidence |
+| `HAS_ENV` | Workload to Resource or Workload | `var` | configured | The Lambda's `environment` block, or the ECS task definition's container `environment`; the code reader adds each line that reads `var` as evidence |
 | `FOR` | Requirement to Principal | | configured | `theseus.yaml` or the PR's intent |
 | `NEEDS` | Requirement to Resource | `access` | configured | Same |
 | `AFFECTS` | Finding to Action or Workload | | assumed | The advisory |
@@ -165,15 +165,16 @@ RETURN w.id AS workflow, u.version AS version
 // Q_UNUSED_GRANTS: grants on a workload's own role to sensitive data that its code never calls
 MATCH (w:Workload)-[:RUNS_AS]->(:Role)-[c:CAN]->(r:Resource {sensitive: true})
 OPTIONAL MATCH (w)-[x:CALLS]->(r)
-WITH w, c, r, collect(x.access) AS used
-WHERE NONE(g IN c.grants WHERE g IN used)
+WITH w, c, r, x
+WHERE x IS NULL OR NONE(g IN c.grants WHERE g IN x.grants)
 RETURN w.id AS workload, r.id AS resource, c.eid AS eid
 ```
 
 ```cypher
 // Q_CALLS: every code call, for usage capacities and "use beyond intent"
 MATCH (w:Workload)-[x:CALLS]->(r:Resource)
-RETURN w.id AS workload, r.id AS resource, x.access AS access, x.eid AS eid
+UNWIND x.grants AS access
+RETURN w.id AS workload, r.id AS resource, access, x.eid AS eid
 ```
 
 ### What FalkorDB 4.22 requires (found in P1)

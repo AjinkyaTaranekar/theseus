@@ -188,11 +188,12 @@ Co-Authored-By: <the agent that wrote it>
 ## Pull requests
 
 - One task per PR. Branch as the brief says (`e4-min-cut`).
-- The PR title follows the commit subject rules (`feat: Add minimum cut with MaxFlow`). PRs are
-  squash-merged, so the title becomes the commit on `main`. The task ID lives in the branch name and in
-  `Closes #<issue>`, never in the title.
+- The PR title follows the commit subject rules (`feat: Add minimum cut with MaxFlow`). PRs are merged
+  with a merge commit, so every commit on the branch lands on `main` as written and the title names the
+  merge. The task ID lives in the branch name and in `Closes #<issue>`, never in the title.
 - Use `.github/pull_request_template.md` and end with `Closes #<issue>`.
-- Rebase on `main` before asking for review. Never force-push `main`.
+- To bring a branch up to date, merge `main` (or the branch it is stacked on) into it. Never rebase a pushed
+  branch and never force-push: a reviewer's comments and the other human's checkout stay valid.
 - Demo PRs are different: branch `demo/<scenario>-<take>`, label `demo`, and they change only `demo-infra/`
   (`docs/spec/07-github-and-deploy.md`, "Demo PRs").
 

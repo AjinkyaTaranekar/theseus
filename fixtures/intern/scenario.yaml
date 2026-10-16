@@ -1,0 +1,4 @@
+description: Add Priya to support-engineers for prod log access.
+mode: pr
+name: intern
+world: demo-infra

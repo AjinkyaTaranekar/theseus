@@ -1,0 +1,4 @@
+description: Make company-files public so marketing can link the pricing PDF.
+mode: pr
+name: public-bucket
+world: demo-infra
