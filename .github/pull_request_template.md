@@ -1,7 +1,7 @@
 <!--
 Title: `<type>: <Summary>`, following the commit subject rules in AGENTS.md ("Commits"): at most 50
-characters, imperative, no scope and no task ID. PRs are squash-merged, so the title becomes the commit
-on main.
+characters, imperative, no scope and no task ID. PRs are merged with a merge commit, so the title names
+the merge on main. Bring the branch up to date by merging main into it, never by rebasing.
 -->
 
 ## What

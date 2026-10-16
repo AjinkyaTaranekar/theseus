@@ -163,27 +163,34 @@ the merged edge is unknown.
 ## 7. Reading service code (`adapters/python/code.py`)
 
 Parse each `services/<folder>/*.py` with Python's `ast`; never execute it. The workload is the Lambda function
-or ECS service whose `theseus_code_path` tag names that folder. A folder no workload claims is skipped with an
-entry in `unknowns`. Environment variables come from that workload's Terraform: the Lambda's `environment` block,
-or the first container's `environment` in its ECS task definition.
+or ECS service whose `theseus_code_path` tag names that folder, read from the `Workload` node's `code_path`. A
+folder no workload claims is skipped with `"code: <folder> is claimed by no workload"` in `unknowns`, and a file
+that does not parse with `"code: <file> does not parse"`. Environment variables come from that workload's
+Terraform (the Lambda's `environment` block, or the first container's `environment` in its ECS task definition),
+as the cloud adapter's `HAS_ENV` edges carry them, so the code reader reads the rows, never the IaC.
+
+All calls from one workload to one resource make one `CALLS` edge: `grants` holds their accesses, `actions`
+their actions, and each call adds its file and line as evidence. `REQUESTS` is one edge per pair of workloads,
+built the same way.
 
 | Pattern | Edge |
 | --- | --- |
 | `<client>.put_object(Bucket=X, Key=K)` on an `s3` client | `CALLS` `s3:PutObject`, access write, to the s3 location whose bucket is X and whose prefix is the longest literal prefix of K |
 | `<client>.get_object(...)` | Same, access read |
-| `<client>.get_item`, `.batch_get_item`, `.query`, `.scan` (`TableName=X`) on a `dynamodb` client | `CALLS` with that action, access read, to `dynamodb:X` |
-| `<client>.put_item`, `.update_item`, `.delete_item`, `.batch_write_item` (`TableName=X`) on a `dynamodb` client | `CALLS`, access write, to `dynamodb:X` |
+| `<client>.get_item`, `.batch_get_item`, `.query`, `.scan` (`TableName=X`, or each key of `RequestItems` for the batch calls) on a `dynamodb` client | `CALLS` with that action, access read, to `dynamodb:X` |
+| `<client>.put_item`, `.update_item`, `.delete_item`, `.batch_write_item` (`TableName=X`, or each key of `RequestItems`) on a `dynamodb` client | `CALLS`, access write, to `dynamodb:X` |
 | `<client>.get_secret_value(SecretId=X)` on a `secretsmanager` client | `CALLS` `secretsmanager:GetSecretValue`, access read, to `secret:X` |
 | `psycopg.connect(...)`, `psycopg2.connect(...)`, `sqlalchemy.create_engine(...)` in a workload that also calls a secret which `UNLOCKS` a database | `CALLS` `db:connect`, access read, to that database |
-| `httpx.<method>(URL...)` or `requests.<method>(URL...)` where URL starts with a value whose host's first label is another workload's name | `REQUESTS` to that workload. Any other host makes no edge |
-| `os.environ["V"]` or `os.getenv("V")` | Resolve V through the workload's environment; also emit `HAS_ENV` (`var` = V) to the node the value names: a secret, a table, a workload (by URL host), or every location of a bucket |
-| A call on a client of a service Theseus does not model (`sqs`, `sns`, `events` and so on) | No edge. Counted in `coverage.code_calls_skipped` |
+| `httpx.<method>(URL...)` or `requests.<method>(URL...)` where URL starts with a value whose host's first label is another workload's name | `REQUESTS` to that workload. Any other known host makes no edge and is counted as skipped; a host that does not resolve is an unknown |
+| `os.environ["V"]` or `os.getenv("V")` | Resolve V through the workload's `HAS_ENV` edges with `var` = V: a secret, a table, a workload (by URL host), or every location of a bucket. The read's line joins those edges' evidence. A V with no such edge names no node |
+| Any other call on a client: a service with no pattern here (`sqs`, `sns`, `events` and so on, even where the queue or topic is a node), or another method | No edge. Counted in `coverage.code_calls_skipped` |
 
 A client is any name assigned from `boto3.client("<service>")`, in the function or at module level. A value
 resolves when it is a string literal; `os.environ["V"]` or `os.getenv("V")`; a module-level name assigned exactly
 once in the same file from a value that resolves; or an f-string or `+` concatenation whose first part resolves
-(the rest becomes `*`). Names imported from another module do not resolve. A value that cannot be resolved
-produces no edge; record it in `unknowns` as `"code: <file>:<line> <call> target unresolved"`.
+(the rest becomes `*`). Names imported from another module do not resolve. A value that cannot be resolved, a
+value that names no node, and a connect in a workload that calls no unlocking secret produce no edge; record each
+in `unknowns` as `"code: <file>:<line> <call> target unresolved"`.
 
 ## 8. Sensitivity and environments
 
@@ -229,7 +236,7 @@ Analyze base and head with the same actors and the same requirements (config plu
 | Capacity | Edges |
 | --- | --- |
 | `BIG` = 1,000,000 | Every edge on a path that satisfies a `theseus.yaml` requirement or an approved intent requirement (section 10); every `RUNS_AS`, `UNLOCKS` and `USES` edge (not permissions) |
-| `USED` = 1,000 | A `CAN` edge from a role to a resource when a workload running as that role has a `CALLS` edge to that resource with an access the edge grants (task C3) |
+| `USED` = 1,000 | A `CAN` edge from a role to a resource when a workload running as that role has a `CALLS` edge to that resource whose `grants` share an access with it (task C3) |
 | 1 | Every other edge |
 
 - **Sources:** the actor (PR and scan modes), or every matched workflow (finding mode).
@@ -334,8 +341,8 @@ say so and show the trade-off; never pick the least bad option silently.
 
 - **Scan:** analyze `main` with every actor. For each workload, list unused grants (Q_UNUSED_GRANTS) that lie
   on a dangerous path, and propose candidate U for each, verified like any candidate.
-- **Use beyond intent (PR mode):** a `CALLS` edge present in head but not base, by (workload, resource,
-  access), whose resource is sensitive (or unlocks a sensitive one) and is not covered by a `theseus.yaml`
+- **Use beyond intent (PR mode):** a code call present in head but not base, by (workload, resource,
+  access) as Q_CALLS returns them, whose resource is sensitive (or unlocks a sensitive one) and is not covered by a `theseus.yaml`
   requirement. Report the workload, resource, access, file and line, and what it unlocks. A use the intent
   names is still listed, since words never approve (section 10); the headline says the PR asked for it.
 

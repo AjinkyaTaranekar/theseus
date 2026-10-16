@@ -7,8 +7,10 @@ new or the previous build is running. Each scenario sets how they fail.
 from __future__ import annotations
 
 import os
+import runpy
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,6 +18,8 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "deploy.sh"
 BASH = shutil.which("bash")
+if sys.platform == "win32":
+    BASH = runpy.run_path(str(SCRIPT.parents[1] / "tools/make_fixture.py"))["resolve_bash"]()
 pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
 
 STUBS = {
@@ -69,6 +73,21 @@ class Run:
     head: str
 
 
+def bash_path(path: Path) -> str:
+    """Return a path in the native shell's namespace."""
+    if sys.platform != "win32":
+        return path.as_posix()
+    result = subprocess.run(
+        [BASH, "-c", 'PATH="/usr/bin:$PATH"; cygpath -u -- "$1"', "theseus-test", str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        timeout=30,
+    )
+    return result.stdout.rstrip("\r\n")
+
+
 def deploy(
     tmp_path: Path, *, first_deploy: bool = False, domain: str | None = "theseus.example", **fake: int
 ) -> Run:
@@ -87,9 +106,8 @@ def deploy(
     (vm / ".env").write_text(f"DOMAIN={domain or ''}\n", encoding="utf-8", newline="\n")
     env = {
         **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "FAKE": state.as_posix(),
-        "THESEUS_DIR": vm.as_posix(),
+        "FAKE": bash_path(state),
+        "THESEUS_DIR": bash_path(vm),
         "THESEUS_TRIES": "3",
         "THESEUS_WAIT": "0",
         "THESEUS_PUBLIC_TRIES": "2",
@@ -98,7 +116,23 @@ def deploy(
     }
     env.pop("THESEUS_DOMAIN", None)
     proc = subprocess.run(
-        [BASH, SCRIPT.as_posix(), "deploy@vm"], env=env, capture_output=True, text=True, timeout=60
+        [
+            BASH,
+            "-c",
+            'export PATH="$1:/usr/bin:/bin"; '
+            "for tool in ssh docker git curl sleep; do "
+            '[[ "$(command -v "$tool")" == "$1/$tool" ]] || '
+            '{ echo "offline stand-in missing: $tool" >&2; exit 90; }; '
+            'done; shift; exec "$BASH" -- "$@"',
+            "theseus-deploy-test",
+            bash_path(bin_dir),
+            bash_path(SCRIPT),
+            "deploy@vm",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     return Run(
         proc.returncode,
@@ -168,3 +202,32 @@ def test_a_failed_fetch_changes_nothing(tmp_path: Path) -> None:
     assert "could not update to origin/main; nothing changed" in run.out
     assert " up -d" not in run.log
     assert run.head == "old"
+
+
+def test_missing_stand_in_cannot_fall_back_to_external_ssh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fallback = tmp_path / "outside test bin"
+    fallback.mkdir()
+    marker = tmp_path / "external-ssh-called"
+    ssh = fallback / "ssh"
+    ssh.write_text(
+        '#!/usr/bin/env bash\necho called > "$THESEUS_TEST_EXTERNAL_SSH"\nexit 91\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    ssh.chmod(0o755)
+    chmod = Path.chmod
+
+    def remove_ssh(path: Path, mode: int, **kwargs: object) -> None:
+        chmod(path, mode, **kwargs)
+        if path == tmp_path / "bin/ssh":
+            path.unlink()
+
+    monkeypatch.setattr(Path, "chmod", remove_ssh)
+    monkeypatch.setenv("PATH", str(fallback) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setenv("THESEUS_TEST_EXTERNAL_SSH", marker.as_posix())
+    run = deploy(tmp_path)
+    assert run.code == 90
+    assert "offline stand-in missing: ssh" in run.out
+    assert not marker.exists()
