@@ -380,6 +380,7 @@ def test_the_check_run_carries_the_verdict_and_an_opened_path_fails_it(
     assert check["output"]["title"].startswith("Merge blocked: ")
     summary = check["output"]["summary"]
     assert "Merge blocked" in summary and "<details>" not in summary and MARKER not in summary
+    assert "```mermaid" not in summary  # the Checks tab draws no diagrams
 
 
 def test_the_review_gets_the_pr_as_the_api_has_it_and_the_action_s_plans(

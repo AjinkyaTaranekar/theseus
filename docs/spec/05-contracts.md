@@ -281,14 +281,21 @@ reader who has never heard of Theseus. The check run's summary is the same card.
    it needs, why it needs this access, or, when it asks for sensitive data on purpose, that an owner approves it
    in `theseus.yaml`
 
+**The connections** (`render.connections`), under the card and above every fold: every opened path drawn as
+one Mermaid `flowchart LR`. Each node is its name and what it is ("priya-intern", "user"); each arrow is the
+hop's own access in plain words ("is a member of", "read", "unlocks"); a hop shared by several paths is drawn
+once; the hop this change adds or edits is a thick red arrow labelled "added here"; and sensitive targets are
+shaded. With more than 12 nodes, it draws the three most serious paths, then only the most serious one. A line
+under it says what the colours mean. The check run's summary stops before it: the Checks tab draws no diagrams.
+
 **Folded sections** (`<details>`), each shown only when it has something:
 
 8. **The path, step by step:** what's at risk (each exposed target, most sensitive first, at most five: its
    name, what it is, and what its class means; a secret that unlocks another listed target is "the key that
-   opens" it), a table of opened paths (actor, target with its class, hops), then a Mermaid `flowchart LR` for
-   each of the three most sensitive. GitHub does not run links inside Mermaid, so a numbered list of steps
-   follows each diagram, each step linked to `blob/<head_sha>/<world root>/<file>#L<line>` or saying why its
-   evidence is unknown. With no opened path, what's at risk is its own section
+   opens" it), a table of opened paths (actor, target with its class, hops), then, for each of the three most
+   sensitive, a numbered list of its steps, each linked to `blob/<head_sha>/<world root>/<file>#L<line>` or
+   saying why its evidence is unknown: GitHub does not run links inside Mermaid. With no opened path, what's at
+   risk is its own section
 9. **All fixes Theseus tested:** the minimum cut in one sentence ("No single permission can be removed without
    breaking required access" or "One change closes every path: `<edge>`"); the fix table: ID, fix (its title
    and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"), required access ("kept" or "breaks

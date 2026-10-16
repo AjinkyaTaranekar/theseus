@@ -152,8 +152,10 @@ def stub_for(fixture: str | None, mode: str) -> AnalysisResult:
 
 
 def card(comment: str) -> str:
-    """The comment's first section, for the check run's summary: everything before the folded details."""
-    return comment.split("\n<details>", 1)[0].replace(MARKER, "", 1).strip()
+    """The comment's card, for the check run's summary: everything before its diagram and the folded
+    details. The Checks tab draws no diagrams."""
+    top = comment.split("\n<details>", 1)[0].split("\n```mermaid", 1)[0]
+    return top.replace(MARKER, "", 1).strip()
 
 
 def _secret_matches(given: str | None, secret: str) -> bool:

@@ -25,12 +25,12 @@ from theseus.agent.render import (
     change_line,
     checkov_line,
     code,
+    connections,
     consequence,
     cut_sentence,
     do_line,
     escape,
     falkordb_line,
-    mermaid,
     needs_and_grants,
     pick_diagrams,
     render_comment,
@@ -308,18 +308,20 @@ def test_the_card_comes_first_and_the_sections_follow_in_spec_order() -> None:
     assert comment.count("<details>") == comment.count("</details>") == 5
 
 
-def test_the_card_is_five_lines_with_no_headings() -> None:
-    """The verdict, the consequence, then says, needs and grants, why and do: one line each."""
+def test_the_card_is_five_lines_with_no_headings_then_its_diagram() -> None:
+    """The verdict, the consequence, then says, needs and grants, why and do: one line each. The diagram of
+    the connections follows, still above every fold."""
     top = card(render(intern()))
     assert "####" not in top
-    lines = [line for line in top.removeprefix(MARKER).strip().splitlines() if line.strip()]
+    words, _, diagram = top.partition("```mermaid")
+    lines = [line for line in words.removeprefix(MARKER).strip().splitlines() if line.strip()]
     assert len(lines) == 6 and lines[0] == "## 🔴 Merge blocked"
+    assert diagram and top.count("```mermaid") == 1
 
 
 def test_everything_technical_is_folded_away() -> None:
     top = card(render(intern()))
     for technical in (
-        "```mermaid",
         "| ID | Fix |",
         "Tool calls",
         "Read 46 resources",
@@ -581,25 +583,60 @@ def test_code_that_reads_beyond_intent_gets_a_note_and_a_clear_pr_gets_none() ->
 # The path, step by step -------------------------------------------------------------------------------------
 
 
-def test_at_most_three_diagrams_the_most_sensitive_first() -> None:
+def test_the_card_draws_every_opened_path_as_one_diagram() -> None:
+    """Shared hops are drawn once, each hop says its own access, the hop this PR adds is the thick red
+    arrow, and every sensitive target is shaded."""
+    assert connections(intern()) == "\n".join(
+        [
+            "```mermaid",
+            "flowchart LR",
+            '  n1["priya-intern<br/>user"]',
+            '  n2["support-engineers<br/>group"]',
+            '  n3["prod-support<br/>role"]',
+            '  n4["prod-db-credentials<br/>secret"]',
+            '  n5["customer-db<br/>database"]',
+            '  n6["demo-company-files/invoices/<br/>storage location"]',
+            '  n1 -->|"is a member of, added here"| n2',
+            '  n2 -->|"switch into"| n3',
+            '  n3 -->|"read"| n4',
+            '  n4 -->|"unlocks"| n5',
+            '  n3 -->|"read"| n6',
+            "  classDef sensitive fill:#ffebe9,stroke:#cf222e,color:#1f2328",
+            "  class n4,n5,n6 sensitive",
+            "  linkStyle 0 stroke:#cf222e,stroke-width:3px",
+            "```",
+        ]
+    )
+    assert connections(AnalysisResult(mode="pr")) is None
+
+
+def test_too_many_connections_draw_only_the_most_serious_paths() -> None:
+    many = [path(n, f"db:db-{n}", "regulated", ("CAN", f"db:db-{n}", "E3")) for n in range(20)]
+    block = connections(intern().model_copy(update={"opened": many}))
+    nodes = re.findall(r'^  n\d+\["', block, re.M)
+    assert len(nodes) == 6  # Priya, the group, the role and the three most serious targets
+
+
+def test_the_fold_lists_the_steps_of_at_most_three_paths_the_most_sensitive_first() -> None:
     result = intern()
     extra = path(5, "secret:payments-api-key", "regulated", ("CAN", "secret:payments-api-key", "E3"))
     picked = pick_diagrams([*result.opened, extra])
     assert [p.id for p in picked] == ["P1", "P2", "P5"]  # the database before the secret that unlocks it
     section = folded(render(result.model_copy(update={"opened": [*result.opened, extra]})), "The path")
-    assert section.count("```mermaid") == 3
-    assert "How **priya-intern** reaches **customer-db**" in section
+    assert section.count("How **priya-intern** reaches") == 3 and "```mermaid" not in section
 
 
-def test_mermaid_node_ids_are_plain_and_labels_cannot_break_the_block() -> None:
+def test_diagram_labels_cannot_break_the_block() -> None:
     hostile = path(7, 'db:"x"```', "regulated", ("CAN", 'db:"x"```', "E3"))
-    block = mermaid(hostile)
+    block = connections(intern().model_copy(update={"opened": [hostile]}))
     assert block.startswith("```mermaid\nflowchart LR\n") and block.endswith("\n```")
     body = block.removeprefix("```mermaid\n").removesuffix("\n```")
     assert "```" not in body and '"x"' not in body
     for line in body.splitlines()[1:]:
         assert re.match(
-            r"^\s*(n\d+\[\".*\"\]|n\d+ -->\|[A-Z_]+\| n\d+|classDef \w+ .*|class n\d+ \w+)$", line
+            r'^\s*(n\d+\[".*"\]|n\d+ -->\|".*"\| n\d+|classDef \w+ .*|class [n\d,]+ \w+'
+            r"|linkStyle [\d,]+ .*)$",
+            line,
         ), line
 
 
@@ -794,7 +831,7 @@ def test_a_huge_result_stays_under_github_s_limit() -> None:
 def test_spec_05_s_intern_example_renders_through_the_stub() -> None:
     comment = render(result_from_expected(INTERN_EXPECTED))
     assert comment.startswith(MARKER + "\n## 🔴 Merge blocked")
-    assert folded(comment, "The path").count("```mermaid") == 1
+    assert card(comment).count("```mermaid") == 1 and "```mermaid" not in folded(comment, "The path")
     assert len(fix_rows(comment)) == 4
     assert f"{BLOB}terraform/roles.tf#L31" in comment
 
