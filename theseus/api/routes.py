@@ -18,7 +18,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from theseus.agent.render import MARKER, render_comment, verdict
+from theseus.agent.render import MARKER, code, render_comment, verdict
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
@@ -35,6 +35,23 @@ FIXTURE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REVIEW_COMMAND = "/theseus review"
 PR_ACTIONS = frozenset({"opened", "reopened", "synchronize", "edited"})
 
+# What the `Theseus` check says while a review runs (07, "When Theseus reviews"): a title and a summary. The
+# ruleset requires the check, so the merge waits for the verdict.
+PLANNING = (
+    "Reviewing: planning both commits",
+    "Theseus is checking what this change lets people and services reach. It plans the Terraform at the base"
+    " and head commits, builds a graph of each in FalkorDB, and traces every path to sensitive data. The"
+    " merge waits for the result, usually a few minutes.",
+)
+AGAIN = ("Reviewing again: planning both commits", PLANNING[1])
+TRACING = (
+    "Reviewing: tracing paths in FalkorDB",
+    "Both commits are planned. Theseus is building their graphs in FalkorDB, tracing every path to sensitive"
+    " data and reading what the PR says it needs. The merge waits for the result.",
+)
+RETRY = "Comment `/theseus review` or re-run this check to try again."
+REASON_MAX = 500
+
 
 class AnalyzeRequest(BaseModel):
     """From the Action (repo and both plans) or from a test or the Try-it page (fixture)."""
@@ -49,6 +66,14 @@ class AnalyzeRequest(BaseModel):
     base_plan: dict[str, Any] | None = None
     head_plan: dict[str, Any] | None = None
     checkov: dict[str, Any] | None = None
+
+
+class FailedRequest(BaseModel):
+    """From `Theseus publish` when the Theseus workflow failed before a review could start."""
+
+    repo: str
+    head_sha: str
+    run_url: str | None = None
 
 
 class FindingRequest(BaseModel):
@@ -122,6 +147,14 @@ def _require_repo(gh: GitHub, repo: str) -> None:
         raise HTTPException(403, f"{repo} is not a repo Theseus acts on")
 
 
+def _require_token(settings: Settings, given: str | None) -> None:
+    """Calls from `Theseus publish` carry THESEUS_TOKEN in X-Theseus-Token."""
+    if settings.theseus_token is None:
+        raise HTTPException(503, "THESEUS_TOKEN is not set on the server")
+    if not _secret_matches(given, settings.theseus_token.get_secret_value()):
+        raise HTTPException(401, "missing or wrong X-Theseus-Token")
+
+
 @router.post("/analyze", response_model=AnalysisResult)
 def analyze(
     req: AnalyzeRequest,
@@ -134,10 +167,7 @@ def analyze(
     comment and the `Theseus` check run. With `{fixture}` only, the stub answers (the Try-it page, S4)."""
     if req.repo is None:
         return stub_for(req.fixture, "pr")
-    if settings.theseus_token is None:
-        raise HTTPException(503, "THESEUS_TOKEN is not set on the server")
-    if not _secret_matches(x_theseus_token, settings.theseus_token.get_secret_value()):
-        raise HTTPException(401, "missing or wrong X-Theseus-Token")
+    _require_token(settings, x_theseus_token)
     if req.pr_number is None or req.head_sha is None:
         raise HTTPException(422, "a request with a repo needs pr_number and head_sha")
     if req.base_plan is None or req.head_plan is None:
@@ -147,11 +177,20 @@ def analyze(
         # A review reads the PR as it is now, not the copy the Action's event carried (07, "When Theseus
         # reviews"): its title and body for the intent, its base commit for the base world.
         pr = gh.pull_request(req.repo, req.pr_number)
+        gh.pending_check(req.repo, req.head_sha, *TRACING)
         try:
             result = review(gh, req.repo, req.pr_number, req.head_sha, pr, req.base_plan, req.head_plan)
         except TheseusError as e:
-            # No check is posted, so the merge stays blocked until a review finishes (it fails closed).
+            # The check fails with the reason, so the merge stays blocked and says why (it fails closed).
             log.error("%s#%d: the review could not finish: %s", req.repo, req.pr_number, e)
+            reason = f"Theseus could not finish reviewing this commit: {code(str(e)[:REASON_MAX])}"
+            gh.upsert_check(
+                req.repo,
+                req.head_sha,
+                "failure",
+                "Review could not finish",
+                f"{reason}\n\nThe merge stays blocked until a review finishes. {RETRY}",
+            )
             raise HTTPException(500, f"the review could not finish: {e}") from e
         comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
         status = verdict(result)
@@ -169,6 +208,39 @@ def analyze(
         log.error("%s#%d: %s", req.repo, req.pr_number, e)
         raise HTTPException(502, str(e)) from e
     return result
+
+
+@router.post("/review-failed", status_code=204)
+def review_failed(
+    req: FailedRequest,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> Response:
+    """The Theseus workflow failed before a review, often on a plan error: the commit's check fails with a
+    link to the run, so the merge stays blocked and says why. A verdict already on the commit stays."""
+    _require_token(settings, x_theseus_token)
+    _require_repo(gh, req.repo)
+    run_url = re.compile(rf"https://github\.com/{re.escape(req.repo)}/actions/runs/\d+(/attempts/\d+)?")
+    link = f" [See the run]({req.run_url})." if req.run_url and run_url.fullmatch(req.run_url) else ""
+    try:
+        latest = gh.latest_check(req.repo, req.head_sha)
+        if latest is not None and latest.get("status") == "completed":
+            log.info("%s@%s: a check is already complete; leaving it", req.repo, req.head_sha[:7])
+            return Response(status_code=204)
+        gh.upsert_check(
+            req.repo,
+            req.head_sha,
+            "failure",
+            "Review could not run",
+            "The Theseus workflow failed before the review could start, often because `terraform plan`"
+            f" failed on this commit.{link}\n\nThe merge stays blocked until a review finishes. Push a fix,"
+            " or re-run this check to try again.",
+        )
+    except GitHubError as e:
+        log.error("%s@%s: %s", req.repo, req.head_sha[:7], e)
+        raise HTTPException(502, str(e)) from e
+    return Response(status_code=204)
 
 
 @router.post("/finding", response_model=AnalysisResult)
@@ -226,7 +298,9 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
 
 def _review_again(gh: GitHub, repo: str, head_sha: str, numbers: list[int]) -> None:
     outcome = gh.rerun_review(repo, head_sha)
-    if outcome == "none":
+    if outcome == "rerun":
+        gh.pending_check(repo, head_sha, *AGAIN)
+    elif outcome == "none":
         for number in numbers:
             if _nothing_changed(gh, repo, number, head_sha):
                 return
@@ -264,7 +338,12 @@ def _on_pull_request(gh: GitHub, repo: str, payload: dict[str, Any]) -> None:
     if payload.get("action") not in PR_ACTIONS:
         return
     pr = payload.get("pull_request") or {}
-    _nothing_changed(gh, repo, int(pr["number"]), pr["head"]["sha"])
+    number, head = int(pr["number"]), pr["head"]["sha"]
+    if gh.touches_world_root(repo, number):
+        # The Action is planning it now; the check says so until /analyze completes it.
+        gh.pending_check(repo, head, *PLANNING)
+        return
+    _nothing_changed(gh, repo, number, head)
 
 
 HANDLERS = {"issue_comment": _on_comment, "check_run": _on_check_run, "pull_request": _on_pull_request}
@@ -279,8 +358,9 @@ async def github_webhook(
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> Response:
     """The App's events, checked against GITHUB_WEBHOOK_SECRET before anything is read: `/theseus review` and
-    Re-run on the check run the review again; a PR that changes nothing under the world root gets a `success`
-    check. Every other event is accepted and ignored."""
+    Re-run on the check run the review again; a PR that changes the world root shows its check in progress
+    while the Action plans it, and one that changes nothing there gets a `success` check. Every other event
+    is accepted and ignored."""
     if settings.github_webhook_secret is None:
         raise HTTPException(503, "GITHUB_WEBHOOK_SECRET is not set on the server")
     body = await request.body()

@@ -271,6 +271,28 @@ class GitHub:
         log.info("%s@%s: check %s is %s", repo, head_sha[:7], cid, conclusion)
         return cid
 
+    def pending_check(self, repo: str, head_sha: str, title: str, summary: str) -> int:
+        """Shows the commit's `Theseus` check as in progress with this title, so the merge waits and says why.
+        Updates the App's newest check when it is already in progress, else posts a new one, so a finished
+        verdict stays in the check's history. Returns its ID."""
+        self._require(repo)
+        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        latest = self.latest_check(repo, head_sha)
+        if latest is not None and latest.get("status") != "completed":
+            cid = int(latest["id"])
+            self._repo(repo, "PATCH", f"/check-runs/{cid}", json={"output": output})
+        else:
+            body = {
+                "name": CHECK_NAME,
+                "head_sha": head_sha,
+                "status": "in_progress",
+                "external_id": REVIEW,
+                "output": output,
+            }
+            cid = int(self._repo(repo, "POST", "/check-runs", json=body).json()["id"])
+        log.info("%s@%s: check %s in progress: %s", repo, head_sha[:7], cid, title)
+        return cid
+
     def withdraw_pass(self, repo: str, head_sha: str, number: int) -> bool:
         """When the commit's newest check is the pass for a PR that changes nothing under the world root, and
         PR `number` (same head, another base) does change it, posts a new in-progress check so the required
