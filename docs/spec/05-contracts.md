@@ -124,7 +124,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `Grant` | `principal: str`, `access: Access`, `resource: str` |
 | `Intent` | `purpose: str`, `grants: list[Grant]`, `suspicious: bool`, `stated: bool` (false when the PR does not say what it is for; then no grants) |
 | `ResourceChange` | `address: str`, `type: str`, `action: Literal["create","update","delete"]`: one resource the change adds, changes or removes |
-| `PathStep` | `src: str` (serialized as `from`), `type: EdgeType`, `dst: str` (serialized as `to`), `evidence: str` (an evidence ID). No eid: a step means the same in every build |
+| `PathStep` | `src: str` (serialized as `from`), `type: EdgeType`, `dst: str` (serialized as `to`), `evidence: str` (an evidence ID), `grants: list[str]` (the access this hop's own edge grants; empty when not recorded). No eid: a step means the same in every build |
 | `PathRecord` | `id: str`, `actor: str`, `target: str`, `grants: list[Access]`, `steps: list[PathStep]`, `unknown: bool`, `inferred: bool`, `sensitivity: Sensitivity \| None`; `route` (a property, not a field) is every node in order |
 | `RequirementStatus` | `id: str`, `status: Literal["satisfied","missing","unknown"]` |
 | `CutEdge` | `eid: str`, `src: str`, `type: EdgeType`, `dst: str`, `evidence: str` |
@@ -137,7 +137,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `ChokePoint` | `id: str`, `score: float` |
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
 | `Timings` | `engine_ms: int`, `llm_ms: int`, `jev_ms: int`, `total_ms: int` |
-| `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int` |
+| `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int`, `nodes: int`, `edges: int` (the head graph's size in the store; 0 when not recorded) |
 | `NodeInfo` | `category: Category \| None`, `sensitivity: Sensitivity \| None`: what the comment needs to name a node in plain words |
 | `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage`, `models: dict[str,str]` (the models that answered, such as `{"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}`; shown in the comment, never projected), `nodes: dict[str, NodeInfo]` (every node on a listed path; shown, never projected) |
 
@@ -243,8 +243,11 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 | `POST /analyze` | `{repo, pr_number, base_sha, head_sha, pr_title, pr_body, base_plan, head_plan, checkov}` or `{fixture}` | `AnalysisResult` | With a repo: reads the world root (`THESEUS_WORLD_ROOT`) at both SHAs, posts or updates the PR comment and the check run |
 | `POST /finding` | `{repo, advisory}` or `{fixture}` | `AnalysisResult` | With a repo: opens the containment PR and an issue listing secrets to rotate |
 | `POST /scan` | `{repo}` or `{fixture}` | `AnalysisResult` | With a repo: opens an issue, and a PR for each passing U candidate |
+| `POST /review-failed` | `{repo, head_sha, run_url}` | `204` | From `Theseus publish` when the Theseus workflow failed: fails the commit's `Theseus` check with a link to the run, unless a verdict is already there (`07-github-and-deploy.md`, "When Theseus reviews") |
 | `POST /apply` | `{repo, pr_number, candidate_id, requested_by}` | `{commit_sha}` | Commits the candidate's `.tf` edits to the PR branch. Refuses any file outside the world root |
 | `POST /webhooks/github` | GitHub payload | `204` | From a user with write access, `issue_comment` with `/theseus apply <ID>` calls apply and `/theseus review` re-runs the review; `check_run` `rerequested` re-runs the review; a `pull_request` that changes nothing under the world root gets a `success` check; `pull_request` closed deletes graphs; `push` to `main` runs a scan (`07-github-and-deploy.md`, "When Theseus reviews") |
+| `GET /reviews/{owner}/{repo}/{number}?k=` | | the review page | A 404 unless `k` is the PR's signature (`07-github-and-deploy.md`, "The review page") |
+| `GET /reviews/{owner}/{repo}/{number}/data?k=` | | `{repo, number, base_sha, head_sha, world_root, verdict, result, graphs: {head, base}}` | The PR's newest result and both graphs, read from the store now; each graph as `{name, nodes, edges}` |
 | `GET /graphs` | | graph names | For the "under the hood" shot |
 | `GET /` and `POST /try/{preset}` | | the Try-it page; an `AnalysisResult` | Runs the live engine on a fixture, with the LLM replayed |
 
@@ -254,41 +257,66 @@ Written for a reader with no context, at 3 a.m.: what they need to decide sits i
 words, and everything technical is folded below. Every sentence comes from a template over facts in the result,
 in the plain words of `engine/words.py`; no model writes prose in the comment.
 
-**The card:**
+**The card** is five lines with no headings: it says what happened, why it is a risk and what to do, for a
+reader who has never heard of Theseus. The check run's summary is the same card.
 
 1. The marker `<!-- theseus:pr-comment -->`, so the comment is updated in place, never duplicated
 2. The status, which is also the check run's (`render.verdict`; `07-github-and-deploy.md`, "Blocking a merge"):
    🔴 "Merge blocked" when a dangerous path opened or code reads data beyond intent; 🟡 "Needs a look" when only
    something Theseus could not check remains; 🟢 "No new access to sensitive data" otherwise. Outside PR mode the
-   red status reads "Sensitive data at risk"
-3. The headline from section 18 of `04-engine.md`, in bold, and a warning when the intent is suspicious
-4. **What happened:** what the PR adds, updates and deletes; then the most serious opened path as a sentence, one
-   hop per line ("**priya-intern** (a user) is a member of the **support-engineers** group, → which can switch
-   into the **prod-support** role, ..."); and each code read beyond intent, with its file and line
-5. **What's at risk:** each exposed target, most sensitive first, at most five: its name, what it is, and what its
-   class means ("**customer-db**, a database: personal, payment or health data, or a key that opens it"). A
-   secret that unlocks another listed target is "the key that opens" it
-6. **What the PR said it needs:** its purpose in quotes and the access it asked for, or that it states no purpose
-7. **What to do:** the recommended fix, the command that applies it, and what Theseus tested it for; or what to do
-   when the passing fix needs a closer look, when nothing passes, or when there is no fix to apply
-8. Checkov's result on the same commit, and why it can pass while a path opens
+   red status reads "Sensitive data at risk", and the headline follows it in bold
+3. **The consequence:** who could now do what to which data. "**priya-intern**, a user, could read and change
+   **customer-db**, a database with personal, payment or health data (1 of 3 new ways in)." The most serious
+   path in the `render._rank` order, its access from the path's grants; or the code that now reads data beyond
+   intent; or what Theseus could not check; or that nothing opened. A warning follows when the intent is
+   suspicious
+4. **Says:** the PR's purpose in the model's plain words, or that it states none (PR mode)
+5. **Needs · Grants:** the access the PR asked for, then the opened targets, most sensitive first, at most three
+   and a count. "Grants too" when none of them is what it asked for; "Code now reads" for uses beyond intent.
+   Together, lines 4 and 5 say section 18's headline of `04-engine.md`, which stays in the result for the
+   Action's log and the Try-it page
+6. **Why:** the most serious path in one line, each hop in plain words with its own access (`PathStep.grants`),
+   and the hop this change adds or edits linked to its line with "changed here"; or the code line that reads
+   beyond intent
+7. **Do:** one thing: the recommended fix and its command, with what Theseus tested it for; a passing fix that
+   needs a closer look; that no fix passes; or, with no fix to test, to ask the author for only what the PR says
+   it needs, why it needs this access, or, when it asks for sensitive data on purpose, that an owner approves it
+   in `theseus.yaml`
+
+**The connections** (`render.connections`), under the card and above every fold: every opened path drawn as
+one Mermaid `flowchart LR`. Each node is its name and what it is ("priya-intern", "user"); each arrow is the
+hop's own access in plain words ("is a member of", "read", "unlocks"); a hop shared by several paths is drawn
+once; the hop this change adds or edits is a thick red arrow labelled "added here"; and sensitive targets are
+shaded. With more than 12 nodes, it draws the three most serious paths, then only the most serious one. A line
+under it says what the colours mean. The check run's summary stops before it: the Checks tab draws no diagrams.
 
 **Folded sections** (`<details>`), each shown only when it has something:
 
-9. **The path, step by step:** a table of opened paths (actor, target with its class, hops), then a Mermaid
-   `flowchart LR` for each of the three most sensitive (a database before the secret that unlocks it, then the
-   fewest hops). GitHub does not run links inside Mermaid, so a numbered list of steps follows each diagram, each
-   step linked to `blob/<head_sha>/<world root>/<file>#L<line>` or saying why its evidence is unknown
-10. **All fixes Theseus tested:** the minimum cut in one sentence ("No single permission can be removed without
-    breaking required access" or "One change closes every path: `<edge>`"); the fix table: ID, fix (its title
-    and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"), required access ("kept" or "breaks
-    R3"), code calls ("kept" or what breaks), verdict (with "needs a closer look" after Jev's veto), the
-    recommended row in bold; "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass; and,
-    if nothing passes, a sentence that says so
-11. **What Theseus could not check:** the unknowns
-12. **Technical details:** what the change does ("Adds `a`. Opens 3 dangerous paths, closes 0."), the tool trace,
-    unchanged paths, coverage ("Read <n> resources, modeled <m>; skipped <k> of types Theseus does not model,
-    such as <the three most common>"), timings, and the versions in `models`
+8. **The path, step by step:** what's at risk (each exposed target, most sensitive first, at most five: its
+   name, what it is, and what its class means; a secret that unlocks another listed target is "the key that
+   opens" it), a table of opened paths (actor, target with its class, hops), then, for each of the three most
+   sensitive, a numbered list of its steps, each linked to `blob/<head_sha>/<world root>/<file>#L<line>` or
+   saying why its evidence is unknown: GitHub does not run links inside Mermaid. With no opened path, what's at
+   risk is its own section
+9. **All fixes Theseus tested:** the minimum cut in one sentence ("No single permission can be removed without
+   breaking required access" or "One change closes every path: `<edge>`"); the fix table: ID, fix (its title
+   and who proposed it), dangerous paths ("all closed" or "2 left, 1 new"), required access ("kept" or "breaks
+   R3"), code calls ("kept" or what breaks), verdict (with "needs a closer look" after Jev's veto), the
+   recommended row in bold; "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass; and,
+   if nothing passes, a sentence that says so
+10. **What Theseus could not check:** the unknowns
+11. **What Theseus checked:** Checkov's result on the same commit and why it can pass while a path opens; where
+    the graph was built ("Built in FalkorDB 4.22.0: 70 nodes and 146 edges for the head commit; the engine took
+    3.1 s."); what
+    the change does ("Adds `a`. Opens 3 dangerous paths, closes 0."), the tool trace, unchanged paths, coverage
+    ("Read <n> resources, modeled <m>; skipped <k> of types Theseus does not model, such as <the three most
+    common>"), timings, and the versions in `models`
+12. **What is Theseus?:** two sentences for a reader who has never seen it
+
+**Notes on the lines** (`render.annotations`): the check run also carries a note on each line this change adds
+or edits on a dangerous path ("This line opens 3 new ways to reach sensitive data: customer-db (database), ..."),
+and on each code line that reads beyond intent. GitHub shows them beside those lines in Files changed. Plain
+text, at most 50.
 
 Every value from a result is escaped before it reaches markdown: a PR author, a model, an advisory or a
 Terraform file may have written it. Links and @-mentions in such text show as code, so they neither link nor

@@ -1,26 +1,16 @@
 <!-- theseus:pr-comment -->
 ## 🟢 No new access to sensitive data
 
-**This change matches its stated purpose.**
+This change opens no new way to reach sensitive data.
 
-#### What happened
-
-This PR adds `aws_iam_user_group_membership.priya_support`.\
-It opens no new way to reach sensitive data.
-
-#### What the PR said it needs
-
-"Let Priya read the app logs."\
-It asks only for: **priya-intern** to read **demo-app-logs/**.
-
-#### What to do
-
-Nothing. Theseus found no new access to sensitive data.
-
-Checkov 3.2.255 passed this commit (52 checks).
+**Says:** let Priya read the app logs.\
+**Needs:** **priya-intern** to read **demo-app-logs/**\
+**Do:** nothing. Theseus found no new access to sensitive data.
 
 <details>
-<summary><b>Technical details</b></summary>
+<summary><b>What Theseus checked</b></summary>
+
+Checkov 3.2.255 passed this commit (52 checks).
 
 **What the change does:** Adds `aws_iam_user_group_membership.priya_support`. Opens 0 dangerous paths, closes 0.
 
@@ -43,5 +33,12 @@ Read 46 resources, modeled 31; skipped 15 of types Theseus does not model, such 
 Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s.
 
 Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`.
+
+</details>
+
+<details>
+<summary><b>What is Theseus?</b></summary>
+
+Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
 
 </details>

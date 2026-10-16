@@ -1,7 +1,7 @@
 """The analysis routes and the App's webhook (docs/spec/05-contracts.md, "API"; 07-github-and-deploy.md).
 
-Until E3 and A5 the analysis is a stub: `{fixture}` answers from that fixture, and a request from the Action
-answers with the sample result, posted on the PR as the comment and the `Theseus` check run.
+A request from the Action runs the real review (A5) and posts it on the PR as the comment and the `Theseus`
+check run. A `{fixture}` request still answers from that fixture's stub, for the Try-it page (S4).
 """
 
 from __future__ import annotations
@@ -11,18 +11,24 @@ import hmac
 import json
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
+from falkordb import FalkorDB
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from theseus.agent.render import MARKER, render_comment, verdict
+from theseus.agent.labels import LABELS, labels_for
+from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
+from theseus.api import reviews
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.result import AnalysisResult
-from theseus.errors import GitHubError
+from theseus.errors import GitHubError, GraphError, TheseusError
+from theseus.graph.client import server_version
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -33,6 +39,23 @@ SAMPLE = Path("tests/data/stub_expected.json")
 FIXTURE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REVIEW_COMMAND = "/theseus review"
 PR_ACTIONS = frozenset({"opened", "reopened", "synchronize", "edited"})
+
+# What the `Theseus` check says while a review runs (07, "When Theseus reviews"): a title and a summary. The
+# ruleset requires the check, so the merge waits for the verdict.
+PLANNING = (
+    "Reviewing: planning both commits",
+    "Theseus is checking what this change lets people and services reach. It plans the Terraform at the base"
+    " and head commits, builds a graph of each in FalkorDB, and traces every path to sensitive data. The"
+    " merge waits for the result, usually a few minutes.",
+)
+AGAIN = ("Reviewing again: planning both commits", PLANNING[1])
+TRACING = (
+    "Reviewing: tracing paths in FalkorDB",
+    "Both commits are planned. Theseus is building their graphs in FalkorDB, tracing every path to sensitive"
+    " data and reading what the PR says it needs. The merge waits for the result.",
+)
+RETRY = "Comment `/theseus review` or re-run this check to try again."
+REASON_MAX = 500
 
 
 class AnalyzeRequest(BaseModel):
@@ -48,6 +71,14 @@ class AnalyzeRequest(BaseModel):
     base_plan: dict[str, Any] | None = None
     head_plan: dict[str, Any] | None = None
     checkov: dict[str, Any] | None = None
+
+
+class FailedRequest(BaseModel):
+    """From `Theseus publish` when the Theseus workflow failed before a review could start."""
+
+    repo: str
+    head_sha: str
+    run_url: str | None = None
 
 
 class FindingRequest(BaseModel):
@@ -71,6 +102,47 @@ def get_github(settings: SettingsDep) -> GitHub:
 
 GitHubDep = Annotated[GitHub, Depends(get_github)]
 
+# The review behind `/analyze`: (gh, repo, pr number, head sha, the PR from the API, base plan, head plan).
+# `api/app.py` builds the real one at startup, as the composition root; tests replace it.
+Review = Callable[[GitHub, str, int, str, dict[str, Any], dict[str, Any], dict[str, Any]], AnalysisResult]
+
+
+def get_review(request: Request) -> Review:
+    review = getattr(request.app.state, "review", None)
+    if review is None:
+        raise HTTPException(503, "the review engine is not ready")
+    return review
+
+
+ReviewDep = Annotated[Review, Depends(get_review)]
+
+
+def get_store(request: Request) -> reviews.ReviewStore:
+    """The store the graphs live in, for each review's page; `api/app.py` sets it at startup."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise HTTPException(503, "the graph store is not ready")
+    return store
+
+
+StoreDep = Annotated[reviews.ReviewStore, Depends(get_store)]
+
+
+def get_falkordb_version(request: Request) -> str | None:
+    """The version of the FalkorDB the graphs are built in, for the comment; None for a stand-in or when the
+    server will not say."""
+    db = getattr(request.app.state, "falkordb", None)
+    if not isinstance(db, FalkorDB):
+        return None
+    try:
+        return server_version(db)
+    except GraphError as e:
+        log.warning("FalkorDB would not say its version: %s", e)
+        return None
+
+
+FalkorVersionDep = Annotated[str | None, Depends(get_falkordb_version)]
+
 
 def load_expected(name: str) -> dict[str, Any]:
     """The expected.json for a fixture name, or the sample. Refuses any name that is not a plain slug."""
@@ -93,8 +165,10 @@ def stub_for(fixture: str | None, mode: str) -> AnalysisResult:
 
 
 def card(comment: str) -> str:
-    """The comment's first section, for the check run's summary: everything before the folded details."""
-    return comment.split("\n<details>", 1)[0].replace(MARKER, "", 1).strip()
+    """The comment's card, for the check run's summary: everything before its diagram and the folded
+    details. The Checks tab draws no diagrams."""
+    top = comment.split("\n<details>", 1)[0].split("\n```mermaid", 1)[0]
+    return top.replace(MARKER, "", 1).strip()
 
 
 def _secret_matches(given: str | None, secret: str) -> bool:
@@ -107,33 +181,68 @@ def _require_repo(gh: GitHub, repo: str) -> None:
         raise HTTPException(403, f"{repo} is not a repo Theseus acts on")
 
 
+def _require_token(settings: Settings, given: str | None) -> None:
+    """Calls from `Theseus publish` carry THESEUS_TOKEN in X-Theseus-Token."""
+    if settings.theseus_token is None:
+        raise HTTPException(503, "THESEUS_TOKEN is not set on the server")
+    if not _secret_matches(given, settings.theseus_token.get_secret_value()):
+        raise HTTPException(401, "missing or wrong X-Theseus-Token")
+
+
 @router.post("/analyze", response_model=AnalysisResult)
 def analyze(
     req: AnalyzeRequest,
     settings: SettingsDep,
     gh: GitHubDep,
+    review: ReviewDep,
+    store: StoreDep,
+    falkordb: FalkorVersionDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
-    """PR mode. With a repo, from the Action: posts the comment and the `Theseus` check run on the PR."""
+    """PR mode. With a repo, from the Action: the real review of the PR's two commits (A5), posted as the
+    comment and the `Theseus` check run. With `{fixture}` only, the stub answers (the Try-it page, S4)."""
     if req.repo is None:
         return stub_for(req.fixture, "pr")
-    if settings.theseus_token is None:
-        raise HTTPException(503, "THESEUS_TOKEN is not set on the server")
-    if not _secret_matches(x_theseus_token, settings.theseus_token.get_secret_value()):
-        raise HTTPException(401, "missing or wrong X-Theseus-Token")
+    _require_token(settings, x_theseus_token)
     if req.pr_number is None or req.head_sha is None:
         raise HTTPException(422, "a request with a repo needs pr_number and head_sha")
+    if req.base_plan is None or req.head_plan is None:
+        raise HTTPException(422, "a review needs the plan of the base and of the head")
     _require_repo(gh, req.repo)
-    result = stub_for(req.fixture or "sample", "pr")
-    comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
-    status = verdict(result)
     try:
         # A review reads the PR as it is now, not the copy the Action's event carried (07, "When Theseus
-        # reviews"). A5 reads its title and body from here; F7 needs only its head.
+        # reviews"): its title and body for the intent, its base commit for the base world.
         pr = gh.pull_request(req.repo, req.pr_number)
-        gh.upsert_check(req.repo, req.head_sha, status.conclusion, status.title, card(comment))
+        gh.pending_check(req.repo, req.head_sha, *TRACING)
+        try:
+            result = review(gh, req.repo, req.pr_number, req.head_sha, pr, req.base_plan, req.head_plan)
+        except TheseusError as e:
+            # The check fails with the reason, so the merge stays blocked and says why (it fails closed).
+            log.error("%s#%d: the review could not finish: %s", req.repo, req.pr_number, e)
+            reason = f"Theseus could not finish reviewing this commit: {code(str(e)[:REASON_MAX])}"
+            gh.upsert_check(
+                req.repo,
+                req.head_sha,
+                "failure",
+                "Review could not finish",
+                f"{reason}\n\nThe merge stays blocked until a review finishes. {RETRY}",
+            )
+            raise HTTPException(500, f"the review could not finish: {e}") from e
+        url = reviews.page_url(settings, req.repo, req.pr_number)
+        comment = render_comment(
+            result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb, url
+        )
+        status = verdict(result)
+        notes = annotations(result, settings.theseus_world_root)
+        gh.upsert_check(
+            req.repo, req.head_sha, status.conclusion, status.title, card(comment), annotations=notes
+        )
         if pr["head"]["sha"] == req.head_sha:
+            # The page is kept first, so its link works the moment the comment shows it.
+            shas = ((pr.get("base") or {}).get("sha") or "", req.head_sha)
+            reviews.save(store, req.repo, req.pr_number, shas, settings.theseus_world_root, result)
             gh.upsert_comment(req.repo, req.pr_number, comment)
+            gh.set_labels(req.repo, req.pr_number, labels_for(result), LABELS)
         else:
             log.info(
                 "%s#%d moved on from %s; leaving the comment to the newer run",
@@ -145,6 +254,84 @@ def analyze(
         log.error("%s#%d: %s", req.repo, req.pr_number, e)
         raise HTTPException(502, str(e)) from e
     return result
+
+
+@router.post("/review-failed", status_code=204)
+def review_failed(
+    req: FailedRequest,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> Response:
+    """The Theseus workflow failed before a review, often on a plan error: the commit's check fails with a
+    link to the run, so the merge stays blocked and says why. A verdict already on the commit stays."""
+    _require_token(settings, x_theseus_token)
+    _require_repo(gh, req.repo)
+    run_url = re.compile(rf"https://github\.com/{re.escape(req.repo)}/actions/runs/\d+(/attempts/\d+)?")
+    link = f" [See the run]({req.run_url})." if req.run_url and run_url.fullmatch(req.run_url) else ""
+    try:
+        latest = gh.latest_check(req.repo, req.head_sha)
+        if latest is not None and latest.get("status") == "completed":
+            log.info("%s@%s: a check is already complete; leaving it", req.repo, req.head_sha[:7])
+            return Response(status_code=204)
+        gh.upsert_check(
+            req.repo,
+            req.head_sha,
+            "failure",
+            "Review could not run",
+            "The Theseus workflow failed before the review could start, often because `terraform plan`"
+            f" failed on this commit.{link}\n\nThe merge stays blocked until a review finishes. Push a fix,"
+            " or re-run this check to try again.",
+        )
+    except GitHubError as e:
+        log.error("%s@%s: %s", req.repo, req.head_sha[:7], e)
+        raise HTTPException(502, str(e)) from e
+    return Response(status_code=204)
+
+
+# Each review's page -----------------------------------------------------------------------------------------
+
+PAGE = Path(__file__).resolve().parents[1] / "web" / "review.html"
+
+
+def _reviewed(settings: Settings, gh: GitHub, owner: str, name: str, number: int, k: str | None) -> str:
+    """The repo, when the link is signed for it and it is one Theseus acts on; a 404 otherwise, so a wrong
+    link says nothing about what exists."""
+    repo = f"{owner}/{name}"
+    if not gh.allowed(repo) or not reviews.signed(settings, repo, number, k):
+        raise HTTPException(404, "no such review")
+    return repo
+
+
+@router.get("/reviews/{owner}/{name}/{number}", response_class=HTMLResponse)
+def review_page(
+    owner: str, name: str, number: int, settings: SettingsDep, gh: GitHubDep, k: str | None = None
+) -> HTMLResponse:
+    """The page that draws a review's graphs; it reads them from `.../data` with the same signed link."""
+    _reviewed(settings, gh, owner, name, number, k)
+    return HTMLResponse(PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/reviews/{owner}/{name}/{number}/data")
+def review_data(
+    owner: str,
+    name: str,
+    number: int,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+) -> dict[str, Any]:
+    """The PR's newest review and both its graphs, read from the store now."""
+    repo = _reviewed(settings, gh, owner, name, number, k)
+    try:
+        data = reviews.page_data(store, repo, number)
+    except GraphError as e:
+        log.error("%s#%d: cannot read the review: %s", repo, number, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if data is None:
+        raise HTTPException(404, "no such review")
+    return data
 
 
 @router.post("/finding", response_model=AnalysisResult)
@@ -202,7 +389,9 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
 
 def _review_again(gh: GitHub, repo: str, head_sha: str, numbers: list[int]) -> None:
     outcome = gh.rerun_review(repo, head_sha)
-    if outcome == "none":
+    if outcome == "rerun":
+        gh.pending_check(repo, head_sha, *AGAIN)
+    elif outcome == "none":
         for number in numbers:
             if _nothing_changed(gh, repo, number, head_sha):
                 return
@@ -240,7 +429,12 @@ def _on_pull_request(gh: GitHub, repo: str, payload: dict[str, Any]) -> None:
     if payload.get("action") not in PR_ACTIONS:
         return
     pr = payload.get("pull_request") or {}
-    _nothing_changed(gh, repo, int(pr["number"]), pr["head"]["sha"])
+    number, head = int(pr["number"]), pr["head"]["sha"]
+    if gh.touches_world_root(repo, number):
+        # The Action is planning it now; the check says so until /analyze completes it.
+        gh.pending_check(repo, head, *PLANNING)
+        return
+    _nothing_changed(gh, repo, number, head)
 
 
 HANDLERS = {"issue_comment": _on_comment, "check_run": _on_check_run, "pull_request": _on_pull_request}
@@ -255,8 +449,9 @@ async def github_webhook(
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> Response:
     """The App's events, checked against GITHUB_WEBHOOK_SECRET before anything is read: `/theseus review` and
-    Re-run on the check run the review again; a PR that changes nothing under the world root gets a `success`
-    check. Every other event is accepted and ignored."""
+    Re-run on the check run the review again; a PR that changes the world root shows its check in progress
+    while the Action plans it, and one that changes nothing there gets a `success` check. Every other event
+    is accepted and ignored."""
     if settings.github_webhook_secret is None:
         raise HTTPException(503, "GITHUB_WEBHOOK_SECRET is not set on the server")
     body = await request.body()

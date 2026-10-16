@@ -44,6 +44,12 @@ vocabulary:
   targets:
     - db:customer-db
     - dynamodb:demo-orders
+    - log-group:/aws/lambda/analytics-export
+    - log-group:/aws/lambda/billing-api
+    - log-group:/aws/lambda/billing-job
+    - log-group:/aws/lambda/support-portal
+    - log-group:/ecs/orders-api
+    - log-group:/ecs/orders-worker
     - role:analytics-export
     - role:analytics-read
     - role:billing-api
@@ -63,6 +69,9 @@ vocabulary:
     - s3://demo-terraform-state/
     - secret:payments-api-key
     - secret:prod-db-credentials
+    - sns:invoice-created
+    - sqs:order-events
+    - sqs:order-events-dlq
 
 cases:
   - id: intern

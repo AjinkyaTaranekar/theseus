@@ -116,6 +116,21 @@ def _litellm_completion() -> Callable[..., Any]:
     return litellm.completion
 
 
+def load_client() -> None:
+    """Loads LiteLLM now, on this thread, then logs one line on a logger it hooks, so the lazy imports of
+    its log filter finish here too. The API calls this before it takes requests. Loaded later on a worker
+    thread, LiteLLM hooks `asyncio`, `httpx` and `uvicorn` mid-import, and the event loop's own logging
+    races that import: seen live as `KeyError: 'litellm'` and a review that never finished.
+
+    Importing LiteLLM also raises the `httpx` logger to WARNING, which would hide every GitHub request the
+    App makes; its level is put back. LiteLLM's redaction filter stays on it."""
+    httpx_logger = logging.getLogger("httpx")
+    level = httpx_logger.level
+    _litellm_completion()
+    httpx_logger.setLevel(level)
+    logging.getLogger("uvicorn.error").info("LLM client loaded")
+
+
 class Llm:
     """The one way to call the LLM. `completion` and `sleep` are for tests."""
 

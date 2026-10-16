@@ -112,3 +112,18 @@ def test_the_stub_projects_back_to_its_expected_json() -> None:
     assert result.opened[0].steps[0].type == "MEMBER_OF"
     assert result.opened[0].steps[-1].type == "UNLOCKS"
     assert [c.id for c in result.candidates if c.recommended] == ["B"]
+
+
+@pytest.mark.parametrize(("mode", "loads"), [("live", True), ("record", True), ("replay", False)])
+def test_the_llm_client_loads_before_the_api_takes_requests(
+    monkeypatch: pytest.MonkeyPatch, mode: str, loads: bool
+) -> None:
+    """Loaded later, on a worker thread, LiteLLM's import races the event loop's logging (seen live)."""
+    from theseus.api import app as app_module
+    from theseus.config import Settings
+
+    loaded: list[bool] = []
+    monkeypatch.setattr(app_module, "get_settings", lambda: Settings(_env_file=None, theseus_mode=mode))
+    monkeypatch.setattr(app_module, "load_client", lambda: loaded.append(True))
+    with TestClient(create_app(connect=lambda: object())):
+        assert loaded == ([True] if loads else [])

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections import Counter
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -59,3 +59,19 @@ def load_world(root: Path, plan: dict[str, Any], adapters: Adapters) -> World:
         code_files=code_files,
         config=config,
     )
+
+
+def load_world_from_files(
+    files: dict[str, str], plan: dict[str, Any], adapters: Adapters, root: Path
+) -> World:
+    """The world from files fetched under a world root (paths relative to it), laid out under `root` first
+    so every reader sees them as on disk. A path that is absolute or climbs out of the root is refused."""
+    for rel, text in sorted(files.items()):
+        parts = PurePosixPath(rel).parts
+        if not parts or rel.startswith("/") or ".." in parts or ":" in parts[0]:
+            raise IngestError(f"refusing a world file path outside the root: {rel!r}")
+        path = root.joinpath(*parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8", newline="\n")
+    log.info("laid out %d world files under %s", len(files), root)
+    return load_world(root, plan, adapters)
