@@ -9,17 +9,70 @@ from __future__ import annotations
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 
+import yaml
 from fastapi import Depends, FastAPI, Request, Response
 
 from theseus import __version__
+from theseus.adapters.aws.adapter import AwsAdapter
+from theseus.adapters.github.adapter import GithubAdapter
+from theseus.adapters.python.adapter import PythonAdapter
+from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.agent.jev import Jev
+from theseus.agent.llm import Llm
 from theseus.api import routes
-from theseus.config import get_settings
-from theseus.errors import GraphError
+from theseus.api.github import GitHub
+from theseus.config import Settings, get_settings
+from theseus.contracts.adapters import Adapters
+from theseus.contracts.engine import Deps, GraphStore
+from theseus.contracts.result import AnalysisResult
+from theseus.engine.pipeline import run_pr
+from theseus.errors import GraphError, IngestError
 from theseus.graph.client import get_client, server_version
+from theseus.graph.store import FalkorStore
+from theseus.importer.world import load_world_from_files
 
 log = logging.getLogger(__name__)
+
+
+def adapters_for(config: dict[str, Any]) -> Adapters:
+    """AWS, Terraform, GitHub Actions and Python, configured from the world's theseus.yaml."""
+    return Adapters(
+        iac=TerraformAdapter(), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
+    )
+
+
+def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> routes.Review:
+    """The real review behind `/analyze` (task A5): the world root at the PR's base and head commits, the
+    Action's plans for them, then `run_pr`. The files are laid out as `<world>/pr<N>/<side>`, so the graphs
+    get spec 03's names (`demo-infra__pr42-base`) and requirement lines in theseus.yaml stay citable."""
+
+    def review(
+        gh: GitHub,
+        repo: str,
+        number: int,
+        head_sha: str,
+        pr: dict[str, Any],
+        base_plan: dict[str, Any],
+        head_plan: dict[str, Any],
+    ) -> AnalysisResult:
+        base_files = gh.world_files(repo, pr["base"]["sha"])
+        head_files = gh.world_files(repo, head_sha)
+        if "theseus.yaml" not in head_files:
+            raise IngestError(f"no {settings.theseus_world_root}/theseus.yaml at {head_sha[:7]}")
+        adapters = adapters_for(yaml.safe_load(head_files["theseus.yaml"]) or {})
+        deps = Deps(store=store, adapters=adapters, llm=llm, jev=jev, settings=settings)
+        with TemporaryDirectory(prefix="theseus-review-") as tmp:
+            root = Path(tmp) / settings.theseus_world_root / f"pr{number}"
+            base = load_world_from_files(base_files, base_plan, adapters, root / "base")
+            head = load_world_from_files(head_files, head_plan, adapters, root / "head")
+            result = run_pr(base, head, pr.get("title") or "", pr.get("body") or "", deps)
+        return result.model_copy(update={"repo": repo, "pr_number": number})
+
+    return review
 
 
 def connect_falkordb() -> Any:
@@ -49,6 +102,11 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         except GraphError as e:
             log.error("not starting: %s", e)
             raise
+        settings = get_settings()
+        llm = Llm(settings)
+        app.state.review = build_review(
+            FalkorStore(app.state.falkordb), llm, Jev(settings, llm=llm), settings
+        )
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

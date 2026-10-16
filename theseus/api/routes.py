@@ -1,7 +1,7 @@
 """The analysis routes and the App's webhook (docs/spec/05-contracts.md, "API"; 07-github-and-deploy.md).
 
-Until E3 and A5 the analysis is a stub: `{fixture}` answers from that fixture, and a request from the Action
-answers with the sample result, posted on the PR as the comment and the `Theseus` check run.
+A request from the Action runs the real review (A5) and posts it on the PR as the comment and the `Theseus`
+check run. A `{fixture}` request still answers from that fixture's stub, for the Try-it page (S4).
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ import hmac
 import json
 import logging
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -22,7 +23,7 @@ from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.result import AnalysisResult
-from theseus.errors import GitHubError
+from theseus.errors import GitHubError, TheseusError
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -71,6 +72,20 @@ def get_github(settings: SettingsDep) -> GitHub:
 
 GitHubDep = Annotated[GitHub, Depends(get_github)]
 
+# The review behind `/analyze`: (gh, repo, pr number, head sha, the PR from the API, base plan, head plan).
+# `api/app.py` builds the real one at startup, as the composition root; tests replace it.
+Review = Callable[[GitHub, str, int, str, dict[str, Any], dict[str, Any], dict[str, Any]], AnalysisResult]
+
+
+def get_review(request: Request) -> Review:
+    review = getattr(request.app.state, "review", None)
+    if review is None:
+        raise HTTPException(503, "the review engine is not ready")
+    return review
+
+
+ReviewDep = Annotated[Review, Depends(get_review)]
+
 
 def load_expected(name: str) -> dict[str, Any]:
     """The expected.json for a fixture name, or the sample. Refuses any name that is not a plain slug."""
@@ -112,9 +127,11 @@ def analyze(
     req: AnalyzeRequest,
     settings: SettingsDep,
     gh: GitHubDep,
+    review: ReviewDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
-    """PR mode. With a repo, from the Action: posts the comment and the `Theseus` check run on the PR."""
+    """PR mode. With a repo, from the Action: the real review of the PR's two commits (A5), posted as the
+    comment and the `Theseus` check run. With `{fixture}` only, the stub answers (the Try-it page, S4)."""
     if req.repo is None:
         return stub_for(req.fixture, "pr")
     if settings.theseus_token is None:
@@ -123,14 +140,21 @@ def analyze(
         raise HTTPException(401, "missing or wrong X-Theseus-Token")
     if req.pr_number is None or req.head_sha is None:
         raise HTTPException(422, "a request with a repo needs pr_number and head_sha")
+    if req.base_plan is None or req.head_plan is None:
+        raise HTTPException(422, "a review needs the plan of the base and of the head")
     _require_repo(gh, req.repo)
-    result = stub_for(req.fixture or "sample", "pr")
-    comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
-    status = verdict(result)
     try:
         # A review reads the PR as it is now, not the copy the Action's event carried (07, "When Theseus
-        # reviews"). A5 reads its title and body from here; F7 needs only its head.
+        # reviews"): its title and body for the intent, its base commit for the base world.
         pr = gh.pull_request(req.repo, req.pr_number)
+        try:
+            result = review(gh, req.repo, req.pr_number, req.head_sha, pr, req.base_plan, req.head_plan)
+        except TheseusError as e:
+            # No check is posted, so the merge stays blocked until a review finishes (it fails closed).
+            log.error("%s#%d: the review could not finish: %s", req.repo, req.pr_number, e)
+            raise HTTPException(500, f"the review could not finish: {e}") from e
+        comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
+        status = verdict(result)
         gh.upsert_check(req.repo, req.head_sha, status.conclusion, status.title, card(comment))
         if pr["head"]["sha"] == req.head_sha:
             gh.upsert_comment(req.repo, req.pr_number, comment)
