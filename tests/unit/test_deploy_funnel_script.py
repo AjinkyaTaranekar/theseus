@@ -7,8 +7,10 @@ scenario sets how they fail.
 from __future__ import annotations
 
 import os
+import runpy
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -16,7 +18,11 @@ import pytest
 
 SCRIPT = Path(__file__).resolve().parents[2] / "deploy" / "deploy-funnel.sh"
 BASH = shutil.which("bash")
+if sys.platform == "win32":
+    # Git's own usr/bin/bash.exe: its bin/bash.exe launcher puts Git's /usr/bin, and its real ssh, first.
+    BASH = runpy.run_path(str(SCRIPT.parents[1] / "tools/make_fixture.py"))["resolve_bash"]()
 pytestmark = pytest.mark.skipif(BASH is None, reason="needs bash")
+TOOLS = ("ssh", "git", "curl", "sleep")
 
 STUBS = {
     # ssh <host> <command...>: like real ssh, join the rest into one command for the remote shell, so an
@@ -68,6 +74,21 @@ class Run:
     running: str
 
 
+def bash_path(path: Path) -> str:
+    """The path in the native shell's namespace."""
+    if sys.platform != "win32":
+        return path.as_posix()
+    result = subprocess.run(
+        [BASH, "-c", 'PATH="/usr/bin:$PATH"; cygpath -u -- "$1"', "theseus-test", str(path)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
+        timeout=30,
+    )
+    return result.stdout.rstrip("\r\n")
+
+
 def deploy(
     tmp_path: Path, *, domain: str | None = "guest-box.example", ref: str = "main", **fake: int | str
 ) -> Run:
@@ -88,10 +109,9 @@ def deploy(
     (vm / ".env").write_text(f"DOMAIN={domain or ''}\n", encoding="utf-8", newline="\n")
     env = {
         **os.environ,
-        "PATH": f"{bin_dir.as_posix()}{os.pathsep}{os.environ['PATH']}",
-        "HOME": home.as_posix(),
-        "FAKE": state.as_posix(),
-        "THESEUS_DIR": vm.as_posix(),
+        "HOME": bash_path(home),
+        "FAKE": bash_path(state),
+        "THESEUS_DIR": bash_path(vm),
         "THESEUS_REF": ref,
         "THESEUS_TRIES": "2",
         "THESEUS_PUBLIC_TRIES": "2",
@@ -99,8 +119,26 @@ def deploy(
         **{f"FAKE_{k.upper()}": str(v) for k, v in fake.items()},
     }
     env.pop("THESEUS_DOMAIN", None)
+    # PATH is set inside the shell with the stand-ins first, and the run stops if one is not found there: a
+    # test must never reach a real ssh or curl.
     proc = subprocess.run(
-        [BASH, SCRIPT.as_posix(), "dev@guest-box"], env=env, capture_output=True, text=True, timeout=60
+        [
+            BASH,
+            "-c",
+            'export PATH="$1:/usr/bin:/bin"; '
+            f"for tool in {' '.join(TOOLS)}; do "
+            '[[ "$(command -v "$tool")" == "$1/$tool" ]] || '
+            '{ echo "offline stand-in missing: $tool" >&2; exit 90; }; '
+            'done; shift; exec "$BASH" -- "$@"',
+            "theseus-funnel-test",
+            bash_path(bin_dir),
+            bash_path(SCRIPT),
+            "dev@guest-box",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     read = lambda name: (state / name).read_text(encoding="utf-8").strip()  # noqa: E731
     return Run(proc.returncode, proc.stdout + proc.stderr, read("log"), read("head"), read("running"))
@@ -211,3 +249,33 @@ def test_a_ref_that_is_not_a_name_is_refused(tmp_path: Path, ref: str) -> None:
     assert run.code == 2
     assert "not a branch, tag or commit name" in run.out
     assert run.log == ""
+
+
+def test_a_missing_stand_in_never_falls_back_to_a_real_ssh(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A real ssh earlier on PATH (Git for Windows has one) must never be reached: the run stops first."""
+    outside = tmp_path / "outside test bin"
+    outside.mkdir()
+    marker = tmp_path / "real-ssh-called"
+    ssh = outside / "ssh"
+    ssh.write_text(
+        '#!/usr/bin/env bash\necho called > "$THESEUS_TEST_REAL_SSH"\nexit 91\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    ssh.chmod(0o755)
+    chmod = Path.chmod
+
+    def drop_the_ssh_stand_in(path: Path, mode: int, **kwargs: object) -> None:
+        chmod(path, mode, **kwargs)
+        if path == tmp_path / "bin/ssh":
+            path.unlink()
+
+    monkeypatch.setattr(Path, "chmod", drop_the_ssh_stand_in)
+    monkeypatch.setenv("PATH", str(outside) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setenv("THESEUS_TEST_REAL_SSH", marker.as_posix())
+    run = deploy(tmp_path)
+    assert run.code == 90
+    assert "offline stand-in missing: ssh" in run.out
+    assert not marker.exists()
