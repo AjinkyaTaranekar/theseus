@@ -12,6 +12,9 @@ from theseus.errors import IngestError
 
 log = logging.getLogger(__name__)
 
+COMPUTED_POLICY_TYPES = frozenset(
+    {"aws_s3_bucket", "aws_secretsmanager_secret", "aws_sns_topic", "aws_sqs_queue"}
+)
 READ_FIELDS = frozenset(
     {
         "name",
@@ -195,7 +198,9 @@ def read_plan(plan: dict[str, Any]) -> IacRead:
         for field, value in sorted(body.get("after_unknown", {}).items()):
             if field not in READ_FIELDS or not _unknown(value):
                 continue
-            if field == "policy" and resource.type in {"aws_s3_bucket", "aws_secretsmanager_secret"}:
+            # A computed `policy` on these types is a resource policy no adapter reads (bucket policies are
+            # their own resource), so an unknown one is not an unknown policy document.
+            if field == "policy" and resource.type in COMPUTED_POLICY_TYPES:
                 continue
             refs = _references(expressions.get(field, {}))
             pending.append(UnknownField(address=address, field=field, references=refs))

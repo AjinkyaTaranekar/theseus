@@ -70,7 +70,9 @@ def test_unknown_shape_requires_literal_true(tmp_path: Path, value: Any) -> None
     assert not TerraformAdapter().read(tmp_path, plan_for({}, {"environment": value})).unknown_fields
 
 
-@pytest.mark.parametrize("rtype", ["aws_s3_bucket", "aws_secretsmanager_secret"])
+@pytest.mark.parametrize(
+    "rtype", ["aws_s3_bucket", "aws_secretsmanager_secret", "aws_sns_topic", "aws_sqs_queue"]
+)
 def test_computed_policy_is_not_a_policy_document(tmp_path: Path, rtype: str) -> None:
     plan = plan_for({"name": "demo"}, {"arn": True, "policy": True})
     plan["planned_values"]["root_module"]["resources"][0]["type"] = rtype
