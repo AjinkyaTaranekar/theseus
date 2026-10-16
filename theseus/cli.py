@@ -1,8 +1,9 @@
 """Command line: `python -m theseus analyze | finding | scan | serve`.
 
 `serve` runs the API (F3) and `analyze` prints a PR fixture's AnalysisResult as JSON (E3). Both need
-FalkorDB (rule 3). `finding` and `scan` print "not implemented yet" and exit 2 until FM3 and C3 build them. A
-composition root (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks adapters.
+FalkorDB (rule 3), as does `finding` (FM3). `scan` prints "not implemented yet" and exits 2 until C3 builds
+it. A composition root (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks
+adapters.
 """
 
 from __future__ import annotations
@@ -26,7 +27,7 @@ from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
 from theseus.contracts.result import AnalysisResult
-from theseus.engine.pipeline import run_pr
+from theseus.engine.pipeline import run_finding, run_pr
 from theseus.errors import GraphError, TheseusError
 from theseus.graph.client import get_client
 from theseus.graph.store import FalkorStore
@@ -55,6 +56,8 @@ def main(argv: list[str] | None = None) -> int:
         return serve()
     if args.command == "analyze":
         return analyze(Path(args.fixture))
+    if args.command == "finding":
+        return finding(Path(args.fixture))
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
     return 2
 
@@ -98,6 +101,34 @@ def analyze(fixture: Path) -> int:
         result = analyze_fixture(fixture, store, Jev(settings, llm=llm), settings, llm)
     except (TheseusError, OSError) as e:
         print(f"theseus analyze: {e}", file=sys.stderr)
+        return 1
+    print(result.model_dump_json(indent=2, by_alias=True))
+    return 0
+
+
+def finding_fixture(fixture: Path, store: GraphStore, jev: Any, settings: Settings) -> AnalysisResult:
+    """Finding mode on a fixture folder (`base/`, its plan and `advisory.json`) with this store and Jev."""
+    scenario = yaml.safe_load((fixture / "scenario.yaml").read_text(encoding="utf-8")) or {}
+    if scenario.get("mode") != "finding":
+        raise TheseusError(f"{fixture} is a {scenario.get('mode')!r} fixture; finding reads finding fixtures")
+    adapters = adapters_for(fixture / "base")
+    plan = json.loads((fixture / "base.plan.json").read_text(encoding="utf-8"))
+    advisory = json.loads((fixture / "advisory.json").read_text(encoding="utf-8"))
+    deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+    return run_finding(load_world(fixture / "base", plan, adapters), advisory, deps)
+
+
+def finding(fixture: Path) -> int:
+    """Print the fixture's finding result as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
+    from theseus.agent.jev import Jev
+    from theseus.agent.llm import Llm
+
+    settings = get_settings()
+    try:
+        store = FalkorStore(get_client(settings))
+        result = finding_fixture(fixture, store, Jev(settings, llm=Llm(settings)), settings)
+    except (TheseusError, OSError) as e:
+        print(f"theseus finding: {e}", file=sys.stderr)
         return 1
     print(result.model_dump_json(indent=2, by_alias=True))
     return 0
