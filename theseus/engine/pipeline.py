@@ -177,7 +177,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
 
 def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisResult:
     """Finding mode: the advisory's workflows assumed compromised, what they reach, the cheapest cut between
-    them and it, and the secrets to rotate. The advisory's text is never read, only its Action and versions."""
+    them and it, and the secrets to rotate. Only the advisory's Action and versions are read."""
     start = time.perf_counter()
     state, jev_ms = prepare_state(world, "base", deps)
     workflows = match_advisory(state.rows, advisory)
@@ -225,11 +225,12 @@ def finding_headline(advisory: dict[str, Any], workflows: list[str], dangerous: 
     resources they reach. Never from the advisory's text."""
     if not workflows:
         return f"No workflow uses {advisory['action']} at an affected version."
+    many = len(workflows) != 1
     reached = len({p.target for p in dangerous})
     return (
-        f"{len(workflows)} workflow{'s' if len(workflows) != 1 else ''} run {advisory['action']} at an affected "
-        f"version. If compromised, {'they reach' if len(workflows) != 1 else 'it reaches'} {reached} sensitive "
-        f"resource{'s' if reached != 1 else ''}."
+        f"{len(workflows)} workflow{'s' if many else ''} run{'' if many else 's'} {advisory['action']} "
+        f"at an affected version. If compromised, {'they reach' if many else 'it reaches'} "
+        f"{reached} sensitive resource{'s' if reached != 1 else ''}."
     )
 
 
