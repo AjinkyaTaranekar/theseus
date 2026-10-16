@@ -44,6 +44,7 @@ class FakeRepo:
         self.checks: list[dict[str, Any]] = []
         self.read: list[str] = []
         self.labels: list[str] = []
+        self.queries = 0
         self.repo_labels: list[dict[str, Any]] = []
         title, _, body = (FIXTURE / "pr.md").read_text(encoding="utf-8").partition("\n")
         pr = {"number": 7, "title": title.removeprefix("# "), "body": body.strip()}
@@ -57,6 +58,7 @@ class FakeRepo:
         r.get(f"/repos/{REPO}/pulls/7").mock(return_value=httpx.Response(200, json=pr))
         r.get(url__regex=rf"/repos/{REPO}/git/trees/(?P<sha>\w+)").mock(side_effect=self._tree)
         r.get(url__regex=rf"/repos/{REPO}/contents/(?P<path>[^?]+)").mock(side_effect=self._contents)
+        r.post("/graphql").mock(side_effect=self._graphql)
         r.get(f"/repos/{REPO}/issues/7/comments").mock(side_effect=lambda req: self._page(req, self.comments))
         r.post(f"/repos/{REPO}/issues/7/comments").mock(side_effect=self._comment)
         r.get(url__regex=rf"/repos/{REPO}/commits/(?P<sha>\w+)/check-runs").mock(
@@ -84,6 +86,21 @@ class FakeRepo:
         self.read.append(path)
         side = SIDES[request.url.params["ref"]]
         return httpx.Response(200, text=(side / path.removeprefix("demo-infra/")).read_text(encoding="utf-8"))
+
+    def _graphql(self, request: httpx.Request) -> httpx.Response:
+        """Blobs by `<sha>:<path>`, which arrive only as variables, never inside the query."""
+        self.queries += 1
+        body = json.loads(request.content)
+        assert "demo-infra/" not in body["query"]
+        found = {}
+        for key, expression in body["variables"].items():
+            if not key.startswith("e"):
+                continue
+            sha, _, path = expression.partition(":")
+            self.read.append(path)
+            text = (SIDES[sha] / path.removeprefix("demo-infra/")).read_text(encoding="utf-8")
+            found[f"f{key[1:]}"] = {"text": text, "isBinary": False, "isTruncated": False}
+        return httpx.Response(200, json={"data": {"repository": found}})
 
     @staticmethod
     def _page(request: httpx.Request, rows: list[dict[str, Any]]) -> httpx.Response:
@@ -199,6 +216,10 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
     assert "can read **prod-db-credentials** → unlocks **customer-db**" in body
     for target in ("db:customer-db", "s3://demo-company-files/invoices/", "secret:prod-db-credentials"):
         assert f"| `user:priya-intern` | `{target}` (" in body
+    # The graph Theseus reasoned on lives in the store, and the comment says how big it is.
+    cov = result["coverage"]
+    assert cov["nodes"] > 0 and cov["edges"] > 0
+    assert f"Built in FalkorDB: {cov['nodes']} nodes and {cov['edges']} edges for the head commit" in body
     # Each hop links to its line at the head commit the review read.
     assert f"/blob/{HEAD}/demo-infra/terraform/people.tf#L83" in body
 
@@ -229,3 +250,11 @@ def test_the_review_reads_only_the_world_root_at_both_commits(client: TestClient
     assert {"demo-infra/theseus.yaml", "demo-infra/terraform/people.tf"} <= set(repo.read)
     assert any(p.startswith("demo-infra/services/") for p in repo.read)
     assert any(p.startswith("demo-infra/workflows/") for p in repo.read)
+
+
+def test_each_commit_s_files_arrive_in_one_query(client: TestClient, repo: FakeRepo) -> None:
+    """Two GraphQL queries, one per commit, instead of a request per file."""
+    assert post(client).status_code == 200
+    assert repo.queries == 2
+    contents = [c for c in repo.router.calls if "/contents/" in c.request.url.path]
+    assert contents == []

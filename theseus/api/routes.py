@@ -15,6 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
+from falkordb import FalkorDB
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
@@ -24,7 +25,8 @@ from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.result import AnalysisResult
-from theseus.errors import GitHubError, TheseusError
+from theseus.errors import GitHubError, GraphError, TheseusError
+from theseus.graph.client import server_version
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -113,6 +115,22 @@ def get_review(request: Request) -> Review:
 ReviewDep = Annotated[Review, Depends(get_review)]
 
 
+def get_falkordb_version(request: Request) -> str | None:
+    """The version of the FalkorDB the graphs are built in, for the comment; None for a stand-in or when the
+    server will not say."""
+    db = getattr(request.app.state, "falkordb", None)
+    if not isinstance(db, FalkorDB):
+        return None
+    try:
+        return server_version(db)
+    except GraphError as e:
+        log.warning("FalkorDB would not say its version: %s", e)
+        return None
+
+
+FalkorVersionDep = Annotated[str | None, Depends(get_falkordb_version)]
+
+
 def load_expected(name: str) -> dict[str, Any]:
     """The expected.json for a fixture name, or the sample. Refuses any name that is not a plain slug."""
     if not FIXTURE_NAME.match(name):
@@ -162,6 +180,7 @@ def analyze(
     settings: SettingsDep,
     gh: GitHubDep,
     review: ReviewDep,
+    falkordb: FalkorVersionDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
     """PR mode. With a repo, from the Action: the real review of the PR's two commits (A5), posted as the
@@ -193,7 +212,9 @@ def analyze(
                 f"{reason}\n\nThe merge stays blocked until a review finishes. {RETRY}",
             )
             raise HTTPException(500, f"the review could not finish: {e}") from e
-        comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
+        comment = render_comment(
+            result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb
+        )
         status = verdict(result)
         notes = annotations(result, settings.theseus_world_root)
         gh.upsert_check(
