@@ -1,0 +1,196 @@
+{
+  "scenario": "intern",
+  "mode": "pr",
+  "intent": {
+    "grants": [
+      [
+        "user:priya-intern",
+        "read",
+        "s3://demo-app-logs/"
+      ]
+    ],
+    "suspicious": false
+  },
+  "changes": [
+    [
+      "create",
+      "aws_iam_user_group_membership.priya_support"
+    ]
+  ],
+  "opened": [
+    {
+      "actor": "user:priya-intern",
+      "target": "db:customer-db",
+      "route": [
+        "user:priya-intern",
+        "group:support-engineers",
+        "role:prod-support",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "cites": [
+        "terraform/people.tf:83",
+        "terraform/people.tf:56",
+        "terraform/roles.tf:36",
+        "terraform/data.tf:31"
+      ]
+    },
+    {
+      "actor": "user:priya-intern",
+      "target": "s3://demo-company-files/invoices/",
+      "route": [
+        "user:priya-intern",
+        "group:support-engineers",
+        "role:prod-support",
+        "s3://demo-company-files/invoices/"
+      ],
+      "cites": [
+        "terraform/people.tf:83",
+        "terraform/people.tf:56",
+        "terraform/roles.tf:30"
+      ]
+    },
+    {
+      "actor": "user:priya-intern",
+      "target": "secret:prod-db-credentials",
+      "route": [
+        "user:priya-intern",
+        "group:support-engineers",
+        "role:prod-support",
+        "secret:prod-db-credentials"
+      ],
+      "cites": [
+        "terraform/people.tf:83",
+        "terraform/people.tf:56",
+        "terraform/roles.tf:36"
+      ]
+    }
+  ],
+  "closed": [],
+  "unchanged": [
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "target": "db:customer-db",
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:36",
+        "terraform/data.tf:31"
+      ]
+    },
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "target": "s3://demo-company-files/invoices/",
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "s3://demo-company-files/invoices/"
+      ],
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:30"
+      ]
+    },
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "target": "secret:prod-db-credentials",
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "secret:prod-db-credentials"
+      ],
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:36"
+      ]
+    },
+    {
+      "actor": "workflow:demo-org/infra/deploy.yml",
+      "target": "s3://demo-company-files/invoices/",
+      "route": [
+        "workflow:demo-org/infra/deploy.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "s3://demo-company-files/invoices/"
+      ],
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:30"
+      ]
+    },
+    {
+      "actor": "workload:support-portal",
+      "target": "db:customer-db",
+      "route": [
+        "workload:support-portal",
+        "role:support-portal",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "cites": [
+        "terraform/services.tf:188",
+        "terraform/services.tf:180",
+        "terraform/data.tf:31"
+      ]
+    },
+    {
+      "actor": "workload:support-portal",
+      "target": "secret:prod-db-credentials",
+      "route": [
+        "workload:support-portal",
+        "role:support-portal",
+        "secret:prod-db-credentials"
+      ],
+      "cites": [
+        "terraform/services.tf:188",
+        "terraform/services.tf:180"
+      ]
+    }
+  ],
+  "requirements": {
+    "R1": "satisfied",
+    "R2": "satisfied",
+    "R3": "satisfied",
+    "R4": "satisfied",
+    "R5": "satisfied",
+    "R6": "satisfied",
+    "R7": "satisfied",
+    "R8": "satisfied",
+    "R9": "satisfied",
+    "R10": "satisfied",
+    "R11": "satisfied",
+    "R12": "satisfied",
+    "R13": "satisfied",
+    "R14": "satisfied",
+    "R15": "satisfied",
+    "R16": "satisfied",
+    "R17": "satisfied",
+    "I1": "satisfied"
+  },
+  "min_cut": {
+    "cuttable": false,
+    "value_at_least": 1000000
+  },
+  "candidates": {
+    "A": "fail",
+    "B": "pass",
+    "C": "unknown",
+    "D": "fail"
+  },
+  "recommended": "B",
+  "rotate": [],
+  "unused_grants": [],
+  "use_beyond_intent": []
+}

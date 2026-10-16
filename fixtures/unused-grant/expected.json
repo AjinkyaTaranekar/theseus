@@ -1,0 +1,45 @@
+{
+  "scenario": "unused-grant",
+  "mode": "scan",
+  "requirements": {
+    "R1": "satisfied",
+    "R2": "satisfied",
+    "R3": "satisfied",
+    "R4": "satisfied",
+    "R5": "satisfied",
+    "R6": "satisfied",
+    "R7": "satisfied",
+    "R8": "satisfied",
+    "R9": "satisfied",
+    "R10": "satisfied",
+    "R11": "satisfied",
+    "R12": "satisfied",
+    "R13": "satisfied",
+    "R14": "satisfied",
+    "R15": "satisfied",
+    "R16": "satisfied",
+    "R17": "satisfied"
+  },
+  "unused_grants": [
+    [
+      "workload:support-portal",
+      "secret:prod-db-credentials",
+      "read"
+    ]
+  ],
+  "min_cut": {
+    "value": 1,
+    "cuttable": true,
+    "cut": [
+      [
+        "role:support-portal",
+        "CAN",
+        "secret:prod-db-credentials"
+      ]
+    ]
+  },
+  "candidates": {
+    "U": "pass"
+  },
+  "recommended": "U"
+}
