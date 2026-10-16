@@ -206,9 +206,13 @@ def test_the_model_versions_round_trip_and_are_never_compared() -> None:
 def test_path_step_serializes_as_from_and_to() -> None:
     step = PathStep(src="user:a", type="MEMBER_OF", dst="group:b", evidence="E1")
     dumped = json.loads(step.model_dump_json())
-    assert dumped == {"from": "user:a", "type": "MEMBER_OF", "to": "group:b", "evidence": "E1"}
+    assert dumped == {"from": "user:a", "type": "MEMBER_OF", "to": "group:b", "evidence": "E1", "grants": []}
     assert PathStep.model_validate(dumped) == step
     assert step.model_dump()["from"] == "user:a"
+    # A step's own access, added after the freeze (contracts only grow); a step without it still loads.
+    can = PathStep(src="role:r", type="CAN", dst="secret:s", evidence="E2", grants=["read"])
+    assert PathStep.model_validate(json.loads(can.model_dump_json())).grants == ["read"]
+    assert PathStep.model_validate({"from": "a:b", "type": "CAN", "to": "c:d", "evidence": "E"}).grants == []
 
 
 def test_route_is_every_node_in_order() -> None:

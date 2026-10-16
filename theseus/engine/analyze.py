@@ -90,7 +90,13 @@ def _record(
         return None
     steps = [
         PathStep.model_validate(
-            {"from": e.src, "type": e.type, "to": e.dst, "evidence": evidence_id(primary_evidence(e, nodes))}
+            {
+                "from": e.src,
+                "type": e.type,
+                "to": e.dst,
+                "evidence": evidence_id(primary_evidence(e, nodes)),
+                "grants": sorted(set(e.grants)),
+            }
         )
         for e in route_edges
     ]

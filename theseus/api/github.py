@@ -39,6 +39,7 @@ PER_PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3,000 files on a PR
 TITLE_MAX = 255
 SUMMARY_MAX = 65_000
+ANNOTATIONS_MAX = 50  # per request
 
 
 def _read(rel: str) -> bool:
@@ -251,12 +252,23 @@ class GitHub:
         return max(runs, key=lambda r: int(r["id"])) if runs else None
 
     def upsert_check(
-        self, repo: str, head_sha: str, conclusion: str, title: str, summary: str, *, source: str = REVIEW
+        self,
+        repo: str,
+        head_sha: str,
+        conclusion: str,
+        title: str,
+        summary: str,
+        *,
+        source: str = REVIEW,
+        annotations: list[dict[str, Any]] | None = None,
     ) -> int:
         """Completes the App's newest `Theseus` check run on the commit, creating it if there is none. Returns
-        its ID. `source` is REVIEW for a review's verdict, NOTHING_CHANGED for the pass that needs none."""
+        its ID. `source` is REVIEW for a review's verdict, NOTHING_CHANGED for the pass that needs none.
+        `annotations` are notes GitHub shows beside those lines in Files changed."""
         self._require(repo)
-        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        output: dict[str, Any] = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        if annotations:
+            output["annotations"] = annotations[:ANNOTATIONS_MAX]
         done = {"status": "completed", "conclusion": conclusion, "output": output, "external_id": source}
         latest = self.latest_check(repo, head_sha)
         if latest is not None:

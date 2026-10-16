@@ -147,6 +147,9 @@ class PathStep(Contract):
     type: EdgeType
     dst: str = Field(alias="to")
     evidence: str
+    # The access this hop's own edge grants (a CAN edge's read or write), sorted; the path's `grants` are its
+    # last edge's. Empty when not recorded.
+    grants: list[str] = Field(default_factory=list)
 
 
 class PathRecord(Contract):

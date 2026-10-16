@@ -1,33 +1,19 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**stub**
+**Anyone on the internet** could read **demo-company-files/invoices/**, a data store with data of unknown sensitivity.
 
-#### What happened
-
-This PR adds `aws_s3_bucket_policy.company_files_public`; updates `aws_s3_bucket_public_access_block.company_files`.\
-Because of that, a new way to reach sensitive data opens:\
-**anyone on the internet** can read the **demo-company-files/invoices/** data store.
-
-#### What's at risk
-
-- **demo-company-files/invoices/**, a data store: data of unknown sensitivity
-
-#### What the PR said it needs
-
-"stub"\
-It asks only for: **anyone on the internet** to read **demo-company-files/public/**.
-
-#### What to do
-
-✅ **Reply `/theseus apply S`** to commit fix S: Candidate S.\
-Theseus tested it on a copy of the graph: it closes all 1 way in and breaks nothing.\
-Or ask the author to change the PR.
-
-Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
+**Says:** stub.\
+**Needs:** read **demo-company-files/public/** · **Grants too:** **demo-company-files/invoices/**\
+**Why:** **anyone on the internet** can read **demo-company-files/invoices/**.\
+**Do:** reply `/theseus apply S` to commit fix S (Candidate S). Theseus tested it on a copy of the graph: it closes all 1 way in and breaks nothing.
 
 <details>
 <summary><b>The path, step by step</b> (1 way in, with links to each line)</summary>
+
+**What's at risk**
+
+- **demo-company-files/invoices/**, a data store: data of unknown sensitivity
 
 | Actor | Target | Hops |
 | --- | --- | --- |
@@ -61,7 +47,9 @@ Reply `/theseus apply S` to commit a fix.
 </details>
 
 <details>
-<summary><b>Technical details</b></summary>
+<summary><b>What Theseus checked</b></summary>
+
+Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
 **What the change does:** Adds `aws_s3_bucket_policy.company_files_public`; updates `aws_s3_bucket_public_access_block.company_files`. Opens 1 dangerous path, closes 0.
 
@@ -81,5 +69,12 @@ Coverage: not recorded.
 Timings: not recorded.
 
 Models: not recorded.
+
+</details>
+
+<details>
+<summary><b>What is Theseus?</b></summary>
+
+Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
 
 </details>

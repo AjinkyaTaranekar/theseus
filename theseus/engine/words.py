@@ -38,6 +38,12 @@ CLASSES = {
     "internal": "internal data, little harm if exposed",
     "public": "public data",
 }
+HOLDS = {
+    "regulated": "personal, payment or health data",
+    "confidential": "business-sensitive data",
+    "internal": "internal data",
+    "public": "public data",
+}
 # What an edge lets its source do to its target, as the next clause of a sentence.
 VERBS = {
     "MEMBER_OF": "is a member of",
@@ -74,6 +80,12 @@ def article(word: str) -> str:
 
 def class_words(sensitivity: str | None) -> str:
     return CLASSES.get(sensitivity or "", "data of unknown sensitivity")
+
+
+def holds(sensitivity: str | None) -> str:
+    """What a data class holds, short enough for the middle of a sentence: "personal, payment or health
+    data"."""
+    return HOLDS.get(sensitivity or "", "data of unknown sensitivity")
 
 
 def access_words(grants: list[str]) -> str:
