@@ -404,7 +404,8 @@ class RateLimit:
         for client in [c for c, seen in self.hits.items() if not seen or now - seen[-1] >= self.window]:
             del self.hits[client]
         # Still full: drop the clients that have been quiet longest, never the one being served.
-        for client in sorted(self.hits, key=lambda c: self.hits[c][-1])[: len(self.hits) - self.max_clients]:
+        extra = len(self.hits) - self.max_clients
+        for client in sorted(self.hits, key=lambda c: self.hits[c][-1])[: max(0, extra)]:
             del self.hits[client]
 
 

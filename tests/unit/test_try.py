@@ -130,6 +130,13 @@ def test_the_engine_is_not_ready_before_startup_has_built_it() -> None:
         assert c.post("/try/intern").status_code == 503
 
 
+def test_missing_recordings_fail_the_visit_and_never_the_startup(tmp_path: Path) -> None:
+    runner = build_try(MemoryStore(), get_settings(), recordings=tmp_path)  # builds without reading anything
+    for c in client_for(runner):
+        res = c.post("/try/intern")
+        assert res.status_code == 502 and str(tmp_path) not in res.text
+
+
 # The rate limit --------------------------------------------------------------------------------------------
 
 
@@ -192,6 +199,19 @@ def test_a_flood_of_addresses_cannot_grow_the_limiter_without_bound() -> None:
     for i in range(500):
         limiter.take(f"ip{i}")
     assert len(limiter.hits) <= 50
+
+
+def test_clearing_quiet_clients_never_evicts_busy_ones() -> None:
+    """Dropping the quiet ones can bring the table under its cap: nobody else may be dropped then."""
+    now = [0.0]
+    limiter = routes.RateLimit(limit=1, window=60, clock=lambda: now[0], max_clients=50)
+    for i in range(11):
+        limiter.take(f"quiet{i}")
+    now[0] = 100.0
+    for i in range(40):
+        limiter.take(f"busy{i}")
+    limiter.take("one-more")
+    assert all(limiter.take(f"busy{i}") is not None for i in range(40)), "a busy client got a new allowance"
 
 
 # The page --------------------------------------------------------------------------------------------------

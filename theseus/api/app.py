@@ -24,7 +24,7 @@ from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
-from theseus.agent.replayed import ReplayedIntent, ReplayedJev
+from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
 from theseus.api import routes
 from theseus.api.github import GitHub
 from theseus.cli import analyze_fixture
@@ -78,15 +78,20 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
     return review
 
 
-def build_try(store: GraphStore, settings: Settings) -> routes.Try:
+def build_try(store: GraphStore, settings: Settings, recordings: Path = RECORDINGS) -> routes.Try:
     """The engine behind `/try/{preset}` (task S4): `analyze_fixture` on the preset's fixture folder in this
     store, with the models replayed whatever mode the server runs in, so a visit costs no LLM or Jev call. One
-    run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once."""
+    run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once. The
+    recordings are read on the first visit, so missing ones fail that visit and never the server's startup."""
     replay = settings.model_copy(update={"theseus_mode": "replay"})
-    llm, jev, lock = ReplayedIntent(), ReplayedJev(replay), threading.Lock()
+    lock = threading.Lock()
+    models: list[tuple[ReplayedIntent, ReplayedJev]] = []
 
     def run(preset: str) -> AnalysisResult:
         with lock:
+            if not models:
+                models.append((ReplayedIntent(recordings), ReplayedJev(replay, recordings)))
+            llm, jev = models[0]
             return analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
 
     return run

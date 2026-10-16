@@ -53,7 +53,10 @@ class ReplayedJev:
     """A2's recorded sensitivity answers by node ID; steering is replayed by Jev itself, keyed by PR text."""
 
     def __init__(self, settings: Settings, recordings: Path = RECORDINGS) -> None:
-        saved = json.loads((recordings / SENSITIVITY).read_text(encoding="utf-8"))["answers"]
+        try:
+            saved = json.loads((recordings / SENSITIVITY).read_text(encoding="utf-8"))["answers"]
+        except (OSError, ValueError, KeyError) as e:
+            raise ModelError(f"sensitivity: cannot read the recorded answers in {recordings}: {e}") from e
         self.answers = {k: JevAnswer.model_validate(v) for k, v in saved.items()}
         self.jev = Jev(settings.model_copy(update={"theseus_mode": "replay"}), recordings=recordings / "jev")
 
