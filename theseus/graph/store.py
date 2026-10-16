@@ -24,7 +24,7 @@ from theseus.contracts.engine import (
     WorkflowUse,
 )
 from theseus.contracts.result import ChokePoint, EdgeRow, GraphRows, NodeRow
-from theseus.contracts.schema import MAX_PATH_EDGES, PATH_TYPES, RESOURCE
+from theseus.contracts.schema import EDGE_TYPES, MAX_PATH_EDGES, PATH_TYPES, RESOURCE
 from theseus.errors import GraphError
 from theseus.graph import queries
 
@@ -211,10 +211,14 @@ GraphView = dict[str, list[dict[str, Any]]]
 
 def _view(nodes: list[tuple[Any, dict[str, Any]]], edges: list[tuple[Any, ...]]) -> GraphView:
     """A graph as JSON-ready nodes and edges, as stored, sorted by ID and by (src, type, dst): each node's
-    labels and properties, each edge's endpoints, type and properties with its evidence as a list."""
+    labels and properties, each edge's endpoints, type and properties with its evidence as a list. Only the
+    schema's edge types: the FLOW edges the engine writes before a max-flow call are working state, never
+    shown (03-graph.md)."""
     out_nodes = [{"labels": sorted(labels), **props} for labels, props in nodes]
     out_edges = []
     for src, edge_type, dst, props in edges:
+        if edge_type not in EDGE_TYPES:
+            continue
         edge = {"src": src, "type": edge_type, "dst": dst, **props}
         if isinstance(edge.get("evidence"), str):
             edge["evidence"] = json.loads(edge["evidence"])
