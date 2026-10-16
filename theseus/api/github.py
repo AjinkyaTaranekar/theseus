@@ -19,6 +19,7 @@ from urllib.parse import quote
 import httpx
 import jwt
 
+from theseus.agent.labels import Label
 from theseus.agent.render import MARKER
 from theseus.config import Settings
 from theseus.errors import GitHubError
@@ -239,6 +240,27 @@ class GitHub:
         created = self._repo(repo, "POST", f"/issues/{number}/comments", json={"body": body}).json()
         log.info("%s#%d: created comment %s", repo, number, created["id"])
         return int(created["id"])
+
+    def set_labels(self, repo: str, number: int, wanted: list[Label], managed: tuple[Label, ...]) -> None:
+        """Makes the PR carry exactly the `wanted` labels among `managed` ones, creating any the repo lacks
+        with its colour and description. A label outside `managed` (`demo`, a person's) is never touched."""
+        self._require(repo)
+        names = {label.name for label in managed}
+        if not {label.name for label in wanted} <= names:
+            raise GitHubError(f"{repo}#{number}: refusing to set a label Theseus does not manage")
+        current = {label["name"] for label in self._pages(repo, f"/issues/{number}/labels")}
+        for name in sorted((current & names) - {label.name for label in wanted}):
+            self._repo(repo, "DELETE", f"/issues/{number}/labels/{quote(name, safe='')}")
+        add = [label for label in wanted if label.name not in current]
+        if not add:
+            return
+        existing = {label["name"] for label in self._pages(repo, "/labels")}
+        for label in add:
+            if label.name not in existing:
+                body = {"name": label.name, "color": label.color, "description": label.description}
+                self._repo(repo, "POST", "/labels", json=body)
+        self._repo(repo, "POST", f"/issues/{number}/labels", json={"labels": [label.name for label in add]})
+        log.info("%s#%d: labels %s", repo, number, ", ".join(label.name for label in wanted))
 
     def latest_check(self, repo: str, head_sha: str) -> dict[str, Any] | None:
         """The App's newest `Theseus` check run on the commit, the one a required check reads, or None."""

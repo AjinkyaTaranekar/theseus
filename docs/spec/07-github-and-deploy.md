@@ -148,6 +148,34 @@ may bypass it through the PR in an emergency, and GitHub records that.
 - **The check's title is the verdict in plain words,** because the merge box shows it. Its summary is the
   comment's first section.
 
+## Labels
+
+After each review of a PR's current head, the App sets its labels from the result (`agent/labels.py`), so the PR
+list shows what Theseus found at a glance and the labels can be counted later. Every label starts with
+`theseus: `. The App adds and removes only those, never `demo` or a person's labels, and creates any the repo
+lacks with its colour and description. A re-run of an old commit leaves the labels to the newer run.
+
+| Labels | When |
+| --- | --- |
+| `theseus: S0` to `theseus: S6`, exactly one | Severity, by the first rule that holds (below) |
+| `theseus: blocked`, `theseus: needs a look`, `theseus: clear`, exactly one | The verdict, as the check run's |
+| `theseus: regulated data` or `theseus: confidential data` | The most sensitive class an opened path or a code read beyond intent reaches |
+| `theseus: grants more than it says` | The PR states a purpose, and the change reaches data its intent does not ask for |
+| `theseus: steering text` | The intent is suspicious |
+
+**Severity.** Code that reads data beyond intent counts like a path to that data: it is use, not only the
+chance of it.
+
+| Severity | The first that holds |
+| --- | --- |
+| S0 | Anyone on the internet can reach regulated data |
+| S1 | Someone inside reaches regulated data, or the internet reaches confidential data |
+| S2 | A new path or code read reaches confidential data |
+| S3 | A new path or code read reaches data of unknown sensitivity |
+| S4 | Theseus could not check part of the change |
+| S5 | No new access, but the PR states no purpose or its text steers the review |
+| S6 | No new access to sensitive data |
+
 ## Demo PRs
 
 | Rule | Why |

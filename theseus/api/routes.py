@@ -18,6 +18,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from theseus.agent.labels import LABELS, labels_for
 from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
@@ -200,6 +201,7 @@ def analyze(
         )
         if pr["head"]["sha"] == req.head_sha:
             gh.upsert_comment(req.repo, req.pr_number, comment)
+            gh.set_labels(req.repo, req.pr_number, labels_for(result), LABELS)
         else:
             log.info(
                 "%s#%d moved on from %s; leaving the comment to the newer run",

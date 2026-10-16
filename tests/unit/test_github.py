@@ -10,6 +10,7 @@ import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote
 
 import httpx
 import jwt
@@ -81,6 +82,8 @@ class FakeGitHub:
         self.runs: list[dict[str, Any]] = [{"id": 99, "status": "completed", "head_sha": HEAD}]
         self.head = HEAD
         self.token_calls = 0
+        self.pr_labels: list[str] = []
+        self.repo_labels: dict[str, dict[str, Any]] = {}
         r = self.router
         r.get(f"/repos/{REPO}/installation").mock(side_effect=self._installation)
         r.post(f"/app/installations/{INSTALLATION}/access_tokens").mock(side_effect=self._token)
@@ -104,6 +107,13 @@ class FakeGitHub:
             side_effect=self._permission
         )
         r.get(url__regex=rf"/repos/{REPO}/contents/(?P<path>[^?]+)").mock(side_effect=self._contents)
+        r.get(f"/repos/{REPO}/issues/7/labels").mock(side_effect=self._list_pr_labels)
+        r.post(f"/repos/{REPO}/issues/7/labels").mock(side_effect=self._add_pr_labels)
+        r.delete(url__regex=rf"/repos/{REPO}/issues/7/labels/(?P<name>[^?]+)$").mock(
+            side_effect=self._remove_pr_label
+        )
+        r.get(f"/repos/{REPO}/labels").mock(side_effect=self._list_repo_labels)
+        r.post(f"/repos/{REPO}/labels").mock(side_effect=self._create_repo_label)
 
     # Auth -------------------------------------------------------------------------------------------------
 
@@ -197,6 +207,31 @@ class FakeGitHub:
         assert request.url.params["ref"] == HEAD
         assert request.headers["Accept"] == "application/vnd.github.raw+json"
         return httpx.Response(200, text=f"# {path}\n")
+
+    # Labels -----------------------------------------------------------------------------------------------
+
+    def _list_pr_labels(self, request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=[{"name": n} for n in self.pr_labels] if page == 1 else [])
+
+    def _add_pr_labels(self, request: httpx.Request) -> httpx.Response:
+        for name in json.loads(request.content)["labels"]:
+            assert name in self.repo_labels, f"{name} added before it was created"
+            self.pr_labels.append(name)
+        return httpx.Response(200, json=[{"name": n} for n in self.pr_labels])
+
+    def _remove_pr_label(self, request: httpx.Request, name: str) -> httpx.Response:
+        self.pr_labels.remove(unquote(name))
+        return httpx.Response(200, json=[])
+
+    def _list_repo_labels(self, request: httpx.Request) -> httpx.Response:
+        page = int(request.url.params.get("page", "1"))
+        return httpx.Response(200, json=list(self.repo_labels.values()) if page == 1 else [])
+
+    def _create_repo_label(self, request: httpx.Request) -> httpx.Response:
+        label = json.loads(request.content)
+        self.repo_labels[label["name"]] = label
+        return httpx.Response(201, json=label)
 
     @property
     def calls(self) -> int:
@@ -811,3 +846,52 @@ def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:
     assert sorted(manifest["default_events"]) == ["check_run", "issue_comment", "pull_request", "push"]
     assert manifest["hook_attributes"]["url"] == "https://<DOMAIN>/webhooks/github"
     assert manifest["public"] is False
+
+
+# Labels -----------------------------------------------------------------------------------------------------
+
+
+def test_labels_change_only_theseus_s_own_and_are_created_with_their_colour(
+    gh: GitHub, fake: FakeGitHub
+) -> None:
+    from theseus.agent.labels import LABELS, SEVERITY, VERDICT
+
+    fake.pr_labels = ["demo", "theseus: S6", "someone's label"]
+    fake.repo_labels = {
+        n: {"name": n} for n in ("demo", "theseus: S6", "someone's label", "theseus: blocked")
+    }
+    gh.set_labels(REPO, 7, [SEVERITY[1], VERDICT["blocked"]], LABELS)
+    assert sorted(fake.pr_labels) == ["demo", "someone's label", "theseus: S1", "theseus: blocked"]
+    assert fake.repo_labels["theseus: S1"] == {
+        "name": "theseus: S1",
+        "color": SEVERITY[1].color,
+        "description": SEVERITY[1].description,
+    }
+    assert fake.repo_labels["theseus: blocked"] == {"name": "theseus: blocked"}  # left as it was
+
+
+def test_labels_already_right_cost_one_request(gh: GitHub, fake: FakeGitHub) -> None:
+    from theseus.agent.labels import LABELS, SEVERITY
+
+    fake.pr_labels = ["theseus: S6"]
+    gh.installation_token(REPO)
+    before = fake.calls
+    gh.set_labels(REPO, 7, [SEVERITY[6]], LABELS)
+    assert fake.calls - before == 1 and fake.pr_labels == ["theseus: S6"]
+
+
+def test_a_label_theseus_does_not_manage_is_refused_before_any_request(gh: GitHub, fake: FakeGitHub) -> None:
+    from theseus.agent.labels import LABELS, Label
+
+    with pytest.raises(GitHubError, match="does not manage"):
+        gh.set_labels(REPO, 7, [Label(name="demo", color="ededed", description="")], LABELS)
+    assert fake.calls == 0
+
+
+def test_a_review_labels_the_pr_and_a_stale_run_does_not(client: TestClient, fake: FakeGitHub) -> None:
+    assert analyze(client).status_code == 200
+    assert "theseus: blocked" in fake.pr_labels and any(n.startswith("theseus: S") for n in fake.pr_labels)
+    fake.pr_labels = []
+    fake.head = "c" * 40
+    assert analyze(client).status_code == 200
+    assert fake.pr_labels == []

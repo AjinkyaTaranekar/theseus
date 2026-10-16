@@ -43,6 +43,8 @@ class FakeRepo:
         self.comments: list[dict[str, Any]] = []
         self.checks: list[dict[str, Any]] = []
         self.read: list[str] = []
+        self.labels: list[str] = []
+        self.repo_labels: list[dict[str, Any]] = []
         title, _, body = (FIXTURE / "pr.md").read_text(encoding="utf-8").partition("\n")
         pr = {"number": 7, "title": title.removeprefix("# "), "body": body.strip()}
         pr |= {"head": {"sha": HEAD}, "base": {"sha": BASE}}
@@ -62,6 +64,12 @@ class FakeRepo:
         )
         r.post(f"/repos/{REPO}/check-runs").mock(side_effect=self._check)
         r.patch(url__regex=rf"/repos/{REPO}/check-runs/(?P<cid>\d+)$").mock(side_effect=self._edit_check)
+        r.get(f"/repos/{REPO}/issues/7/labels").mock(
+            side_effect=lambda req: self._page(req, [{"name": n} for n in self.labels])
+        )
+        r.post(f"/repos/{REPO}/issues/7/labels").mock(side_effect=self._label)
+        r.get(f"/repos/{REPO}/labels").mock(side_effect=lambda req: self._page(req, self.repo_labels))
+        r.post(f"/repos/{REPO}/labels").mock(side_effect=self._repo_label)
 
     def _tree(self, request: httpx.Request, sha: str) -> httpx.Response:
         assert request.url.params["recursive"] == "1"
@@ -80,6 +88,14 @@ class FakeRepo:
     @staticmethod
     def _page(request: httpx.Request, rows: list[dict[str, Any]]) -> httpx.Response:
         return httpx.Response(200, json=rows if request.url.params.get("page", "1") == "1" else [])
+
+    def _label(self, request: httpx.Request) -> httpx.Response:
+        self.labels += json.loads(request.content)["labels"]
+        return httpx.Response(200, json=[{"name": n} for n in self.labels])
+
+    def _repo_label(self, request: httpx.Request) -> httpx.Response:
+        self.repo_labels.append(json.loads(request.content))
+        return httpx.Response(201, json=self.repo_labels[-1])
 
     def _comment(self, request: httpx.Request) -> httpx.Response:
         comment = {
@@ -197,6 +213,13 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
         "failure",
     )
     assert note["title"] == "Opens 3 new ways to sensitive data"
+    # Labels for the PR list: severity, verdict, the class reached, and the gap between says and grants.
+    assert repo.labels == [
+        "theseus: S1",
+        "theseus: blocked",
+        "theseus: grants more than it says",
+        "theseus: regulated data",
+    ]
     assert store.list_graphs() == ["demo-infra__pr7-base", "demo-infra__pr7-head"]
 
 
