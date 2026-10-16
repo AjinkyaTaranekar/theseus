@@ -19,6 +19,7 @@ from theseus.contracts.result import (
     PathRecord,
     PathStep,
     RequirementStatus,
+    ResourceChange,
     StagingToProd,
     UnusedGrant,
 )
@@ -82,7 +83,8 @@ def _source(candidate: str) -> tuple[CandidateSource, str]:
 
 
 def result_from_expected(expected: dict[str, Any]) -> AnalysisResult:
-    """A valid result whose projection matches `expected`, headline "stub". Fields it lacks stay empty."""
+    """A valid result whose projection matches `expected`; its headline, or "stub" when it names none. Fields
+    it lacks stay empty."""
     ev = _Evidence()
     n = 0
 
@@ -141,8 +143,12 @@ def result_from_expected(expected: dict[str, Any]) -> AnalysisResult:
     return AnalysisResult(
         scenario=expected.get("scenario"),
         mode=expected["mode"],
-        headline=STUB,
+        headline=expected.get("headline") or STUB,
         intent=intent,
+        changes=[
+            ResourceChange(address=address, type=address.split(".")[0], action=action)
+            for action, address in expected.get("changes") or []
+        ],
         opened=opened,
         closed=closed,
         unchanged=unchanged,
