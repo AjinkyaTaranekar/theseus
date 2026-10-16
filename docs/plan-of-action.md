@@ -412,7 +412,7 @@ A sample `expected.json` for the intern scenario. It holds only the fields we co
 | 8: main coding and design start after the event begins | The PoC stays private and is never copied into the repo. The first commit landed after the event started. The repo, with this plan, stays private until we submit. The agent kit (specs and task briefs, no code) was written before the event as notes, and the README says so |
 | 10: repo, README with setup and graph model, the Cypher and algorithms used, video, live deployment or local setup, track named | Tasks S5 to S7. The README's queries-and-algorithms section is written first, not left for the end |
 | FAQ: a live deployment is preferred | The Try-it page runs the real engine and FalkorDB live and caches only the LLM's text, so it is genuinely live and still cheap |
-| 11 to 13: disclose AI use, every member can explain the code, not entirely AI-generated | `AI_USE.md`, the evening walkthroughs, every `expected.json` written by us, and real commits from both of us |
+| 11 to 13: disclose AI use, every member can explain the code, not entirely AI-generated | `AI_USE.md`, the evening walkthroughs, every `expected.json` reviewed and saved by us (an agent may draft the values), and real commits from both of us |
 | 1, 4, 7, 9, 15 to 18 | IP ownership agreed in writing (P6), and Cartography, SubImage and AWS research credited in the README |
 
 ## Submission
