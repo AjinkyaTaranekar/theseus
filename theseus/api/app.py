@@ -22,7 +22,7 @@ from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
-from theseus.agent.llm import Llm
+from theseus.agent.llm import Llm, load_client
 from theseus.api import routes
 from theseus.api.github import GitHub
 from theseus.config import Settings, get_settings
@@ -103,6 +103,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
             log.error("not starting: %s", e)
             raise
         settings = get_settings()
+        if settings.theseus_mode != "replay":
+            load_client()
         llm = Llm(settings)
         app.state.review = build_review(
             FalkorStore(app.state.falkordb), llm, Jev(settings, llm=llm), settings
