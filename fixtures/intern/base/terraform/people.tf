@@ -1,16 +1,22 @@
+# Platform team: team memberships and the remaining IAM users awaiting SSO migration.
+
 resource "aws_iam_user" "priya" {
+  #checkov:skip=CKV_AWS_273:IAM users remain until the platform team completes the SSO migration
   name = "priya-intern"
 }
 
 resource "aws_iam_user" "sam" {
+  #checkov:skip=CKV_AWS_273:IAM users remain until the platform team completes the SSO migration
   name = "sam-support"
 }
 
 resource "aws_iam_user" "alex" {
+  #checkov:skip=CKV_AWS_273:IAM users remain until the platform team completes the SSO migration
   name = "alex-analyst"
 }
 
 resource "aws_iam_user" "jordan" {
+  #checkov:skip=CKV_AWS_273:IAM users remain until the platform team completes the SSO migration
   name = "jordan-platform"
 }
 

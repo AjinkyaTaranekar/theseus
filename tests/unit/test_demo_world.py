@@ -423,6 +423,59 @@ def test_workloads_use_their_own_roles_and_environment(resources: dict[str, Any]
         assert service["tags"]["theseus_code_path"] == f"services/{name}"
 
 
+@pytest.mark.parametrize("name", ["billing_job", "billing_api", "support_portal", "analytics_export"])
+def test_lambda_operational_controls_are_known_in_the_plan(resources: dict[str, Any], name: str) -> None:
+    function = resources[f"aws_lambda_function.{name}"]
+    assert function["tracing_config"] == [{"mode": "Active"}]
+    assert function["reserved_concurrent_executions"] > 0
+    vpc = function["vpc_config"][0]
+    assert set(vpc["subnet_ids"]) == {"subnet-0a1b2c3d4e5f60001", "subnet-0a1b2c3d4e5f60002"}
+    assert vpc["security_group_ids"]
+    assert all(re.fullmatch(r"sg-[0-9a-f]{17}", group) for group in vpc["security_group_ids"])
+
+
+def test_database_operational_controls_are_known_in_the_plan(resources: dict[str, Any]) -> None:
+    database = resources["aws_db_instance.customer"]
+    for field in (
+        "deletion_protection",
+        "multi_az",
+        "iam_database_authentication_enabled",
+        "auto_minor_version_upgrade",
+        "copy_tags_to_snapshot",
+        "performance_insights_enabled",
+    ):
+        assert database[field] is True, field
+    assert database["enabled_cloudwatch_logs_exports"] == ["postgresql"]
+    assert database["parameter_group_name"] == "demo-postgres16"
+
+
+@pytest.mark.parametrize("name", ["orders_api", "orders_worker"])
+def test_containers_have_read_only_roots_and_cluster_metrics(resources: dict[str, Any], name: str) -> None:
+    task = resources[f"aws_ecs_task_definition.{name}"]
+    assert all(container["readonlyRootFilesystem"] for container in json.loads(task["container_definitions"]))
+    assert {"name": "containerInsights", "value": "enabled"} in resources["aws_ecs_cluster.apps"]["setting"]
+
+
+def test_advisory_reads_as_an_advisory_with_disclaimer_in_scenario_metadata() -> None:
+    fixture = FIXTURES / "compromised-action"
+    text = json.loads((fixture / "advisory.json").read_text(encoding="utf-8"))["text"].lower()
+    for content in (
+        "summary",
+        "severity",
+        "affected versions",
+        "patched versions",
+        "runner memory",
+        "secrets",
+        "build log",
+    ):
+        assert content in text
+    assert "synthetic" not in text
+    assert "untrusted input" not in text
+    metadata = yaml.safe_load((fixture / "scenario.yaml").read_text(encoding="utf-8"))
+    assert "synthetic" in metadata["description"].lower()
+    assert "fictional" in (WORLD / "README.md").read_text(encoding="utf-8").lower()
+
+
 def test_all_policy_sids_and_managed_attachments_match_spec(resources: dict[str, Any]) -> None:
     expected_sids = {
         "aws_iam_group_policy.support_assume": {"AssumeProdSupport"},

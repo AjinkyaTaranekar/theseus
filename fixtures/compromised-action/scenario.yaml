@@ -1,4 +1,5 @@
-description: Assume demo-thirdparty/file-diff versions v1, v2 and v3 are compromised.
+description: Synthetic advisory for the fictional demo-thirdparty/file-diff Action;
+  assume versions v1, v2 and v3 are compromised. Nothing here describes a real compromise.
 mode: finding
 name: compromised-action
 world: demo-infra

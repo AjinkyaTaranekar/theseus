@@ -50,14 +50,31 @@
             "allocated_storage": {
               "constant_value": 20
             },
+            "auto_minor_version_upgrade": {
+              "constant_value": true
+            },
+            "copy_tags_to_snapshot": {
+              "constant_value": true
+            },
             "db_subnet_group_name": {
               "constant_value": "demo-db-subnets"
+            },
+            "deletion_protection": {
+              "constant_value": true
+            },
+            "enabled_cloudwatch_logs_exports": {
+              "constant_value": [
+                "postgresql"
+              ]
             },
             "engine": {
               "constant_value": "postgres"
             },
             "engine_version": {
               "constant_value": "16"
+            },
+            "iam_database_authentication_enabled": {
+              "constant_value": true
             },
             "identifier": {
               "constant_value": "customer-db"
@@ -66,6 +83,15 @@
               "constant_value": "db.t4g.micro"
             },
             "manage_master_user_password": {
+              "constant_value": true
+            },
+            "multi_az": {
+              "constant_value": true
+            },
+            "parameter_group_name": {
+              "constant_value": "demo-postgres16"
+            },
+            "performance_insights_enabled": {
               "constant_value": true
             },
             "storage_encrypted": {
@@ -154,7 +180,17 @@
           "expressions": {
             "name": {
               "constant_value": "demo-apps"
-            }
+            },
+            "setting": [
+              {
+                "name": {
+                  "constant_value": "containerInsights"
+                },
+                "value": {
+                  "constant_value": "enabled"
+                }
+              }
+            ]
           },
           "mode": "managed",
           "name": "apps",
@@ -985,6 +1021,9 @@
             "handler": {
               "constant_value": "handler.handler"
             },
+            "reserved_concurrent_executions": {
+              "constant_value": 10
+            },
             "role": {
               "constant_value": "arn:aws:iam::111122223333:role/analytics-export"
             },
@@ -1001,7 +1040,29 @@
               "constant_value": {
                 "theseus_code_path": "services/analytics_export"
               }
-            }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
           },
           "mode": "managed",
           "name": "analytics_export",
@@ -1028,6 +1089,9 @@
             "handler": {
               "constant_value": "handler.handler"
             },
+            "reserved_concurrent_executions": {
+              "constant_value": 10
+            },
             "role": {
               "constant_value": "arn:aws:iam::111122223333:role/billing-api"
             },
@@ -1044,7 +1108,29 @@
               "constant_value": {
                 "theseus_code_path": "services/billing_api"
               }
-            }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
           },
           "mode": "managed",
           "name": "billing_api",
@@ -1073,6 +1159,9 @@
             "handler": {
               "constant_value": "handler.handler"
             },
+            "reserved_concurrent_executions": {
+              "constant_value": 10
+            },
             "role": {
               "constant_value": "arn:aws:iam::111122223333:role/billing-job"
             },
@@ -1089,7 +1178,29 @@
               "constant_value": {
                 "theseus_code_path": "services/billing_job"
               }
-            }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
           },
           "mode": "managed",
           "name": "billing_job",
@@ -1116,6 +1227,9 @@
             "handler": {
               "constant_value": "handler.handler"
             },
+            "reserved_concurrent_executions": {
+              "constant_value": 10
+            },
             "role": {
               "constant_value": "arn:aws:iam::111122223333:role/support-portal"
             },
@@ -1132,7 +1246,29 @@
               "constant_value": {
                 "theseus_code_path": "services/support_portal"
               }
-            }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
           },
           "mode": "managed",
           "name": "support_portal",
@@ -1245,6 +1381,9 @@
           "schema_version": 2,
           "sensitive_values": {
             "blue_green_update": [],
+            "enabled_cloudwatch_logs_exports": [
+              false
+            ],
             "listener_endpoint": [],
             "master_user_secret": [],
             "password": true,
@@ -1262,32 +1401,36 @@
             "apply_immediately": false,
             "auto_minor_version_upgrade": true,
             "blue_green_update": [],
-            "copy_tags_to_snapshot": false,
+            "copy_tags_to_snapshot": true,
             "custom_iam_instance_profile": null,
             "customer_owned_ip_enabled": null,
             "db_subnet_group_name": "demo-db-subnets",
             "dedicated_log_volume": false,
             "delete_automated_backups": true,
-            "deletion_protection": null,
+            "deletion_protection": true,
             "domain": null,
             "domain_auth_secret_arn": null,
             "domain_dns_ips": null,
             "domain_iam_role_name": null,
             "domain_ou": null,
-            "enabled_cloudwatch_logs_exports": null,
+            "enabled_cloudwatch_logs_exports": [
+              "postgresql"
+            ],
             "engine": "postgres",
             "engine_version": "16",
             "final_snapshot_identifier": null,
-            "iam_database_authentication_enabled": null,
+            "iam_database_authentication_enabled": true,
             "identifier": "customer-db",
             "instance_class": "db.t4g.micro",
             "manage_master_user_password": true,
             "max_allocated_storage": null,
             "monitoring_interval": 0,
+            "multi_az": true,
+            "parameter_group_name": "demo-postgres16",
             "password": null,
             "password_wo": null,
             "password_wo_version": null,
-            "performance_insights_enabled": false,
+            "performance_insights_enabled": true,
             "publicly_accessible": false,
             "region": "eu-west-1",
             "replicate_source_db": null,
@@ -1416,7 +1559,9 @@
           "sensitive_values": {
             "configuration": [],
             "service_connect_defaults": [],
-            "setting": [],
+            "setting": [
+              {}
+            ],
             "tags_all": {}
           },
           "type": "aws_ecs_cluster",
@@ -1425,6 +1570,12 @@
             "name": "demo-apps",
             "region": "eu-west-1",
             "service_connect_defaults": [],
+            "setting": [
+              {
+                "name": "containerInsights",
+                "value": "enabled"
+              }
+            ],
             "tags": null,
             "tags_all": {
               "Environment": "prod",
@@ -1636,7 +1787,7 @@
           },
           "type": "aws_ecs_task_definition",
           "values": {
-            "container_definitions": "[{\"environment\":[{\"name\":\"BILLING_API_URL\",\"value\":\"https://billing-api.internal.demo.test\"},{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1\",\"name\":\"orders-api\"}]",
+            "container_definitions": "[{\"environment\":[{\"name\":\"BILLING_API_URL\",\"value\":\"https://billing-api.internal.demo.test\"},{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1\",\"name\":\"orders-api\",\"readonlyRootFilesystem\":true}]",
             "cpu": "256",
             "ephemeral_storage": [],
             "execution_role_arn": "arn:aws:iam::111122223333:role/ecs-task-execution",
@@ -1689,7 +1840,7 @@
           },
           "type": "aws_ecs_task_definition",
           "values": {
-            "container_definitions": "[{\"environment\":[{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1\",\"name\":\"orders-worker\"}]",
+            "container_definitions": "[{\"environment\":[{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1\",\"name\":\"orders-worker\",\"readonlyRootFilesystem\":true}]",
             "cpu": "256",
             "ephemeral_storage": [],
             "execution_role_arn": "arn:aws:iam::111122223333:role/ecs-task-execution",
@@ -2767,8 +2918,20 @@
             "tags": {},
             "tags_all": {},
             "tenancy_config": [],
-            "tracing_config": [],
-            "vpc_config": []
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
           },
           "type": "aws_lambda_function",
           "values": {
@@ -2800,7 +2963,7 @@
             "region": "eu-west-1",
             "replace_security_groups_on_destroy": null,
             "replacement_security_group_ids": null,
-            "reserved_concurrent_executions": -1,
+            "reserved_concurrent_executions": 10,
             "role": "arn:aws:iam::111122223333:role/analytics-export",
             "runtime": "python3.12",
             "s3_bucket": "demo-artifacts",
@@ -2820,8 +2983,24 @@
             "tenancy_config": [],
             "timeout": 3,
             "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
             "use_resource_timeout_for_propagation": null,
-            "vpc_config": []
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
           }
         },
         {
@@ -2854,8 +3033,20 @@
             "tags": {},
             "tags_all": {},
             "tenancy_config": [],
-            "tracing_config": [],
-            "vpc_config": []
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
           },
           "type": "aws_lambda_function",
           "values": {
@@ -2887,7 +3078,7 @@
             "region": "eu-west-1",
             "replace_security_groups_on_destroy": null,
             "replacement_security_group_ids": null,
-            "reserved_concurrent_executions": -1,
+            "reserved_concurrent_executions": 10,
             "role": "arn:aws:iam::111122223333:role/billing-api",
             "runtime": "python3.12",
             "s3_bucket": "demo-artifacts",
@@ -2907,8 +3098,24 @@
             "tenancy_config": [],
             "timeout": 3,
             "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
             "use_resource_timeout_for_propagation": null,
-            "vpc_config": []
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
           }
         },
         {
@@ -2941,8 +3148,20 @@
             "tags": {},
             "tags_all": {},
             "tenancy_config": [],
-            "tracing_config": [],
-            "vpc_config": []
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
           },
           "type": "aws_lambda_function",
           "values": {
@@ -2976,7 +3195,7 @@
             "region": "eu-west-1",
             "replace_security_groups_on_destroy": null,
             "replacement_security_group_ids": null,
-            "reserved_concurrent_executions": -1,
+            "reserved_concurrent_executions": 10,
             "role": "arn:aws:iam::111122223333:role/billing-job",
             "runtime": "python3.12",
             "s3_bucket": "demo-artifacts",
@@ -2996,8 +3215,24 @@
             "tenancy_config": [],
             "timeout": 3,
             "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
             "use_resource_timeout_for_propagation": null,
-            "vpc_config": []
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
           }
         },
         {
@@ -3030,8 +3265,20 @@
             "tags": {},
             "tags_all": {},
             "tenancy_config": [],
-            "tracing_config": [],
-            "vpc_config": []
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
           },
           "type": "aws_lambda_function",
           "values": {
@@ -3063,7 +3310,7 @@
             "region": "eu-west-1",
             "replace_security_groups_on_destroy": null,
             "replacement_security_group_ids": null,
-            "reserved_concurrent_executions": -1,
+            "reserved_concurrent_executions": 10,
             "role": "arn:aws:iam::111122223333:role/support-portal",
             "runtime": "python3.12",
             "s3_bucket": "demo-artifacts",
@@ -3083,8 +3330,24 @@
             "tenancy_config": [],
             "timeout": 3,
             "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
             "use_resource_timeout_for_propagation": null,
-            "vpc_config": []
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
           }
         },
         {
@@ -3317,32 +3580,36 @@
           "apply_immediately": false,
           "auto_minor_version_upgrade": true,
           "blue_green_update": [],
-          "copy_tags_to_snapshot": false,
+          "copy_tags_to_snapshot": true,
           "custom_iam_instance_profile": null,
           "customer_owned_ip_enabled": null,
           "db_subnet_group_name": "demo-db-subnets",
           "dedicated_log_volume": false,
           "delete_automated_backups": true,
-          "deletion_protection": null,
+          "deletion_protection": true,
           "domain": null,
           "domain_auth_secret_arn": null,
           "domain_dns_ips": null,
           "domain_iam_role_name": null,
           "domain_ou": null,
-          "enabled_cloudwatch_logs_exports": null,
+          "enabled_cloudwatch_logs_exports": [
+            "postgresql"
+          ],
           "engine": "postgres",
           "engine_version": "16",
           "final_snapshot_identifier": null,
-          "iam_database_authentication_enabled": null,
+          "iam_database_authentication_enabled": true,
           "identifier": "customer-db",
           "instance_class": "db.t4g.micro",
           "manage_master_user_password": true,
           "max_allocated_storage": null,
           "monitoring_interval": 0,
+          "multi_az": true,
+          "parameter_group_name": "demo-postgres16",
           "password": null,
           "password_wo": null,
           "password_wo_version": null,
-          "performance_insights_enabled": false,
+          "performance_insights_enabled": true,
           "publicly_accessible": false,
           "region": "eu-west-1",
           "replicate_source_db": null,
@@ -3367,6 +3634,9 @@
         },
         "after_sensitive": {
           "blue_green_update": [],
+          "enabled_cloudwatch_logs_exports": [
+            false
+          ],
           "listener_endpoint": [],
           "master_user_secret": [],
           "password": true,
@@ -3390,6 +3660,9 @@
           "database_insights_mode": true,
           "db_name": true,
           "domain_fqdn": true,
+          "enabled_cloudwatch_logs_exports": [
+            false
+          ],
           "endpoint": true,
           "engine_lifecycle_support": true,
           "engine_version_actual": true,
@@ -3405,11 +3678,9 @@
           "master_user_secret": true,
           "master_user_secret_kms_key_id": true,
           "monitoring_role_arn": true,
-          "multi_az": true,
           "nchar_character_set_name": true,
           "network_type": true,
           "option_group_name": true,
-          "parameter_group_name": true,
           "performance_insights_kms_key_id": true,
           "performance_insights_retention_period": true,
           "port": true,
@@ -3584,6 +3855,12 @@
           "name": "demo-apps",
           "region": "eu-west-1",
           "service_connect_defaults": [],
+          "setting": [
+            {
+              "name": "containerInsights",
+              "value": "enabled"
+            }
+          ],
           "tags": null,
           "tags_all": {
             "Environment": "prod",
@@ -3598,7 +3875,9 @@
         "after_sensitive": {
           "configuration": [],
           "service_connect_defaults": [],
-          "setting": [],
+          "setting": [
+            {}
+          ],
           "tags_all": {}
         },
         "after_unknown": {
@@ -3606,7 +3885,9 @@
           "configuration": [],
           "id": true,
           "service_connect_defaults": [],
-          "setting": true,
+          "setting": [
+            {}
+          ],
           "tags_all": {}
         },
         "before": null,
@@ -3872,7 +4153,7 @@
           "create"
         ],
         "after": {
-          "container_definitions": "[{\"environment\":[{\"name\":\"BILLING_API_URL\",\"value\":\"https://billing-api.internal.demo.test\"},{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1\",\"name\":\"orders-api\"}]",
+          "container_definitions": "[{\"environment\":[{\"name\":\"BILLING_API_URL\",\"value\":\"https://billing-api.internal.demo.test\"},{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1\",\"name\":\"orders-api\",\"readonlyRootFilesystem\":true}]",
           "cpu": "256",
           "ephemeral_storage": [],
           "execution_role_arn": "arn:aws:iam::111122223333:role/ecs-task-execution",
@@ -3946,7 +4227,7 @@
           "create"
         ],
         "after": {
-          "container_definitions": "[{\"environment\":[{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1\",\"name\":\"orders-worker\"}]",
+          "container_definitions": "[{\"environment\":[{\"name\":\"ORDERS_TABLE\",\"value\":\"demo-orders\"},{\"name\":\"ORDER_EVENTS_QUEUE_URL\",\"value\":\"https://sqs.eu-west-1.amazonaws.com/111122223333/order-events\"}],\"essential\":true,\"image\":\"111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1\",\"name\":\"orders-worker\",\"readonlyRootFilesystem\":true}]",
           "cpu": "256",
           "ephemeral_storage": [],
           "execution_role_arn": "arn:aws:iam::111122223333:role/ecs-task-execution",
@@ -5552,7 +5833,7 @@
           "region": "eu-west-1",
           "replace_security_groups_on_destroy": null,
           "replacement_security_group_ids": null,
-          "reserved_concurrent_executions": -1,
+          "reserved_concurrent_executions": 10,
           "role": "arn:aws:iam::111122223333:role/analytics-export",
           "runtime": "python3.12",
           "s3_bucket": "demo-artifacts",
@@ -5572,8 +5853,24 @@
           "tenancy_config": [],
           "timeout": 3,
           "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
           "use_resource_timeout_for_propagation": null,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
         },
         "after_identity": {
           "account_id": null,
@@ -5598,8 +5895,20 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": [],
-          "vpc_config": []
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
         },
         "after_unknown": {
           "architectures": true,
@@ -5631,9 +5940,22 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": true,
+          "tracing_config": [
+            {}
+          ],
           "version": true,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
         },
         "before": null,
         "before_sensitive": false
@@ -5678,7 +6000,7 @@
           "region": "eu-west-1",
           "replace_security_groups_on_destroy": null,
           "replacement_security_group_ids": null,
-          "reserved_concurrent_executions": -1,
+          "reserved_concurrent_executions": 10,
           "role": "arn:aws:iam::111122223333:role/billing-api",
           "runtime": "python3.12",
           "s3_bucket": "demo-artifacts",
@@ -5698,8 +6020,24 @@
           "tenancy_config": [],
           "timeout": 3,
           "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
           "use_resource_timeout_for_propagation": null,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
         },
         "after_identity": {
           "account_id": null,
@@ -5724,8 +6062,20 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": [],
-          "vpc_config": []
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
         },
         "after_unknown": {
           "architectures": true,
@@ -5757,9 +6107,22 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": true,
+          "tracing_config": [
+            {}
+          ],
           "version": true,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
         },
         "before": null,
         "before_sensitive": false
@@ -5806,7 +6169,7 @@
           "region": "eu-west-1",
           "replace_security_groups_on_destroy": null,
           "replacement_security_group_ids": null,
-          "reserved_concurrent_executions": -1,
+          "reserved_concurrent_executions": 10,
           "role": "arn:aws:iam::111122223333:role/billing-job",
           "runtime": "python3.12",
           "s3_bucket": "demo-artifacts",
@@ -5826,8 +6189,24 @@
           "tenancy_config": [],
           "timeout": 3,
           "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
           "use_resource_timeout_for_propagation": null,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
         },
         "after_identity": {
           "account_id": null,
@@ -5852,8 +6231,20 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": [],
-          "vpc_config": []
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
         },
         "after_unknown": {
           "architectures": true,
@@ -5885,9 +6276,22 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": true,
+          "tracing_config": [
+            {}
+          ],
           "version": true,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
         },
         "before": null,
         "before_sensitive": false
@@ -5932,7 +6336,7 @@
           "region": "eu-west-1",
           "replace_security_groups_on_destroy": null,
           "replacement_security_group_ids": null,
-          "reserved_concurrent_executions": -1,
+          "reserved_concurrent_executions": 10,
           "role": "arn:aws:iam::111122223333:role/support-portal",
           "runtime": "python3.12",
           "s3_bucket": "demo-artifacts",
@@ -5952,8 +6356,24 @@
           "tenancy_config": [],
           "timeout": 3,
           "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
           "use_resource_timeout_for_propagation": null,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
         },
         "after_identity": {
           "account_id": null,
@@ -5978,8 +6398,20 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": [],
-          "vpc_config": []
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
         },
         "after_unknown": {
           "architectures": true,
@@ -6011,9 +6443,22 @@
           "tags": {},
           "tags_all": {},
           "tenancy_config": [],
-          "tracing_config": true,
+          "tracing_config": [
+            {}
+          ],
           "version": true,
-          "vpc_config": []
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
         },
         "before": null,
         "before_sensitive": false
