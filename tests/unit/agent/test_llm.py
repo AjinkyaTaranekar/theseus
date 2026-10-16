@@ -221,6 +221,144 @@ def test_a_failed_record_writes_no_recording(tmp_path: Path) -> None:
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.parametrize("mode", ["live", "record"])
+@pytest.mark.parametrize("reason", ["length", "content_filter", "function_call", "unexpected", "", None])
+@pytest.mark.parametrize("arguments", ['{"answer": 42}', "{not json"])
+def test_incomplete_answers_fail_before_parsing_arguments(
+    tmp_path: Path, mode: str, reason: str | None, arguments: str
+) -> None:
+    answer = response(arguments=arguments)
+    answer.choices[0].finish_reason = reason
+    fake = FakeCompletion(answer=answer)
+    llm, slept = make(mode, tmp_path, fake)
+    key = recording_key(
+        "intent",
+        {"model": llm.settings.llm_model, "messages": MESSAGES, "tools": [TOOL], "tool_choice": FORCED},
+    )
+
+    with pytest.raises(ModelError) as exc:
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    error = str(exc.value)
+    assert "intent" in error and key in error
+    assert "finish_reason" in error and repr(reason) in error
+    assert len(fake.calls) == 1 and slept == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["live", "record"])
+@pytest.mark.parametrize("reason", ["length", "content_filter"])
+@pytest.mark.parametrize("message", [None, SimpleNamespace()])
+def test_incomplete_answers_are_rejected_before_reading_the_message(
+    tmp_path: Path, mode: str, reason: str, message: Any
+) -> None:
+    answer = response()
+    answer.choices[0].finish_reason = reason
+    answer.choices[0].message = message
+    fake = FakeCompletion(answer=answer)
+    llm, slept = make(mode, tmp_path, fake)
+
+    with pytest.raises(ModelError, match=f"intent \\(intent-[a-f0-9]{{12}}\\).*finish_reason='{reason}'"):
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert len(fake.calls) == 1 and slept == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["live", "record"])
+@pytest.mark.parametrize("choices", [[], None])
+def test_no_choices_raise_a_model_error(tmp_path: Path, mode: str, choices: list[Any] | None) -> None:
+    answer = response()
+    answer.choices = choices
+    fake = FakeCompletion(answer=answer)
+    llm, slept = make(mode, tmp_path, fake)
+    key = recording_key(
+        "intent",
+        {"model": llm.settings.llm_model, "messages": MESSAGES, "tools": [TOOL], "tool_choice": FORCED},
+    )
+
+    with pytest.raises(ModelError) as exc:
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert "intent" in str(exc.value) and key in str(exc.value)
+    assert "no choices" in str(exc.value)
+    assert len(fake.calls) == 1 and slept == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("reason", ["length", "content_filter", "function_call", "unexpected", "", None])
+def test_replay_rejects_incomplete_answers_even_with_valid_arguments(
+    tmp_path: Path, reason: str | None
+) -> None:
+    recorder, _ = make("record", tmp_path, FakeCompletion())
+    recorded = recorder.call("intent", MESSAGES, [TOOL], FORCED)
+    path = tmp_path / f"{recorded.key}.json"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    saved["response"]["finish_reason"] = reason
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    before = path.read_bytes()
+    fake = FakeCompletion()
+    replayer, slept = make("replay", tmp_path, fake)
+
+    with pytest.raises(ModelError) as exc:
+        replayer.call("intent", MESSAGES, [TOOL], FORCED)
+
+    error = str(exc.value)
+    assert "intent" in error and recorded.key in error
+    assert "finish_reason" in error and repr(reason) in error
+    assert fake.calls == [] and slept == []
+    assert path.read_bytes() == before
+
+
+def test_replay_rejects_a_missing_finish_reason(tmp_path: Path) -> None:
+    recorder, _ = make("record", tmp_path, FakeCompletion())
+    recorded = recorder.call("intent", MESSAGES, [TOOL], FORCED)
+    path = tmp_path / f"{recorded.key}.json"
+    saved = json.loads(path.read_text(encoding="utf-8"))
+    del saved["response"]["finish_reason"]
+    path.write_text(json.dumps(saved), encoding="utf-8")
+    replayer, _ = make("replay", tmp_path)
+
+    with pytest.raises(ModelError, match="finish_reason.*None"):
+        replayer.call("intent", MESSAGES, [TOOL], FORCED)
+
+
+def test_an_incomplete_record_does_not_replace_a_valid_recording(tmp_path: Path) -> None:
+    recorder, _ = make("record", tmp_path, FakeCompletion())
+    recorded = recorder.call("intent", MESSAGES, [TOOL], FORCED)
+    path = tmp_path / f"{recorded.key}.json"
+    before = path.read_bytes()
+    answer = response()
+    answer.choices[0].finish_reason = "length"
+    incomplete, _ = make("record", tmp_path, FakeCompletion(answer=answer))
+
+    with pytest.raises(ModelError, match="finish_reason.*length"):
+        incomplete.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("reason", ["tool_calls", "stop"])
+def test_complete_tool_answers_still_record_and_replay(tmp_path: Path, reason: str) -> None:
+    answer = response()
+    answer.choices[0].finish_reason = reason
+    recorder, _ = make("record", tmp_path, FakeCompletion(answer=answer))
+    recorded = recorder.call("intent", MESSAGES, [TOOL], FORCED)
+    replayer, _ = make("replay", tmp_path)
+    assert recorded.arguments == {"answer": 42}
+    assert replayer.call("intent", MESSAGES, [TOOL], FORCED) == recorded
+
+
+def test_complete_text_answers_still_record_and_replay(tmp_path: Path) -> None:
+    recorder, _ = make(
+        "record", tmp_path, FakeCompletion(answer=response(name="", content="Complete answer"))
+    )
+    recorded = recorder.call("summary", MESSAGES)
+    replayer, _ = make("replay", tmp_path)
+    assert recorded.content == "Complete answer" and recorded.tool is None
+    assert replayer.call("summary", MESSAGES) == recorded
+
+
 # Untrusted text -----------------------------------------------------------------------------------
 
 
