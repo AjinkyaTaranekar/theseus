@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 
-from tests.golden.conftest import FIXTURES, deps_for, expected, world
+from tests.golden.conftest import FIXTURES, ROOT, RecordedJev, deps_for, expected, world
+from theseus.agent.jev import JevAnswer
 from theseus.contracts.engine import Deps, GraphState
 from theseus.contracts.result import AnalysisResult, compare, project
 from theseus.engine.finding import blast_radius, match_advisory, rotate_list, with_finding
 from theseus.engine.pipeline import prepare_state, run_finding
+from theseus.errors import ModelError
 from theseus.graph.load import load_graph
 
 SCENARIO = "compromised-action"
@@ -93,8 +96,9 @@ def test_run_finding_matches_the_answer_key(deps: Deps) -> None:
     assert result.mode == "finding"
     assert result.finding is not None and result.finding["id"] == "GHSA-demo-0001"
     assert result.finding["workflows"] == [PREVIEW, LINT]
-    # Candidate K, `recommended` and `staging_to_prod` belong to FM6 and FM4.
-    assert compare(project(result), expected(SCENARIO), ["scenario", "mode", "min_cut", "rotate"]) == []
+    # Candidate K and `recommended` belong to FM6.
+    keys = ["scenario", "mode", "min_cut", "rotate", "staging_to_prod"]
+    assert compare(project(result), expected(SCENARIO), keys) == []
 
 
 def test_run_finding_lists_the_blast_radius_with_its_evidence(deps: Deps) -> None:
@@ -139,6 +143,67 @@ def test_an_advisory_for_an_action_nobody_uses_adds_a_finding_but_no_edge(deps: 
     assert not [e for e in rows.edges if e.type == "AFFECTS"]
 
 
+URGENCY = ROOT / "recordings/jev/urgency-58e6109bdaba.json"
+
+
+class UrgentJev(RecordedJev):
+    """Jev's urgency as A2 recorded it on this advisory (0.89). The pipeline words its blast summary from
+    the engine's facts, so the request no longer hashes to the recording's key; the answer is the same."""
+
+    def urgency(self, finding_summary: str, blast_summary: str) -> JevAnswer:
+        assert "customer-db" in blast_summary
+        recording = json.loads(URGENCY.read_text(encoding="utf-8"))
+        return JevAnswer.model_validate(recording["answers"]["urgent"])
+
+
+class BrokenJev(RecordedJev):
+    def urgency(self, finding_summary: str, blast_summary: str) -> JevAnswer:
+        raise ModelError("urgency: Jev is down")
+
+
+def finding_with(deps: Deps, jev: object) -> AnalysisResult:
+    return run_finding(world(SCENARIO, "base"), advisory(), replace(deps, jev=jev))
+
+
+def test_prod_support_is_the_choke_point_every_route_to_the_database_crosses(deps: Deps) -> None:
+    result = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    ids = [c.id for c in result.choke_points]
+    assert ids[0] == "role:prod-support"
+    assert ids and all(i.startswith("role:") for i in ids) and len(ids) <= 5
+    scores = [c.score for c in result.choke_points]
+    assert scores == sorted(scores, reverse=True) and scores[0] > scores[1]
+
+
+def test_the_docs_site_preview_reaches_prod_data_from_staging(deps: Deps) -> None:
+    result = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    assert {(s.actor, s.target) for s in result.staging_to_prod} == {
+        (PREVIEW, "db:customer-db"),
+        (PREVIEW, "s3://demo-company-files/invoices/"),
+        (PREVIEW, "secret:prod-db-credentials"),
+    }
+    by_id = {p.id: p for p in result.opened}
+    assert all(s.path_id in by_id for s in result.staging_to_prod)
+    assert all(by_id[s.path_id].target == s.target for s in result.staging_to_prod)
+
+
+def test_jevs_urgency_shows_with_its_probability_and_source(deps: Deps) -> None:
+    result = finding_with(deps, UrgentJev())
+    assert result.finding is not None and result.finding["urgency"] == {"p": 0.89, "source": "jev"}
+
+
+def test_a_jev_without_urgency_and_a_failing_jev_leave_it_out_and_change_nothing_else(deps: Deps) -> None:
+    plain = finding_with(deps, RecordedJev())
+    broken = finding_with(deps, BrokenJev())
+    urgent = finding_with(deps, UrgentJev())
+    assert plain.finding is not None and "urgency" not in plain.finding
+    assert broken.finding is not None and "urgency" not in broken.finding
+    assert urgent.finding is not None
+    drop = {"timings": True, "finding": True}
+    assert (
+        plain.model_dump(exclude=drop) == broken.model_dump(exclude=drop) == urgent.model_dump(exclude=drop)
+    )
+
+
 @pytest.mark.falkordb
 def test_falkordb_and_memory_agree_on_the_finding(monkeypatch: pytest.MonkeyPatch) -> None:
     import os
@@ -161,3 +226,29 @@ def test_falkordb_and_memory_agree_on_the_finding(monkeypatch: pytest.MonkeyPatc
         assert [p.route for p in result.opened] == [p.route for p in memory.opened]
     finally:
         falkor.delete(f"{name}__base")
+
+
+@pytest.mark.falkordb
+def test_the_ranking_is_exact_where_falkordbs_own_algorithm_is_a_sampled_estimate() -> None:
+    """Found with FM4: `algo.betweenness` samples source nodes, so its scores change between runs and
+    `role:prod-support` is not always first. `choke_points` must not depend on it."""
+    import os
+
+    from theseus.config import get_settings
+    from theseus.graph.algos import choke_points
+    from theseus.graph.client import get_client
+    from theseus.graph.store import FalkorStore
+
+    name = f"fm4_parity__{os.getpid()}"
+    store = FalkorStore(get_client(get_settings()))
+    base, _ = prepare_state(world(SCENARIO, "base"), "base", deps_for(SCENARIO))
+    state = base.model_copy(update={"name": name})
+    try:
+        store.load(name, state.rows)
+        own = store.betweenness(name)
+        assert {c.id for c in own} == {n.id for n in state.rows.nodes}
+        assert all(c.score >= 0 for c in own)
+        ranked = choke_points(store, state)
+        assert ranked[0].id == "role:prod-support" and ranked == choke_points(store, state)
+    finally:
+        store.delete(name)
