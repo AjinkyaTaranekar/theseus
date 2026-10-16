@@ -278,15 +278,29 @@ def test_empty_ci_world_without_requirements_still_builds() -> None:
         ("unused-grant", "base"),
     ],
 )
-def test_real_empty_ci_keeps_requirements_and_reports_missing_workflow(scenario: str, side: str) -> None:
+def test_real_ci_gives_every_requirement_its_principal(scenario: str, side: str) -> None:
     world, adapters = fixture(side, scenario, ci=GithubAdapter())
     rows = build_rows(world, {}, adapters)
     nodes = {node.id for node in rows.nodes}
     assert sum("Requirement" in node.labels for node in rows.nodes) == 17
-    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 14
+    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 17
     assert len([edge for edge in rows.edges if edge.type == "NEEDS"]) == 17
-    assert WORKFLOW not in nodes
+    assert WORKFLOW in nodes
     assert all(edge.src in nodes and edge.dst in nodes for edge in rows.edges)
+    assert not [message for message in rows.unknowns if "missing FOR endpoint" in message]
+
+
+@pytest.mark.parametrize("scenario,side", [("intern", "base"), ("unused-grant", "base")])
+def test_without_workflow_files_requirements_stay_and_report_the_missing_workflow(
+    scenario: str, side: str
+) -> None:
+    world, adapters = fixture(side, scenario, ci=GithubAdapter())
+    world.ci_files = {}
+    rows = build_rows(world, {}, adapters)
+    nodes = {node.id for node in rows.nodes}
+    assert sum("Requirement" in node.labels for node in rows.nodes) == 17
+    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 14
+    assert WORKFLOW not in nodes
     assert {
         message
         for message in rows.unknowns

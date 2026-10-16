@@ -8,6 +8,7 @@ from typing import Any
 
 from theseus.adapters.aws.access import derive_access_edges
 from theseus.adapters.aws.kinds import MODELED_TYPES, PROVIDER, RESOURCE_KINDS
+from theseus.adapters.aws.oidc import trust_edges
 from theseus.adapters.aws.ops import ops_schema
 from theseus.adapters.aws.resources import structural_rows
 from theseus.contracts.adapters import Change, CiIdentity, IacResource, Locate
@@ -42,15 +43,16 @@ class AwsAdapter:
         self.config = deepcopy(config)
 
     def rows(self, resources: list[IacResource], identities: list[CiIdentity], locate: Locate) -> GraphRows:
-        """Structural and IAM access rows; FM1 adds federated trust for the supplied CI identities."""
+        """Structural and IAM access rows, and TRUSTS edges for the CI identities whose tokens roles admit."""
         rows = structural_rows(resources, self.config, locate)
         access = derive_access_edges(resources, rows.nodes, self.config, locate)
-        unknowns = [*rows.unknowns]
+        trusts, trust_unknowns = trust_edges(resources, identities, locate)
+        unknowns = [*rows.unknowns, *trust_unknowns]
         for edge in access:
             if edge.kind == "unknown":
                 reasons = sorted({ev.note or ev.address for ev in edge.evidence})
                 unknowns.append(f"{edge.type}: {edge.src} -> {edge.dst}: " + "; ".join(reasons))
-        edges = sorted([*rows.edges, *access], key=lambda e: (e.type, e.src, e.dst))
+        edges = sorted([*rows.edges, *access, *trusts], key=lambda e: (e.type, e.src, e.dst))
         return GraphRows(
             nodes=rows.nodes,
             edges=[e.model_copy(update={"eid": f"e{i}"}) for i, e in enumerate(edges, 1)],

@@ -143,7 +143,7 @@ caller needs no permission from it, so a condition on it makes the edge unknown,
 | `UNLOCKS` | From a secret to `db:<tag value>` when the secret has tag `db_instance` and that database exists. Grants read and write. Kind inferred |
 | `RUNS_AS` | From `workload:<function name>` to the role named by `aws_lambda_function.role` (ARN or name). From `workload:<ECS service name>` to the role named by `task_role_arn` of the `aws_ecs_task_definition` whose `family` the service's `task_definition` names (`family` or `family:revision`). An ECS `execution_role_arn` is never a workload's identity |
 | `USES` | One per `uses: owner/repo@version` line in a workflow, to `action:owner/repo` |
-| `TRUSTS` | Only for workflows with `id-token: write` (top-level, job-level, or `write-all`). For each OIDC trust statement on each role, test every `sub` the workflow can present. `yes` or `yes-any-repo` makes a configured edge; `unknown` an unknown edge |
+| `TRUSTS` | Only for workflows with `id-token: write` (top-level, job-level, or `write-all`). For each OIDC trust statement on each role, test every `sub` the workflow can present. `yes` or `yes-any-repo` makes a configured edge; `unknown` an unknown edge. The evidence is the trust statement that admits the token, with a note naming the workflow and the `sub` it presents |
 | `CALLS`, `REQUESTS`, `HAS_ENV` | From service code, section 7 |
 | `FOR`, `NEEDS` | One requirement node per requirement, from `theseus.yaml` and from the PR's intent |
 
