@@ -17,10 +17,12 @@ from typing import Annotated, Any
 
 from falkordb import FalkorDB
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from theseus.agent.labels import LABELS, labels_for
 from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
+from theseus.api import reviews
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
@@ -115,6 +117,17 @@ def get_review(request: Request) -> Review:
 ReviewDep = Annotated[Review, Depends(get_review)]
 
 
+def get_store(request: Request) -> reviews.ReviewStore:
+    """The store the graphs live in, for each review's page; `api/app.py` sets it at startup."""
+    store = getattr(request.app.state, "store", None)
+    if store is None:
+        raise HTTPException(503, "the graph store is not ready")
+    return store
+
+
+StoreDep = Annotated[reviews.ReviewStore, Depends(get_store)]
+
+
 def get_falkordb_version(request: Request) -> str | None:
     """The version of the FalkorDB the graphs are built in, for the comment; None for a stand-in or when the
     server will not say."""
@@ -182,6 +195,7 @@ def analyze(
     settings: SettingsDep,
     gh: GitHubDep,
     review: ReviewDep,
+    store: StoreDep,
     falkordb: FalkorVersionDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
@@ -214,8 +228,9 @@ def analyze(
                 f"{reason}\n\nThe merge stays blocked until a review finishes. {RETRY}",
             )
             raise HTTPException(500, f"the review could not finish: {e}") from e
+        url = reviews.page_url(settings, req.repo, req.pr_number)
         comment = render_comment(
-            result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb
+            result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb, url
         )
         status = verdict(result)
         notes = annotations(result, settings.theseus_world_root)
@@ -223,6 +238,9 @@ def analyze(
             req.repo, req.head_sha, status.conclusion, status.title, card(comment), annotations=notes
         )
         if pr["head"]["sha"] == req.head_sha:
+            # The page is kept first, so its link works the moment the comment shows it.
+            shas = ((pr.get("base") or {}).get("sha") or "", req.head_sha)
+            reviews.save(store, req.repo, req.pr_number, shas, settings.theseus_world_root, result)
             gh.upsert_comment(req.repo, req.pr_number, comment)
             gh.set_labels(req.repo, req.pr_number, labels_for(result), LABELS)
         else:
@@ -269,6 +287,51 @@ def review_failed(
         log.error("%s@%s: %s", req.repo, req.head_sha[:7], e)
         raise HTTPException(502, str(e)) from e
     return Response(status_code=204)
+
+
+# Each review's page -----------------------------------------------------------------------------------------
+
+PAGE = Path(__file__).resolve().parents[1] / "web" / "review.html"
+
+
+def _reviewed(settings: Settings, gh: GitHub, owner: str, name: str, number: int, k: str | None) -> str:
+    """The repo, when the link is signed for it and it is one Theseus acts on; a 404 otherwise, so a wrong
+    link says nothing about what exists."""
+    repo = f"{owner}/{name}"
+    if not gh.allowed(repo) or not reviews.signed(settings, repo, number, k):
+        raise HTTPException(404, "no such review")
+    return repo
+
+
+@router.get("/reviews/{owner}/{name}/{number}", response_class=HTMLResponse)
+def review_page(
+    owner: str, name: str, number: int, settings: SettingsDep, gh: GitHubDep, k: str | None = None
+) -> HTMLResponse:
+    """The page that draws a review's graphs; it reads them from `.../data` with the same signed link."""
+    _reviewed(settings, gh, owner, name, number, k)
+    return HTMLResponse(PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/reviews/{owner}/{name}/{number}/data")
+def review_data(
+    owner: str,
+    name: str,
+    number: int,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+) -> dict[str, Any]:
+    """The PR's newest review and both its graphs, read from the store now."""
+    repo = _reviewed(settings, gh, owner, name, number, k)
+    try:
+        data = reviews.page_data(store, repo, number)
+    except GraphError as e:
+        log.error("%s#%d: cannot read the review: %s", repo, number, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if data is None:
+        raise HTTPException(404, "no such review")
+    return data
 
 
 @router.post("/finding", response_model=AnalysisResult)

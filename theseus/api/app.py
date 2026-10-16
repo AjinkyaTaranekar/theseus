@@ -106,9 +106,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         if settings.theseus_mode != "replay":
             load_client()
         llm = Llm(settings)
-        app.state.review = build_review(
-            FalkorStore(app.state.falkordb), llm, Jev(settings, llm=llm), settings
-        )
+        app.state.store = FalkorStore(app.state.falkordb)
+        app.state.review = build_review(app.state.store, llm, Jev(settings, llm=llm), settings)
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

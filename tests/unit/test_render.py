@@ -885,3 +885,12 @@ def test_every_fixture_renders(expected: Path) -> None:
     comment = render(result_from_expected(json.loads(expected.read_text(encoding="utf-8"))))
     assert comment.startswith(MARKER) and len(comment) < MAX_CHARS
     matches_snapshot(f"fixture-{expected.parent.name}", comment)
+
+
+def test_the_card_links_to_the_review_page_and_never_prints_an_unsafe_link() -> None:
+    url = "https://guest-box.example.ts.net/reviews/owner/theseus/42?k=0123abcd"
+    comment = render_comment(intern(), REPO, SHA, CHECKOV, graph_url=url)
+    assert f"**[Open the graph Theseus checked →]({url})**" in card(comment)
+    for bad in ("javascript:alert(1)", "https://x.example/a)(b", "http://x.example/r"):
+        assert "Open the graph" not in render_comment(intern(), REPO, SHA, CHECKOV, graph_url=bad)
+    assert "Open the graph" not in render(intern())

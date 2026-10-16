@@ -246,6 +246,8 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 | `POST /review-failed` | `{repo, head_sha, run_url}` | `204` | From `Theseus publish` when the Theseus workflow failed: fails the commit's `Theseus` check with a link to the run, unless a verdict is already there (`07-github-and-deploy.md`, "When Theseus reviews") |
 | `POST /apply` | `{repo, pr_number, candidate_id, requested_by}` | `{commit_sha}` | Commits the candidate's `.tf` edits to the PR branch. Refuses any file outside the world root |
 | `POST /webhooks/github` | GitHub payload | `204` | From a user with write access, `issue_comment` with `/theseus apply <ID>` calls apply and `/theseus review` re-runs the review; `check_run` `rerequested` re-runs the review; a `pull_request` that changes nothing under the world root gets a `success` check; `pull_request` closed deletes graphs; `push` to `main` runs a scan (`07-github-and-deploy.md`, "When Theseus reviews") |
+| `GET /reviews/{owner}/{repo}/{number}?k=` | | the review page | A 404 unless `k` is the PR's signature (`07-github-and-deploy.md`, "The review page") |
+| `GET /reviews/{owner}/{repo}/{number}/data?k=` | | `{repo, number, base_sha, head_sha, world_root, verdict, result, graphs: {head, base}}` | The PR's newest result and both graphs, read from the store now; each graph as `{name, nodes, edges}` |
 | `GET /graphs` | | graph names | For the "under the hood" shot |
 | `GET /` and `POST /try/{preset}` | | the Try-it page; an `AnalysisResult` | Runs the live engine on a fixture, with the LLM replayed |
 

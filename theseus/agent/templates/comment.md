@@ -23,6 +23,10 @@
 <sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
 
 {% endif %}
+{% if graph_url %}
+**[Open the graph Theseus checked →]({{ graph_url }})**
+
+{% endif %}
 {% if opened %}
 <details>
 <summary><b>The path, step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, with links to each line)</summary>
