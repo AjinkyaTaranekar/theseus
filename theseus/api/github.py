@@ -27,6 +27,9 @@ log = logging.getLogger(__name__)
 
 API = "https://api.github.com"
 CHECK_NAME = "Theseus"
+# A check run's external_id says which of our two writers set it: a review's verdict, or the pass for a PR
+# that changes nothing under the world root. Only the second may be withdrawn.
+REVIEW, NOTHING_CHANGED = "review", "nothing-changed"
 WORKFLOW = "theseus.yml"
 # `maintain` reports permission "write", so these two cover admin, maintain and write.
 WRITE = frozenset({"admin", "write"})
@@ -208,21 +211,28 @@ class GitHub:
         log.info("%s#%d: created comment %s", repo, number, created["id"])
         return int(created["id"])
 
-    def upsert_check(self, repo: str, head_sha: str, conclusion: str, title: str, summary: str) -> int:
-        """Completes the App's `Theseus` check run on the commit, creating it if there is none. Returns its
-        ID."""
-        self._require(repo)
-        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
-        done = {"status": "completed", "conclusion": conclusion, "output": output}
+    def latest_check(self, repo: str, head_sha: str) -> dict[str, Any] | None:
+        """The App's newest `Theseus` check run on the commit, the one a required check reads, or None."""
         found = self._repo(
             repo,
             "GET",
             f"/commits/{head_sha}/check-runs",
-            params={"check_name": CHECK_NAME, "app_id": self.app_id, "filter": "latest"},
+            params={"check_name": CHECK_NAME, "app_id": self.app_id, "filter": "all"},
         ).json()
         runs = found.get("check_runs") or []
-        if runs:
-            cid = int(runs[0]["id"])
+        return max(runs, key=lambda r: int(r["id"])) if runs else None
+
+    def upsert_check(
+        self, repo: str, head_sha: str, conclusion: str, title: str, summary: str, *, source: str = REVIEW
+    ) -> int:
+        """Completes the App's newest `Theseus` check run on the commit, creating it if there is none. Returns
+        its ID. `source` is REVIEW for a review's verdict, NOTHING_CHANGED for the pass that needs none."""
+        self._require(repo)
+        output = {"title": title[:TITLE_MAX], "summary": summary[:SUMMARY_MAX]}
+        done = {"status": "completed", "conclusion": conclusion, "output": output, "external_id": source}
+        latest = self.latest_check(repo, head_sha)
+        if latest is not None:
+            cid = int(latest["id"])
             self._repo(repo, "PATCH", f"/check-runs/{cid}", json=done)
         else:
             cid = int(
@@ -232,6 +242,50 @@ class GitHub:
             )
         log.info("%s@%s: check %s is %s", repo, head_sha[:7], cid, conclusion)
         return cid
+
+    def withdraw_pass(self, repo: str, head_sha: str, number: int) -> bool:
+        """When the commit's newest check is the pass for a PR that changes nothing under the world root, and
+        PR `number` (same head, another base) does change it, posts a new in-progress check so the required
+        check waits for that review. It stays pending, never green, until a review completes it. Returns
+        whether it withdrew one."""
+        self._require(repo)
+        latest = self.latest_check(repo, head_sha)
+        if latest is None:
+            return False
+        title = (latest.get("output") or {}).get("title") or ""
+        if (
+            latest.get("external_id") != NOTHING_CHANGED
+            and title != f"Nothing under {self.world_root} changed"
+        ):
+            return False
+        if latest.get("status") != "completed" or latest.get("conclusion") != "success":
+            return False
+        output = {
+            "title": "Review pending",
+            "summary": f"#{number} changes `{self.world_root}/` at this commit, so the earlier pass for a "
+            "pull request that changed nothing there no longer counts. Theseus reviews it next.",
+        }
+        created = self._repo(
+            repo,
+            "POST",
+            "/check-runs",
+            json={
+                "name": CHECK_NAME,
+                "head_sha": head_sha,
+                "status": "in_progress",
+                "external_id": REVIEW,
+                "output": output,
+            },
+        ).json()
+        log.info(
+            "%s@%s: withdrew pass %s for #%d; check %s pending",
+            repo,
+            head_sha[:7],
+            latest["id"],
+            number,
+            created["id"],
+        )
+        return True
 
     # Re-running a review ----------------------------------------------------------------------------------
 

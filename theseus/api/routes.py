@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from theseus.agent.render import MARKER, render_comment, verdict
-from theseus.api.github import CHECK_NAME, GitHub
+from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.result import AnalysisResult
@@ -173,7 +173,8 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
 
     A check belongs to a commit, not a PR, and two PRs can share a head while targeting different bases. So
     the check passes only when no open PR with this head changes the world root: a second PR never replaces
-    the first one's review with a pass."""
+    the first one's review with a pass. And when one does, a pass already on the commit is withdrawn, so the
+    required check waits for that review instead of staying green."""
     for pr in sorted({number, *gh.open_pulls_at(repo, head_sha)}):
         if gh.touches_world_root(repo, pr):
             if pr != number:
@@ -185,6 +186,7 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
                     pr,
                     gh.world_root,
                 )
+            gh.withdraw_pass(repo, head_sha, pr)
             return False
     root = gh.world_root
     gh.upsert_check(
@@ -193,6 +195,7 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
         "success",
         f"Nothing under {root} changed",
         f"This pull request changes no file under `{root}/`, so there is nothing for Theseus to review.",
+        source=NOTHING_CHANGED,
     )
     return True
 

@@ -438,6 +438,54 @@ def test_a_pr_sharing_its_head_never_passes_a_failing_review(client: TestClient,
     assert [(c["id"], c["conclusion"]) for c in fake.checks] == [(500, "failure")]
 
 
+def test_a_pass_is_withdrawn_when_a_pr_with_its_head_needs_a_review(
+    client: TestClient, fake: FakeGitHub
+) -> None:
+    """PR 7 changes nothing under the world root and gets its pass. PR 8 then opens the same head against a
+    base where the world root differs. The pass must not stand for PR 8: the newest check goes back to in
+    progress until a review completes it, so a review that never finishes never reads as green."""
+    fake.files = ["README.md"]
+    assert webhook(client, "pull_request", pull_request()).status_code == 204
+    [passed] = fake.checks
+    assert (passed["conclusion"], passed["external_id"]) == ("success", "nothing-changed")
+
+    fake.files_8 = ["demo-infra/terraform/people.tf"]
+    fake.open_prs.append({"number": 8, "head": {"sha": HEAD}})
+    event = {**pull_request(), "number": 8, "pull_request": {"number": 8, "head": {"sha": HEAD}}}
+    assert webhook(client, "pull_request", event).status_code == 204
+    newest = max(fake.checks, key=lambda c: c["id"])
+    assert (newest["status"], newest.get("conclusion")) == ("in_progress", None)
+    assert newest["output"]["title"] == "Review pending" and "#8" in newest["output"]["summary"]
+
+    # Another event for PR 7 does not bring the pass back while PR 8 needs its review.
+    assert webhook(client, "pull_request", pull_request("synchronize")).status_code == 204
+    assert max(fake.checks, key=lambda c: c["id"])["status"] == "in_progress" and len(fake.checks) == 2
+
+    # The review completes that same pending check with its verdict.
+    assert analyze(client).status_code == 200
+    assert len(fake.checks) == 2
+    done = max(fake.checks, key=lambda c: c["id"])
+    assert (done["status"], done["external_id"]) == ("completed", "review")
+
+
+def test_a_review_s_verdict_is_never_withdrawn(client: TestClient, fake: FakeGitHub) -> None:
+    fake.files, fake.files_8 = ["README.md"], ["demo-infra/terraform/people.tf"]
+    fake.open_prs.append({"number": 8, "head": {"sha": HEAD}})
+    fake.checks.append(
+        {
+            "id": 500,
+            "name": "Theseus",
+            "head_sha": HEAD,
+            "status": "completed",
+            "conclusion": "success",
+            "external_id": "review",
+            "output": {"title": "No dangerous path opened"},
+        }
+    )
+    assert webhook(client, "pull_request", pull_request()).status_code == 204
+    assert [(c["id"], c["conclusion"]) for c in fake.checks] == [(500, "success")]
+
+
 def test_a_pr_alone_on_its_head_still_gets_its_pass(client: TestClient, fake: FakeGitHub) -> None:
     fake.files = ["README.md"]
     fake.files_8 = ["docs/x.md"]
