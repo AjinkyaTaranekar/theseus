@@ -336,7 +336,7 @@ One log group per workload, 365 days' retention, CloudWatch's default encryption
 | `aws_cloudwatch_log_group.orders_api` | `/ecs/orders-api` | |
 | `aws_cloudwatch_log_group.orders_worker` | `/ecs/orders-worker` | |
 
-68 modeled resources across `people.tf` to `logs.tf`.
+70 modeled resources across `people.tf` to `logs.tf`.
 
 ## Terraform that Theseus skips (task C1)
 
@@ -349,7 +349,7 @@ These make the account look real. The importer skips every type it does not mode
 | `network.tf` | `aws_vpc.main`; `aws_default_security_group.main` with no rules, so nothing can use it; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_egress_rule.app_https` (443 out from the app group); `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
 | `platform.tf` | `aws_kms_key.queues` (rotation on; its policy lets the orders task roles use it through SQS) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
 
-In total the world has 120 resources across 16 AWS services (counting the VPC types as EC2): 68 modeled and 52
+In total the world has 122 resources across 16 AWS services (counting the VPC types as EC2): 70 modeled and 52
 skipped.
 
 ## Services (task C1)
