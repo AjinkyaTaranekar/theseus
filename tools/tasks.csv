@@ -22,7 +22,7 @@
 "FM1","Beat 1","Finding mode","CI in the graph: workflows and OIDC trust","Workflow importer with per-job OIDC subs, and OIDC trust matching into TRUSTS edges","F4, E2","`preview.yml` has `id_token` true and `subs` `[repo:demo-org/docs-site:pull_request]`","M"
 "C1","Beat 1","Code-aware","Demo backend: service code and platform resources","The six services as real-looking code, network.tf and platform.tf, and the code-pr scenario","F4","Every resource name in the code comes from an environment variable","L"
 "G1","Beat 1","Gate","Gate 1: Beat 1 live","Run the intern PR end to end on a fresh demo/ branch and record a backup clip","A5","The live comment shows three opened paths and says versus grants; the clip is saved","S"
-"E4","Beat 2","Engine","Minimum cut with MaxFlow","Capacities, algo.maxFlow, the cut from the residual graph, an Edmonds-Karp fallback","E3","Intern max flow is 1,000,000; the Action's is 1, with the right cut edge","M"
+"E4","Beat 2","Engine","Minimum cut with MaxFlow","Capacities, algo.maxFlow, the cut from the residual graph, an Edmonds-Karp fallback","E3, A3","Intern max flow is 1,000,000; the Action's is 1, with the right cut edge","M"
 "E5","Beat 2","Engine","Simulator on GRAPH.COPY","Patch ops, GRAPH.COPY plus the row delta, re-analysis, verdicts","E3","Each candidate gets a verdict","M"
 "E6","Beat 2","Engine","Rule-based fixes and ranking","Rule candidates A, C, D and S, and the fixed ranking","E5","For the intern: A fails, C is UNKNOWN, D fails","M"
 "E9","Beat 2","Engine","Terraform patch renderer","Patch ops as .tf edits that parse, for apply and containment","F2, F4","Every op renders and the result parses","M"

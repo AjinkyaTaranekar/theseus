@@ -91,7 +91,7 @@ flowchart TD
   E2 --> FM1
   F4 --> C1
   A5 --> G1
-  E3 --> E4
+  A3 --> E4
   E3 ==> E5
   E5 ==> E6
   F2 --> E9
