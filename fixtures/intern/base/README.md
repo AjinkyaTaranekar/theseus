@@ -91,6 +91,33 @@ C1 adds service implementations and platform/network infrastructure, then adds `
 The merged IAM catalog models queues, topics and log groups; their labels and requirements must be settled
 before F5 freezes the C1 outcomes. Until then, the six service folders are empty packages and unused-grant has infrastructure inputs only. The code-based conclusion belongs to C1/C2/C3. F5 is human work: write and review `expected.json` after reviewing the final source lines. The generator never reads or writes that file.
 
+## Operational settings and review handoff
+
+Lambdas reserve 10 concurrent executions each and use the two literal private subnet IDs from spec 02 plus
+`sg-0a1b2c3d4e5f60001`, the synthetic ID for C1's `demo-app` security group. Billing/data owners inspect failed
+nightly batch logs and rerun the jobs; a separate DLQ and send grant are deferred to preserve the existing IAM
+graph. Request-driven functions return failures synchronously. These settings represent the fictional existing
+account; the literal IDs are not outputs from a new deployment.
+
+The existing resources enable active Lambda tracing, database deletion protection, Multi-AZ, IAM database
+authentication, automatic minor upgrades, snapshot tag copying, Performance Insights and Postgres log exports.
+Containers use read-only root filesystems and the cluster enables Container Insights. Each Checkov exception
+explains an accepted operational tradeoff inside its resource; IAM statements, trust conditions, resource names,
+workload environments and code-path tags retain the access graph defined in spec 02.
+
+C1 (#22, PR #64) supplies the network, `demo-postgres16` query-logging parameter group, and bucket versioning,
+SSE-S3 encryption, lifecycle rules, notifications and public-access blocks. Its public-bucket scenario disables
+the two policy-blocking flags before adding `PublicRead`. Checkov's acceptance target is zero failures with C1
+combined, so those missing bucket settings remain visible on this branch rather than receiving exceptions.
+
+The compromised-action advisory describes a fictional incident and fictional affected/patched versions. Its
+text reads as an advisory; `scenario.yaml` and this README retain the synthetic disclaimer. Nothing describes
+an actual compromise of an Action or an actual company's infrastructure.
+
+These changes move Terraform and workflow source lines. Regenerate every fixture before F5 writes its cites;
+humans must review any existing answer-key citations against the regenerated sources. The separate
+`theseus_code_path` tag/mapping decision in #63 still needs both humans' agreement.
+
 ## Scope of the model
 
 Theseus models data access in the supported IAM subset. It does not model privilege escalation through IAM writes (including terraform-apply's `iam:*`), network controls, resource policies other than S3 bucket policies, KMS key policies, permission boundaries, or SCPs. Bucket encryption settings and other platform resources belong to C1. The literal references make this world plan without an account; they are not a deployable stack.

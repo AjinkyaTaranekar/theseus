@@ -243,13 +243,13 @@ modeled (see "What the world leaves out").
 | Address | Name | What it says |
 | --- | --- | --- |
 | `aws_s3_bucket.app_logs` | `demo-app-logs` | |
-| `aws_s3_bucket.company_files` | `demo-company-files` | Prefixes `invoices/` and `public/`. Its public access block (`platform.tf`) is on: marketing's files under `public/` reach the website through its CDN. The `public-bucket` PR turns it partly off |
+| `aws_s3_bucket.company_files` | `demo-company-files` | Prefixes `invoices/` and `public/`. C1 blocks public access in `platform.tf`; the public-bucket scenario explicitly relaxes that block |
 | `aws_s3_bucket.data_lake` | `demo-data-lake` | Prefixes `raw/` and `curated/` |
 | `aws_s3_bucket.terraform_state` | `demo-terraform-state` | Holds this stack's state (the demo itself plans with local state) |
-| `aws_secretsmanager_secret.prod_db` | `prod-db-credentials` | Tag `db_instance = "customer-db"` |
-| `aws_secretsmanager_secret.payments` | `payments-api-key` | No `db_instance` tag |
-| `aws_db_instance.customer` | `customer-db` | Postgres 16, `db.t4g.micro`, `manage_master_user_password = true` (the master password never appears in Terraform), `db_subnet_group_name = "demo-db-subnets"`, `storage_encrypted = true` |
-| `aws_dynamodb_table.orders` | `demo-orders` | Hash key `order_id`; global secondary index `by_status` (`status`, `created_at`); `PAY_PER_REQUEST`; point-in-time recovery on |
+| `aws_secretsmanager_secret.prod_db` | `prod-db-credentials` | Tag `db_instance = "customer-db"`; AWS-managed encryption key; billing rotates the application credential with its database cutover runbook |
+| `aws_secretsmanager_secret.payments` | `payments-api-key` | No `db_instance` tag; AWS-managed encryption key; finance rotates the key with the external payment provider |
+| `aws_db_instance.customer` | `customer-db` | Postgres 16, `db.t4g.micro`, `manage_master_user_password = true` (the master password never appears in Terraform), `db_subnet_group_name = "demo-db-subnets"`, `storage_encrypted = true`; deletion protection, Multi-AZ, IAM authentication, automatic minor upgrades, snapshot tag copying and Performance Insights enabled; export `postgresql` logs; literal `parameter_group_name = "demo-postgres16"` (C1 configures DDL and slow-query logging) |
+| `aws_dynamodb_table.orders` | `demo-orders` | Hash key `order_id`; global secondary index `by_status` (`status`, `created_at`); `PAY_PER_REQUEST`; point-in-time recovery on; AWS-owned encryption key |
 
 ### `services.tf`
 
@@ -257,6 +257,23 @@ Every function: runtime `python3.12`, `s3_bucket = "demo-artifacts"`, `s3_key = 
 needs no local zip), handler `handler.handler`, tag `theseus_code_path = "services/<folder>"`, and an attachment
 of the AWS-managed `AWSLambdaBasicExecutionRole` to its role (logs only, no modeled action). Every role trusts
 the service `lambda.amazonaws.com`.
+
+Functions enable active X-Ray tracing and reserve 10 concurrent executions each. Their VPC config uses the
+literal private subnet IDs `subnet-0a1b2c3d4e5f60001` and `subnet-0a1b2c3d4e5f60002`, and
+`sg-0a1b2c3d4e5f60001` as the synthetic ID for C1's `aws_security_group.app` (`demo-app`). These literal IDs
+represent resources in the fictional existing account; a real new deployment would have computed IDs.
+Billing/data owners inspect failed nightly batch logs and rerun the jobs; a separate DLQ and send grant are
+deferred. Request-driven functions return synchronous failures to the caller. These are documented Checkov
+exceptions, keeping the review's prohibition on IAM changes.
+
+Operational hardening never changes an IAM statement, trust condition,
+resource name, environment variable or `theseus_code_path` tag. Exceptions inside each resource explain accepted
+checks: names-only Lambda environment values, CI-validated artifacts, synchronous request failures, IAM users
+awaiting SSO, account trust constrained by identity policies, the production-only Terraform apply role,
+AWS-managed or AWS-owned encryption keys, manual secret rotation, and single-region buckets using SSE-S3 and
+central CloudTrail data events. C1 owns the separate bucket settings. Database query logging is configured in
+`demo-postgres16`; the literal name requires a Checkov graph-check exception. Performance Insights is used
+instead of enhanced monitoring, which would add an IAM role.
 
 | Address | Name | What it says |
 | --- | --- | --- |
@@ -279,14 +296,14 @@ The four `aws_iam_role_policy_attachment.<name>_logs` resources sit next to thei
 
 | Address | Name | What it says |
 | --- | --- | --- |
-| `aws_ecs_cluster.apps` | `demo-apps` | Not modeled; skipped and counted |
+| `aws_ecs_cluster.apps` | `demo-apps` | Container Insights enabled. Not modeled; skipped and counted |
 | `aws_iam_role.ecs_task_execution` | `ecs-task-execution` | Trust: service `ecs-tasks.amazonaws.com`. Pulls images and writes logs; never a workload's identity |
 | `aws_iam_role_policy_attachment.ecs_task_execution` | | AWS-managed `AmazonECSTaskExecutionRolePolicy` (no modeled action) |
 | `aws_iam_role.orders_api_task` | `orders-api-task` | Trust: service `ecs-tasks.amazonaws.com` |
 | `aws_iam_role_policy_attachment.orders_api_table` | | `orders-api-task` gets `policy/orders-table-rw` |
 | `aws_iam_role.orders_worker_task` | `orders-worker-task` | Trust: service `ecs-tasks.amazonaws.com` |
 | `aws_iam_role_policy_attachment.orders_worker_table` | | `orders-worker-task` gets `policy/orders-table-rw` |
-| `aws_ecs_task_definition.orders_api` | family `orders-api` | Fargate, 256 CPU, 512 MB. `task_role_arn = role/orders-api-task`, `execution_role_arn = role/ecs-task-execution`. One container `orders-api`, image `111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1`, env `ORDERS_TABLE = "demo-orders"`, `ORDER_EVENTS_QUEUE_URL = "https://sqs.eu-west-1.amazonaws.com/111122223333/order-events"`, `BILLING_API_URL = "https://billing-api.internal.demo.test"` |
+| `aws_ecs_task_definition.orders_api` | family `orders-api` | Fargate, 256 CPU, 512 MB; read-only container root filesystem. `task_role_arn = role/orders-api-task`, `execution_role_arn = role/ecs-task-execution`. One container `orders-api`, image `111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1`, env `ORDERS_TABLE = "demo-orders"`, `ORDER_EVENTS_QUEUE_URL = "https://sqs.eu-west-1.amazonaws.com/111122223333/order-events"`, `BILLING_API_URL = "https://billing-api.internal.demo.test"` |
 | `aws_ecs_task_definition.orders_worker` | family `orders-worker` | As above with `role/orders-worker-task`, image `orders-worker:2.3.1`, env `ORDERS_TABLE`, `ORDER_EVENTS_QUEUE_URL` |
 | `aws_ecs_service.orders_api` | `orders-api` | `cluster = arn:aws:ecs:eu-west-1:111122223333:cluster/demo-apps`, `task_definition = "orders-api"`, Fargate, desired count 2, literal subnet IDs `subnet-0a1b2c3d4e5f60001` and `...60002`, tag `theseus_code_path = "services/orders_api"` |
 | `aws_ecs_service.orders_worker` | `orders-worker` | As above, `task_definition = "orders-worker"`, desired count 1, tag `services/orders_worker` |
@@ -488,6 +505,11 @@ from `demo-infra/` plus the change below. Humans write `expected.json` from thes
   `public/*`) passes and is recommended. B (the LLM) is expected to pass with the same shape.
 
 ### `compromised-action` (finding mode; Beat 3)
+
+The advisory text reads like a GHSA: summary, critical severity, affected versions v1/v2/v3, patched version
+v4, runner-memory and secret disclosure through build logs, and upgrade/rotation guidance. It describes the
+fictional Action only. The synthetic disclaimer lives in `scenario.yaml`'s description and the demo README,
+not in the advisory text. The existing advisory fields and affected-version matching stay unchanged.
 
 - **Input:** `advisory.json`: ID `GHSA-demo-0001`, action `demo-thirdparty/file-diff`, affected versions
   `v1`, `v2`, `v3`. Modeled on the tj-actions compromise (CVE-2025-30066). Its text is untrusted.
