@@ -1052,6 +1052,40 @@
           "type": "aws_iam_role_policy"
         },
         {
+          "address": "aws_iam_role_policy.orders_api_events",
+          "expressions": {
+            "name": {
+              "constant_value": "orders-api-events"
+            },
+            "policy": {},
+            "role": {
+              "constant_value": "orders-api-task"
+            }
+          },
+          "mode": "managed",
+          "name": "orders_api_events",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role_policy"
+        },
+        {
+          "address": "aws_iam_role_policy.orders_worker_events",
+          "expressions": {
+            "name": {
+              "constant_value": "orders-worker-events"
+            },
+            "policy": {},
+            "role": {
+              "constant_value": "orders-worker-task"
+            }
+          },
+          "mode": "managed",
+          "name": "orders_worker_events",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role_policy"
+        },
+        {
           "address": "aws_iam_role_policy.prod_support_read",
           "expressions": {
             "name": {
@@ -4604,7 +4638,7 @@
           "type": "aws_iam_role_policy",
           "values": {
             "name": "billing-job",
-            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"WriteInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"},{\"Action\":\"dynamodb:Query\",\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\"],\"Sid\":\"ReadOrders\"}]}",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"WriteInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"},{\"Action\":\"dynamodb:Query\",\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\"],\"Sid\":\"ReadOrders\"},{\"Action\":\"sns:Publish\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sns:eu-west-1:111122223333:invoice-created\",\"Sid\":\"AnnounceInvoices\"}]}",
             "role": "billing-job"
           }
         },
@@ -4626,6 +4660,46 @@
             "name": "github-deploy",
             "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/public/*\",\"Sid\":\"PublishSite\"},{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/prod-support\",\"Sid\":\"AssumeProdSupportForMigrations\"}]}",
             "role": "github-deploy"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.orders_api_events",
+          "identity": {
+            "account_id": null,
+            "name": null,
+            "role": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "orders_api_events",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_role_policy",
+          "values": {
+            "name": "orders-api-events",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:eu-west-1:111122223333:order-events\",\"Sid\":\"SendOrderEvents\"}]}",
+            "role": "orders-api-task"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.orders_worker_events",
+          "identity": {
+            "account_id": null,
+            "name": null,
+            "role": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "orders_worker_events",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_role_policy",
+          "values": {
+            "name": "orders-worker-events",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:eu-west-1:111122223333:order-events\",\"Sid\":\"ConsumeOrderEvents\"}]}",
+            "role": "orders-worker-task"
           }
         },
         {
@@ -5079,7 +5153,7 @@
             "enable_key_rotation": true,
             "is_enabled": true,
             "key_usage": "ENCRYPT_DECRYPT",
-            "policy": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Resource\":\"*\",\"Sid\":\"AccountAdministers\"}],\"Version\":\"2012-10-17\"}",
+            "policy": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Resource\":\"*\",\"Sid\":\"AccountAdministers\"},{\"Action\":[\"kms:GenerateDataKey\",\"kms:Decrypt\"],\"Condition\":{\"StringEquals\":{\"kms:ViaService\":\"sqs.eu-west-1.amazonaws.com\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"arn:aws:iam::111122223333:role/orders-api-task\",\"arn:aws:iam::111122223333:role/orders-worker-task\"]},\"Resource\":\"*\",\"Sid\":\"OrdersTasksUseKeyThroughSqs\"}],\"Version\":\"2012-10-17\"}",
             "region": "eu-west-1",
             "tags": null,
             "tags_all": {
@@ -7327,87 +7401,15 @@
   "relevant_attributes": [
     {
       "attribute": [
-        "name"
-      ],
-      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
-    },
-    {
-      "attribute": [
-        "name"
-      ],
-      "resource": "aws_cloudwatch_event_rule.billing_nightly"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.private_a"
-    },
-    {
-      "attribute": [
         "arn"
       ],
       "resource": "aws_cloudwatch_event_rule.billing_nightly"
     },
     {
       "attribute": [
-        "key_id"
+        "name"
       ],
-      "resource": "aws_kms_key.queues"
-    },
-    {
-      "attribute": [
-        "arn"
-      ],
-      "resource": "aws_lambda_function.billing_job"
-    },
-    {
-      "attribute": [
-        "bucket"
-      ],
-      "resource": "aws_s3_bucket.data_lake"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_security_group.app"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.public_a"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_internet_gateway.main"
-    },
-    {
-      "attribute": [
-        "function_name"
-      ],
-      "resource": "aws_lambda_function.analytics_export"
-    },
-    {
-      "attribute": [
-        "arn"
-      ],
-      "resource": "aws_lambda_function.analytics_export"
-    },
-    {
-      "attribute": [
-        "zone_id"
-      ],
-      "resource": "aws_route53_zone.internal"
-    },
-    {
-      "attribute": [
-        "function_name"
-      ],
-      "resource": "aws_lambda_function.billing_job"
+      "resource": "aws_cloudwatch_event_rule.billing_nightly"
     },
     {
       "attribute": [
@@ -7419,37 +7421,19 @@
       "attribute": [
         "arn"
       ],
-      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+      "resource": "aws_lambda_function.analytics_export"
     },
     {
       "attribute": [
         "bucket"
       ],
-      "resource": "aws_s3_bucket.app_logs"
+      "resource": "aws_s3_bucket.data_lake"
     },
     {
       "attribute": [
-        "id"
+        "arn"
       ],
-      "resource": "aws_vpc.main"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_route_table.public"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_security_group.db"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.private_b"
+      "resource": "aws_lambda_function.billing_job"
     },
     {
       "attribute": [
@@ -7461,7 +7445,97 @@
       "attribute": [
         "id"
       ],
+      "resource": "aws_security_group.db"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_subnet.public_a"
+    },
+    {
+      "attribute": [
+        "function_name"
+      ],
+      "resource": "aws_lambda_function.analytics_export"
+    },
+    {
+      "attribute": [
+        "function_name"
+      ],
+      "resource": "aws_lambda_function.billing_job"
+    },
+    {
+      "attribute": [
+        "bucket"
+      ],
+      "resource": "aws_s3_bucket.app_logs"
+    },
+    {
+      "attribute": [
+        "arn"
+      ],
+      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+    },
+    {
+      "attribute": [
+        "key_id"
+      ],
+      "resource": "aws_kms_key.queues"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_route_table.public"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_subnet.private_b"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_security_group.app"
+    },
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+    },
+    {
+      "attribute": [
+        "zone_id"
+      ],
+      "resource": "aws_route53_zone.internal"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_internet_gateway.main"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_subnet.private_a"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
       "resource": "aws_subnet.public_b"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_vpc.main"
     }
   ],
   "resource_changes": [
@@ -9922,7 +9996,7 @@
         ],
         "after": {
           "name": "billing-job",
-          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"WriteInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"},{\"Action\":\"dynamodb:Query\",\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\"],\"Sid\":\"ReadOrders\"}]}",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"WriteInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"},{\"Action\":\"dynamodb:Query\",\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\"],\"Sid\":\"ReadOrders\"},{\"Action\":\"sns:Publish\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sns:eu-west-1:111122223333:invoice-created\",\"Sid\":\"AnnounceInvoices\"}]}",
           "role": "billing-job"
         },
         "after_identity": {
@@ -9969,6 +10043,64 @@
       },
       "mode": "managed",
       "name": "github_deploy",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role_policy"
+    },
+    {
+      "address": "aws_iam_role_policy.orders_api_events",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "orders-api-events",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sqs:SendMessage\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:eu-west-1:111122223333:order-events\",\"Sid\":\"SendOrderEvents\"}]}",
+          "role": "orders-api-task"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "orders_api_events",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role_policy"
+    },
+    {
+      "address": "aws_iam_role_policy.orders_worker_events",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "orders-worker-events",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"sqs:ReceiveMessage\",\"sqs:DeleteMessage\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:sqs:eu-west-1:111122223333:order-events\",\"Sid\":\"ConsumeOrderEvents\"}]}",
+          "role": "orders-worker-task"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "orders_worker_events",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_role_policy"
     },
@@ -10609,7 +10741,7 @@
           "enable_key_rotation": true,
           "is_enabled": true,
           "key_usage": "ENCRYPT_DECRYPT",
-          "policy": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Resource\":\"*\",\"Sid\":\"AccountAdministers\"}],\"Version\":\"2012-10-17\"}",
+          "policy": "{\"Statement\":[{\"Action\":\"kms:*\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Resource\":\"*\",\"Sid\":\"AccountAdministers\"},{\"Action\":[\"kms:GenerateDataKey\",\"kms:Decrypt\"],\"Condition\":{\"StringEquals\":{\"kms:ViaService\":\"sqs.eu-west-1.amazonaws.com\"}},\"Effect\":\"Allow\",\"Principal\":{\"AWS\":[\"arn:aws:iam::111122223333:role/orders-api-task\",\"arn:aws:iam::111122223333:role/orders-worker-task\"]},\"Resource\":\"*\",\"Sid\":\"OrdersTasksUseKeyThroughSqs\"}],\"Version\":\"2012-10-17\"}",
           "region": "eu-west-1",
           "tags": null,
           "tags_all": {

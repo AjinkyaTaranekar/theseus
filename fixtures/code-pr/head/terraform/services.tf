@@ -43,6 +43,12 @@ resource "aws_iam_role_policy" "billing_job" {
           "arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders",
           "arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*"
         ]
+      },
+      {
+        Sid      = "AnnounceInvoices"
+        Effect   = "Allow"
+        Action   = "sns:Publish"
+        Resource = "arn:aws:sns:eu-west-1:111122223333:invoice-created"
       }
     ]
   })

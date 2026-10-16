@@ -589,7 +589,14 @@ def test_all_policy_sids_and_managed_attachments_match_spec(resources: dict[str,
         "aws_iam_policy.orders_table_rw": {"OrdersTableReadWrite"},
         "aws_iam_role_policy.github_deploy": {"PublishSite", "AssumeProdSupportForMigrations"},
         "aws_iam_role_policy.terraform_apply": {"TerraformState", "ApplyInfra"},
-        "aws_iam_role_policy.billing_job": {"WriteInvoices", "ReadPaymentsKey", "ReadOrders"},
+        "aws_iam_role_policy.billing_job": {
+            "WriteInvoices",
+            "ReadPaymentsKey",
+            "ReadOrders",
+            "AnnounceInvoices",
+        },
+        "aws_iam_role_policy.orders_api_events": {"SendOrderEvents"},
+        "aws_iam_role_policy.orders_worker_events": {"ConsumeOrderEvents"},
         "aws_iam_role_policy.billing_api": {"ReadDbSecret"},
         "aws_iam_role_policy.support_portal": {"LegacyDbSecret"},
         "aws_iam_role_policy.analytics_export": {"ReadOrders", "RawZone", "CuratedZone"},
@@ -600,6 +607,29 @@ def test_all_policy_sids_and_managed_attachments_match_spec(resources: dict[str,
         if address.split(".")[0] in {"aws_iam_policy", "aws_iam_group_policy", "aws_iam_role_policy"}
     }
     assert actual == expected_sids
+    # The code's queue and topic calls are granted on exactly the queue and the topic it uses, nothing wider.
+    for address, sid, actions, arn in [
+        (
+            "aws_iam_role_policy.orders_api_events",
+            "SendOrderEvents",
+            "sqs:SendMessage",
+            "sqs:eu-west-1:111122223333:order-events",
+        ),
+        (
+            "aws_iam_role_policy.orders_worker_events",
+            "ConsumeOrderEvents",
+            ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
+            "sqs:eu-west-1:111122223333:order-events",
+        ),
+        (
+            "aws_iam_role_policy.billing_job",
+            "AnnounceInvoices",
+            "sns:Publish",
+            "sns:eu-west-1:111122223333:invoice-created",
+        ),
+    ]:
+        (statement,) = [s for s in json.loads(resources[address]["policy"])["Statement"] if s["Sid"] == sid]
+        assert statement == {"Sid": sid, "Effect": "Allow", "Action": actions, "Resource": f"arn:aws:{arn}"}
     for name in ("orders_api", "orders_worker"):
         attached = resources[f"aws_iam_role_policy_attachment.{name}_table"]
         assert attached["role"] == name.replace("_", "-") + "-task"

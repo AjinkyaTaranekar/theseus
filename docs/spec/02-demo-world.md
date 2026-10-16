@@ -144,8 +144,8 @@ requirement looks wrong.
 
 | Workload | Runs on | Code | Role, and how it gets its permissions | Env vars and the nodes they name | Code calls | Requirements | Talks to |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `orders-api` | ECS Fargate | `services/orders_api/` | `orders-api-task`: shared policy `orders-table-rw` | `ORDERS_TABLE` → `dynamodb:demo-orders`; `ORDER_EVENTS_QUEUE_URL` → `sqs:order-events` (no code edge: spec 04 section 7); `BILLING_API_URL` → `workload:billing-api` | write and read `demo-orders` | R10 | billing-api |
-| `orders-worker` | ECS Fargate | `services/orders_worker/` | `orders-worker-task`: shared policy `orders-table-rw` | `ORDERS_TABLE`; `ORDER_EVENTS_QUEUE_URL` | read and write `demo-orders` | R11 | |
+| `orders-api` | ECS Fargate | `services/orders_api/` | `orders-api-task`: shared policy `orders-table-rw`; inline `orders-api-events` sends to the queue | `ORDERS_TABLE` → `dynamodb:demo-orders`; `ORDER_EVENTS_QUEUE_URL` → `sqs:order-events` (no code edge: spec 04 section 7); `BILLING_API_URL` → `workload:billing-api` | write and read `demo-orders` | R10 | billing-api |
+| `orders-worker` | ECS Fargate | `services/orders_worker/` | `orders-worker-task`: shared policy `orders-table-rw`; inline `orders-worker-events` receives and deletes | `ORDERS_TABLE`; `ORDER_EVENTS_QUEUE_URL` | read and write `demo-orders` | R11 | |
 | `billing-job` | Lambda, nightly | `services/billing_job/` | `billing-job`: inline policy | `ORDERS_TABLE`; `INVOICES_BUCKET` → both `demo-company-files` locations; `PAYMENTS_SECRET` → `secret:payments-api-key`; `INVOICE_TOPIC_ARN` → `sns:invoice-created` (no code edge) | read `demo-orders`, write `invoices/`, read `payments-api-key` | R7, R8, R9 | the payment provider (external, ignored) |
 | `billing-api` | Lambda, internal API | `services/billing_api/` | `billing-api`: inline policy | `DB_SECRET` → `secret:prod-db-credentials`; `DB_NAME` (no node) | read `prod-db-credentials`, connect to `customer-db` | R6 | |
 | `support-portal` | Lambda | `services/support_portal/` | `support-portal`: inline `LegacyDbSecret`, left over from a migration | `BILLING_API_URL`, `ORDERS_API_URL` → the two workloads | none | none | billing-api, orders-api |
@@ -278,7 +278,7 @@ instead of enhanced monitoring, which would add an IAM role.
 | Address | Name | What it says |
 | --- | --- | --- |
 | `aws_iam_role.billing_job` | `billing-job` | |
-| `aws_iam_role_policy.billing_job` | `billing-job` | Sid `WriteInvoices`: `s3:PutObject` on `demo-company-files/invoices/*`. Sid `ReadPaymentsKey`: `secretsmanager:GetSecretValue` on `secret:payments-api-key-*`. Sid `ReadOrders`: `dynamodb:Query` on `table/demo-orders` and `table/demo-orders/index/*` |
+| `aws_iam_role_policy.billing_job` | `billing-job` | Sid `WriteInvoices`: `s3:PutObject` on `demo-company-files/invoices/*`. Sid `ReadPaymentsKey`: `secretsmanager:GetSecretValue` on `secret:payments-api-key-*`. Sid `ReadOrders`: `dynamodb:Query` on `table/demo-orders` and `table/demo-orders/index/*`. Sid `AnnounceInvoices`: `sns:Publish` on `sns:invoice-created` |
 | `aws_lambda_function.billing_job` | `billing-job` | Env `INVOICES_BUCKET = "demo-company-files"`, `ORDERS_TABLE = "demo-orders"`, `PAYMENTS_SECRET = "payments-api-key"`, `INVOICE_TOPIC_ARN = "arn:aws:sns:eu-west-1:111122223333:invoice-created"` |
 | `aws_iam_role.billing_api` | `billing-api` | |
 | `aws_iam_role_policy.billing_api` | `billing-api` | Sid `ReadDbSecret`: `secretsmanager:GetSecretValue` on the DB secret |
@@ -301,8 +301,10 @@ The four `aws_iam_role_policy_attachment.<name>_logs` resources sit next to thei
 | `aws_iam_role_policy_attachment.ecs_task_execution` | | AWS-managed `AmazonECSTaskExecutionRolePolicy` (no modeled action) |
 | `aws_iam_role.orders_api_task` | `orders-api-task` | Trust: service `ecs-tasks.amazonaws.com` |
 | `aws_iam_role_policy_attachment.orders_api_table` | | `orders-api-task` gets `policy/orders-table-rw` |
+| `aws_iam_role_policy.orders_api_events` | `orders-api-events` | Sid `SendOrderEvents`: `sqs:SendMessage` on `sqs:order-events` |
 | `aws_iam_role.orders_worker_task` | `orders-worker-task` | Trust: service `ecs-tasks.amazonaws.com` |
 | `aws_iam_role_policy_attachment.orders_worker_table` | | `orders-worker-task` gets `policy/orders-table-rw` |
+| `aws_iam_role_policy.orders_worker_events` | `orders-worker-events` | Sid `ConsumeOrderEvents`: `sqs:ReceiveMessage`, `sqs:DeleteMessage` on `sqs:order-events` |
 | `aws_ecs_task_definition.orders_api` | family `orders-api` | Fargate, 256 CPU, 512 MB; read-only container root filesystem. `task_role_arn = role/orders-api-task`, `execution_role_arn = role/ecs-task-execution`. One container `orders-api`, image `111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1`, env `ORDERS_TABLE = "demo-orders"`, `ORDER_EVENTS_QUEUE_URL = "https://sqs.eu-west-1.amazonaws.com/111122223333/order-events"`, `BILLING_API_URL = "https://billing-api.internal.demo.test"` |
 | `aws_ecs_task_definition.orders_worker` | family `orders-worker` | As above with `role/orders-worker-task`, image `orders-worker:2.3.1`, env `ORDERS_TABLE`, `ORDER_EVENTS_QUEUE_URL` |
 | `aws_ecs_service.orders_api` | `orders-api` | `cluster = arn:aws:ecs:eu-west-1:111122223333:cluster/demo-apps`, `task_definition = "orders-api"`, Fargate, desired count 2, literal subnet IDs `subnet-0a1b2c3d4e5f60001` and `...60002`, tag `theseus_code_path = "services/orders_api"` |
@@ -310,7 +312,10 @@ The four `aws_iam_role_policy_attachment.<name>_logs` resources sit next to thei
 
 ### `queues.tf`
 
-Both queues are encrypted with `alias/demo-queues`, the KMS key in `platform.tf`, named literally.
+Both queues are encrypted with `alias/demo-queues`, the KMS key in `platform.tf`, named literally. The key's
+policy lets the two orders task roles use it through SQS, so their queue grants in `containers.tf` work; the
+topic uses the AWS-managed `alias/aws/sns`, which needs no grant beyond `sns:Publish`. These grants reach only
+`internal` nodes, so they open no dangerous path.
 
 | Address | Name | What it says |
 | --- | --- | --- |
@@ -342,7 +347,7 @@ These make the account look real. The importer skips every type it does not mode
 | File | Resources |
 | --- | --- |
 | `network.tf` | `aws_vpc.main`; `aws_default_security_group.main` with no rules, so nothing can use it; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_egress_rule.app_https` (443 out from the app group); `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
-| `platform.tf` | `aws_kms_key.queues` (rotation on) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
+| `platform.tf` | `aws_kms_key.queues` (rotation on; its policy lets the orders task roles use it through SQS) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
 
 In total the world has 120 resources across 16 AWS services (counting the VPC types as EC2): 68 modeled and 52
 skipped.

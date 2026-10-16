@@ -13,13 +13,24 @@ resource "aws_kms_key" "queues" {
   deletion_window_in_days = 30
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid       = "AccountAdministers"
-      Effect    = "Allow"
-      Principal = { AWS = "arn:aws:iam::111122223333:root" }
-      Action    = "kms:*"
-      Resource  = "*"
-    }]
+    Statement = [
+      {
+        Sid       = "AccountAdministers"
+        Effect    = "Allow"
+        Principal = { AWS = "arn:aws:iam::111122223333:root" }
+        Action    = "kms:*"
+        Resource  = "*"
+      },
+      {
+        # SQS encrypts and decrypts each message with this key on the sender's and the receiver's behalf.
+        Sid       = "OrdersTasksUseKeyThroughSqs"
+        Effect    = "Allow"
+        Principal = { AWS = ["arn:aws:iam::111122223333:role/orders-api-task", "arn:aws:iam::111122223333:role/orders-worker-task"] }
+        Action    = ["kms:GenerateDataKey", "kms:Decrypt"]
+        Resource  = "*"
+        Condition = { StringEquals = { "kms:ViaService" = "sqs.eu-west-1.amazonaws.com" } }
+      }
+    ]
   })
 }
 

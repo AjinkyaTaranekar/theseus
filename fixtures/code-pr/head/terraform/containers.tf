@@ -42,6 +42,21 @@ resource "aws_iam_role_policy_attachment" "orders_api_table" {
   policy_arn = "arn:aws:iam::111122223333:policy/orders-table-rw"
 }
 
+# The worker fulfils orders from this queue; the queue key's policy (platform.tf) lets this role encrypt for it.
+resource "aws_iam_role_policy" "orders_api_events" {
+  name = "orders-api-events"
+  role = "orders-api-task"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SendOrderEvents"
+      Effect   = "Allow"
+      Action   = "sqs:SendMessage"
+      Resource = "arn:aws:sqs:eu-west-1:111122223333:order-events"
+    }]
+  })
+}
+
 resource "aws_iam_role" "orders_worker_task" {
   name = "orders-worker-task"
   assume_role_policy = jsonencode({
@@ -57,6 +72,21 @@ resource "aws_iam_role" "orders_worker_task" {
 resource "aws_iam_role_policy_attachment" "orders_worker_table" {
   role       = "orders-worker-task"
   policy_arn = "arn:aws:iam::111122223333:policy/orders-table-rw"
+}
+
+# Long-polls the queue and deletes each message once its order is fulfilled; failures go to the DLQ by redrive.
+resource "aws_iam_role_policy" "orders_worker_events" {
+  name = "orders-worker-events"
+  role = "orders-worker-task"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ConsumeOrderEvents"
+      Effect   = "Allow"
+      Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage"]
+      Resource = "arn:aws:sqs:eu-west-1:111122223333:order-events"
+    }]
+  })
 }
 
 resource "aws_ecs_task_definition" "orders_api" {
