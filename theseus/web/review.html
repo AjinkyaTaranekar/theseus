@@ -124,6 +124,8 @@ function el(tag, text, attrs) {
 
 function nameOf(id) {
   if (id === "entry:internet") return "anyone on the internet";
+  const url = id.indexOf("://");
+  if (url >= 0) return id.slice(url + 3);
   const i = id.indexOf(":");
   return i < 0 ? id : id.slice(i + 1);
 }
@@ -246,7 +248,9 @@ function render(data) {
     const s = sides[side];
     if (!s.graph) { fail("This commit's graph is no longer in the store."); return; }
     const all = $("all").checked;
-    const shown = only ? [only] : s.paths;
+    // By default, the paths this PR opens; the ones already there are a click away in the list.
+    const opened = s.paths.filter((p) => p.state !== "unchanged");
+    const shown = only ? [only] : opened.length ? opened : s.paths;
     const onPath = new Set(), stepIn = new Set(), hot = new Set();
     for (const p of shown) {
       const route = p.steps.length ? [p.steps[0].from, ...p.steps.map((x) => x.to)] : [p.actor];
