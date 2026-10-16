@@ -150,6 +150,25 @@ may bypass it through the PR in an emergency, and GitHub records that.
 - **The check's title is the verdict in plain words,** because the merge box shows it. Its summary is the
   comment's first section.
 
+## The review page
+
+The card ends with **Open the graph Theseus checked →**, a link to
+`https://<DOMAIN>/reviews/<owner>/<repo>/<number>?k=<signature>`. The page (`theseus/web/review.html`) draws
+the PR's head and base graphs with Cytoscape.js (cdnjs, a pinned version with SRI): the opened paths
+highlighted, the hop the PR adds in red, each node's class and who set it, and each arrow's evidence linked to
+its line. "Before it" shows the base graph and the paths the PR closes.
+
+- **Everything comes from FalkorDB.** After each review of the PR's current head, the backend keeps the result in
+  the store (`theseus__docs`, one document per PR) before it posts the comment, so the link works at once. The
+  page reads the result and both graphs from the store when it is opened. A restart or a redeploy changes
+  nothing; a newer review replaces them, and closing the PR deletes the graphs.
+- **The link is signed.** `k` is the first 32 hex characters of HMAC-SHA256 of `review:<owner>/<repo>#<number>`
+  with `THESEUS_TOKEN`. Anyone who can read the comment can open the page; a wrong or missing `k`, another PR,
+  or a repo outside `THESEUS_REPOS` gets a 404 that says nothing about what exists. Without `DOMAIN` or
+  `THESEUS_TOKEN` the comment has no link.
+- **The page carries no data in its URL.** A review's graphs are about 100 KB; a URL holds a few KB, and a copy
+  in a link could never be taken back.
+
 ## Labels
 
 After each review of a PR's current head, the App sets its labels from the result (`agent/labels.py`), so the PR

@@ -40,6 +40,8 @@ TEMPLATES = Path(__file__).with_name("templates")
 _PUNCTUATION = re.compile(r"([\\`*_{}\[\]()#+!|~])")
 _URL_OR_MENTION = re.compile(r"(?:https?://|www\.)[^\s|<>]+|(?<![\w.])@[A-Za-z0-9][\w-]*")
 _BACKTICKS = re.compile(r"`+")
+# The review page's link is built by the backend; only an https URL of plain characters is printed.
+_SAFE_URL = re.compile(r"https://[A-Za-z0-9.-]+(/[A-Za-z0-9._~%/-]*)?(\?[A-Za-z0-9=&_-]*)?")
 _MERMAID = {'"': "#quot;", "`": "#96;", "<": "#lt;", ">": "#gt;"}
 # A line break in both GitHub comments and plain markdown; a newline alone doubles in comments.
 _BREAK = "\\\n"
@@ -650,6 +652,7 @@ def _context(
     world_root: str,
     scale: int,
     falkordb: str | None,
+    graph_url: str | None,
 ) -> dict[str, Any]:
     caps = {k: max(1, v // scale) for k, v in CAPS.items()}
     status = verdict(result)
@@ -672,6 +675,7 @@ def _context(
         "opened": [_path_row(p) for p in opened[: caps["opened"]]],
         "opened_more": max(0, len(opened) - caps["opened"]),
         "connections": connections(result),
+        "graph_url": Md(graph_url) if graph_url and _SAFE_URL.fullmatch(graph_url) else None,
         "diagrams": [
             {
                 "title": Md(f"How {_bold(p.actor)} reaches {_bold(p.target)}"),
@@ -707,13 +711,15 @@ def render_comment(
     checkov: dict[str, Any] | None = None,
     world_root: str = "demo-infra",
     falkordb: str | None = None,
+    graph_url: str | None = None,
 ) -> str:
-    """The whole PR comment, marker first. `falkordb` is the version the graphs were built in. Long lists are
-    cut short, so the comment fits GitHub's limit."""
+    """The whole PR comment, marker first. `falkordb` is the version the graphs were built in; `graph_url`
+    is the review's page. Long lists are cut short, so the comment fits GitHub's limit."""
     template = _ENV.get_template("comment.md")
     scale = 1
     while True:
-        comment = template.render(**_context(result, repo, head_sha, checkov, world_root, scale, falkordb))
+        context = _context(result, repo, head_sha, checkov, world_root, scale, falkordb, graph_url)
+        comment = template.render(**context)
         if len(comment) < MAX_CHARS or scale >= 64:
             return comment
         scale *= 2

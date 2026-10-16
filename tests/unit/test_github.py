@@ -27,6 +27,7 @@ from theseus.api.app import create_app
 from theseus.api.github import API, GitHub
 from theseus.config import Settings
 from theseus.errors import GitHubError
+from theseus.graph.store import MemoryStore
 
 REPO = "demo-org/theseus"
 APP_ID = 123
@@ -275,11 +276,17 @@ def review() -> SampleReview:
 
 
 @pytest.fixture
-def client(settings: Settings, gh: GitHub, review: SampleReview) -> Iterator[TestClient]:
+def store() -> MemoryStore:
+    return MemoryStore()
+
+
+@pytest.fixture
+def client(settings: Settings, gh: GitHub, review: SampleReview, store: MemoryStore) -> Iterator[TestClient]:
     app = create_app(connect=lambda: object())
     app.dependency_overrides[routes.get_settings] = lambda: settings
     app.dependency_overrides[routes.get_github] = lambda: gh
     app.dependency_overrides[routes.get_review] = lambda: review
+    app.dependency_overrides[routes.get_store] = lambda: store
     with TestClient(app) as c:
         yield c
 

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Theseus review</title>
+<style>
+  :root {
+    --bg: #ffffff; --panel: #f6f8fa; --text: #1f2328; --muted: #59636e; --line: #d1d9e0;
+    --accent: #0969da; --danger: #cf222e; --danger-bg: #ffebe9; --warn: #9a6700; --warn-bg: #fff8c5;
+    --ok: #1a7f37; --ok-bg: #dafbe1; --node: #ddf4ff; --node-line: #54aeff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --panel: #151b23; --text: #e6edf3; --muted: #9198a1; --line: #3d444d;
+      --accent: #4493f8; --danger: #f85149; --danger-bg: #3c1618; --warn: #d29922; --warn-bg: #3a2a07;
+      --ok: #3fb950; --ok-bg: #12301b; --node: #12263f; --node-line: #4493f8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  header .brand { font-weight: 600; }
+  header .where { color: var(--muted); overflow-wrap: anywhere; }
+  .badge { margin-left: auto; padding: 2px 10px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .badge.blocked { color: var(--danger); background: var(--danger-bg); }
+  .badge.look { color: var(--warn); background: var(--warn-bg); }
+  .badge.clear { color: var(--ok); background: var(--ok-bg); }
+  #summary { padding: 14px 20px 4px; font-size: 15px; max-width: 1100px; }
+  .layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; padding: 12px 20px 20px; }
+  aside { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+          align-self: start; }
+  aside h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+             margin: 16px 0 6px; }
+  aside h2:first-child { margin-top: 0; }
+  .toggle { display: inline-flex; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+  .toggle button { border: 0; background: transparent; color: var(--text); padding: 5px 12px; cursor: pointer;
+                   font: inherit; }
+  .toggle button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  label.all { display: block; margin-top: 10px; color: var(--muted); }
+  #paths { list-style: none; margin: 0; padding: 0; }
+  #paths button { width: 100%; text-align: left; border: 1px solid var(--line); background: var(--bg);
+                  color: var(--text); border-radius: 6px; padding: 6px 8px; margin: 0 0 6px; cursor: pointer;
+                  font: inherit; }
+  #paths button[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  #paths .cls { color: var(--muted); font-size: 12px; }
+  #details { overflow-wrap: anywhere; }
+  #details dt { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  #details dd { margin: 0; }
+  #details a { color: var(--accent); }
+  .legend { margin-top: 16px; color: var(--muted); font-size: 12px; }
+  .legend span { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px;
+                 vertical-align: -1px; }
+  #graph { min-height: 560px; height: calc(100vh - 190px); border: 1px solid var(--line); border-radius: 8px;
+           background: var(--bg); }
+  footer { padding: 0 20px 20px; color: var(--muted); font-size: 12px; }
+  .message { padding: 40px 20px; color: var(--muted); }
+  @media (max-width: 760px) {
+    .layout { grid-template-columns: 1fr; padding: 12px 16px; }
+    #graph { height: 60vh; min-height: 360px; }
+    header, #summary, footer { padding-left: 16px; padding-right: 16px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <span class="brand">Theseus</span>
+  <span class="where" id="where"></span>
+  <span class="badge" id="badge" hidden></span>
+</header>
+<div id="summary"></div>
+<div class="layout" id="layout" hidden>
+  <aside>
+    <h2>Graph</h2>
+    <div class="toggle" role="group" aria-label="Which commit">
+      <button type="button" id="side-head" aria-pressed="true">This PR</button>
+      <button type="button" id="side-base" aria-pressed="false">Before it</button>
+    </div>
+    <label class="all"><input type="checkbox" id="all"> Show the whole graph</label>
+    <h2 id="paths-title">Ways in</h2>
+    <ol id="paths"></ol>
+    <h2>Selected</h2>
+    <div id="details">Click a node or an arrow.</div>
+    <div class="legend">
+      <div><span style="background:var(--danger)"></span>Regulated data &nbsp;
+           <span style="background:#e16f24"></span>Confidential</div>
+      <div><span style="background:var(--node-line)"></span>People, roles, services &nbsp;
+           <span style="background:var(--danger);height:3px"></span>Added by this PR</div>
+    </div>
+  </aside>
+  <div id="graph" aria-label="The graph Theseus checked"></div>
+</div>
+<footer id="footer"></footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"
+        integrity="sha512-EY3U1MWdgKx0P1dqTE4inlKz2cpXtWpsR1YUyD855Hs6RL/A0cyvrKh60EpE8wDZ814cTe1KgRK+sG0Rn792vQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script>
+"use strict";
+// Plain words, as the comment says them (theseus/engine/words.py).
+const KINDS = { user: "user", group: "group", role: "role", workload: "service", workflow: "CI workflow",
+                action: "GitHub Action", entry: "entry point" };
+const CATEGORIES = { objectstorage: "storage location", filestorage: "file share", blockstorage: "disk",
+                     database: "database", secret: "secret", encryptionkey: "encryption key", aimodel: "AI model",
+                     logstore: "log store", messagequeue: "message queue", messagetopic: "message topic",
+                     datastream: "data stream" };
+const VERBS = { MEMBER_OF: "member of", CAN_ASSUME: "can switch into", TRUSTS: "can sign in as",
+                RUNS_AS: "runs as", UNLOCKS: "unlocks", USES: "uses", CALLS: "calls", REQUESTS: "sends requests to" };
+const CLASSES = { regulated: "personal, payment or health data", confidential: "business-sensitive data",
+                  internal: "internal data", public: "public data" };
+const COLORS = { regulated: "#cf222e", confidential: "#e16f24", internal: "#8c959f", public: "#1a7f37" };
+
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function el(tag, text, attrs) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  return node;
+}
+
+function nameOf(id) {
+  if (id === "entry:internet") return "anyone on the internet";
+  const url = id.indexOf("://");
+  if (url >= 0) return id.slice(url + 3);
+  const i = id.indexOf(":");
+  return i < 0 ? id : id.slice(i + 1);
+}
+
+function kindOf(node) {
+  const prefix = node.id.split(":")[0];
+  if (KINDS[prefix]) return KINDS[prefix];
+  const cat = (node.category || "").toLowerCase().replace(/_/g, "");
+  return CATEGORIES[cat] || "data store";
+}
+
+function verbOf(edge) {
+  if (edge.type === "CAN") {
+    const g = (edge.grants || []).filter((x) => x === "read" || x === "write").sort();
+    if (g.length === 2) return "can read and change";
+    if (g[0] === "read") return "can read";
+    if (g[0] === "write") return "can change";
+    return "can reach";
+  }
+  return VERBS[edge.type] || edge.type.toLowerCase().replace(/_/g, " ");
+}
+
+function stepKey(s) { return `${s.from}|${s.type}|${s.to}`; }
+
+function fail(text) {
+  $("summary").textContent = "";
+  $("layout").hidden = true;
+  $("footer").replaceChildren(el("p", text, { class: "message" }));
+}
+
+async function main() {
+  const k = new URLSearchParams(location.search).get("k") || "";
+  let data;
+  try {
+    const res = await fetch(`${location.pathname.replace(/\/$/, "")}/data?k=${encodeURIComponent(k)}`,
+                            { cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    data = await res.json();
+  } catch (e) {
+    fail("This review is not available: the link may be wrong, or the PR has not been reviewed yet.");
+    return;
+  }
+  if (typeof cytoscape === "undefined") {
+    fail("The graph library did not load. Check that cdnjs.cloudflare.com is reachable, then reload.");
+    return;
+  }
+  render(data);
+}
+
+function render(data) {
+  const r = data.result;
+  document.title = `Theseus review: ${data.repo} #${data.number}`;
+  $("where").textContent = `${data.repo} #${data.number} at ${data.head_sha.slice(0, 7)}`;
+  const badge = $("badge");
+  badge.hidden = false;
+  badge.className = `badge ${data.verdict.level}`;
+  badge.textContent = data.verdict.title;
+  $("summary").textContent = r.headline || "";
+  $("layout").hidden = false;
+
+  const changed = new Set((r.changes || []).map((c) => c.address));
+  const sides = {
+    head: { graph: data.graphs.head, paths: [...r.opened.map((p) => ({ ...p, state: "opened" })),
+                                              ...(r.unchanged || []).map((p) => ({ ...p, state: "unchanged" }))],
+            sha: data.head_sha, title: "Ways in" },
+    base: { graph: data.graphs.base, paths: (r.closed || []).map((p) => ({ ...p, state: "closed" })),
+            sha: data.base_sha || data.head_sha, title: "Ways in this PR closes" },
+  };
+  let side = "head";
+  let only = null;
+  let cy = null;
+
+  function blob(file, line, sha) {
+    const root = data.world_root.replace(/^\/+|\/+$/g, "");
+    const path = `${root}/${file}`.split("/").map(encodeURIComponent).join("/");
+    return `https://github.com/${data.repo.split("/").map(encodeURIComponent).join("/")}/blob/${encodeURIComponent(sha)}/${path}${line ? `#L${line}` : ""}`;
+  }
+
+  function showDetails(item) {
+    const box = $("details");
+    box.replaceChildren();
+    if (!item) { box.textContent = "Click a node or an arrow."; return; }
+    const dl = el("dl");
+    const add = (term, value) => { if (value === undefined || value === null || value === "") return;
+                                   dl.append(el("dt", term)); const dd = el("dd");
+                                   if (value instanceof Node) dd.append(value); else dd.textContent = value;
+                                   dl.append(dd); };
+    if (item.kind === "node") {
+      const n = item.data;
+      add("Name", nameOf(n.id));
+      add("What it is", kindOf(n));
+      add("ID", n.id);
+      if (n.sensitivity) add("Data class", `${n.sensitivity}: ${CLASSES[n.sensitivity] || ""}`);
+      if (n.sensitivity_source) add("Class set by", n.sensitivity_source);
+      if (n.env) add("Environment", n.env);
+    } else {
+      const e = item.data;
+      add("Step", `${nameOf(e.src)} ${verbOf(e)} ${nameOf(e.dst)}`);
+      add("Edge", `${e.type}${(e.grants || []).length ? ` (${e.grants.join(", ")})` : ""}`);
+      add("How sure", e.kind);
+      const list = el("ul");
+      for (const ev of e.evidence || []) {
+        const li = el("li");
+        if (ev.file && ev.file !== "unknown") {
+          const a = el("a", `${ev.file}${ev.line ? `:${ev.line}` : ""}`, { href: blob(ev.file, ev.line, sides[side].sha),
+                                                                        target: "_blank", rel: "noopener" });
+          li.append(a);
+          if (changed.has(ev.address) && side === "head") li.append(document.createTextNode(" (changed here)"));
+        } else {
+          li.textContent = `unknown: ${ev.note || ev.address}`;
+        }
+        list.append(li);
+      }
+      if (list.childElementCount) add("Where it comes from", list);
+    }
+    box.append(dl);
+  }
+
+  function draw() {
+    const s = sides[side];
+    if (!s.graph) { fail("This commit's graph is no longer in the store."); return; }
+    const all = $("all").checked;
+    // By default, the paths this PR opens; the ones already there are a click away in the list.
+    const opened = s.paths.filter((p) => p.state !== "unchanged");
+    const shown = only ? [only] : opened.length ? opened : s.paths;
+    const onPath = new Set(), stepIn = new Set(), hot = new Set();
+    for (const p of shown) {
+      const route = p.steps.length ? [p.steps[0].from, ...p.steps.map((x) => x.to)] : [p.actor];
+      route.forEach((n) => onPath.add(n));
+      p.steps.forEach((x) => { stepIn.add(stepKey(x)); if (p.state === "opened") hot.add(stepKey(x)); });
+    }
+    const nodes = s.graph.nodes.filter((n) => all || onPath.has(n.id));
+    const keep = new Set(nodes.map((n) => n.id));
+    const edges = s.graph.edges.filter((e) => keep.has(e.src) && keep.has(e.dst) &&
+                                              (all || stepIn.has(`${e.src}|${e.type}|${e.dst}`)));
+    const elements = [
+      ...nodes.map((n) => ({ group: "nodes", data: { id: n.id, label: `${nameOf(n.id)}\n${kindOf(n)}`,
+                                                    cls: n.sensitivity || "", raw: n,
+                                                    on: onPath.has(n.id) ? 1 : 0 } })),
+      ...edges.map((e, i) => {
+        const key = `${e.src}|${e.type}|${e.dst}`;
+        const added = side === "head" && (e.evidence || []).some((ev) => changed.has(ev.address));
+        return { group: "edges", data: { id: `e${i}`, source: e.src, target: e.dst, label: verbOf(e), raw: e,
+                                         on: stepIn.has(key) ? 1 : 0, hot: hot.has(key) ? 1 : 0,
+                                         added: added ? 1 : 0 } };
+      }),
+    ];
+    if (cy) cy.destroy();
+    const text = css("--text"), muted = css("--muted"), line = css("--line");
+    cy = cytoscape({
+      container: $("graph"),
+      elements,
+      wheelSensitivity: 0.2,
+      style: [
+        { selector: "node", style: { "background-color": css("--node"), "border-color": css("--node-line"),
+            "border-width": 1.5, shape: "round-rectangle", label: "data(label)", "text-wrap": "wrap",
+            "text-valign": "center", "font-size": 11, color: text, width: "label", height: "label",
+            padding: "10px", "text-max-width": 150 } },
+        ...Object.entries(COLORS).map(([cls, color]) => ({ selector: `node[cls = "${cls}"]`,
+            style: { "border-color": color, "border-width": 2.5,
+                     "background-color": cls === "regulated" || cls === "confidential" ? css("--danger-bg") : css("--panel") } })),
+        { selector: "node[on = 0]", style: { opacity: 0.35 } },
+        { selector: "edge", style: { width: 1.5, "line-color": line, "target-arrow-color": line,
+            "target-arrow-shape": "triangle", "curve-style": "bezier", label: "data(label)", "font-size": 10,
+            color: muted, "text-background-color": css("--bg"), "text-background-opacity": 1,
+            "text-background-padding": "2px", "text-rotation": "autorotate" } },
+        { selector: "edge[on = 0]", style: { opacity: 0.3 } },
+        { selector: "edge[hot = 1]", style: { "line-color": text, "target-arrow-color": text, width: 2, color: text } },
+        { selector: "edge[added = 1]", style: { "line-color": css("--danger"), "target-arrow-color": css("--danger"),
+            width: 4, color: css("--danger") } },
+        { selector: ":selected", style: { "overlay-color": css("--accent"), "overlay-opacity": 0.18 } },
+      ],
+      layout: all
+        ? { name: "cose", animate: false, nodeRepulsion: 9000, idealEdgeLength: 110, padding: 30 }
+        : { name: "breadthfirst", directed: true, spacingFactor: 1.15, padding: 30, animate: false,
+            roots: [...new Set(shown.map((p) => p.actor))].filter((id) => keep.has(id)) },
+    });
+    cy.on("tap", "node", (ev) => showDetails({ kind: "node", data: ev.target.data("raw") }));
+    cy.on("tap", "edge", (ev) => showDetails({ kind: "edge", data: ev.target.data("raw") }));
+    cy.on("tap", (ev) => { if (ev.target === cy) showDetails(null); });
+    const g = s.graph;
+    $("footer").textContent = `Read from FalkorDB just now: ${g.nodes.length} nodes and ${g.edges.length} edges in ` +
+      `${g.name}. Each arrow is a fact Theseus can cite: click one to see the line it comes from.`;
+  }
+
+  function listPaths() {
+    const s = sides[side];
+    $("paths-title").textContent = s.title;
+    const ol = $("paths");
+    ol.replaceChildren();
+    if (!s.paths.length) { ol.append(el("li", side === "head" ? "No way in to sensitive data." : "This PR closes none.")); }
+    for (const p of s.paths) {
+      const b = el("button", null, { type: "button", "aria-pressed": only === p ? "true" : "false" });
+      b.append(el("div", `${nameOf(p.actor)} → ${nameOf(p.target)}`));
+      const state = { opened: "opened by this PR", unchanged: "already there", closed: "closed by this PR" }[p.state];
+      b.append(el("div", `${p.sensitivity || "unknown class"} · ${p.steps.length} hops · ${state}`, { class: "cls" }));
+      b.addEventListener("click", () => { only = only === p ? null : p; listPaths(); draw(); });
+      const li = el("li");
+      li.append(b);
+      ol.append(li);
+    }
+  }
+
+  function setSide(next) {
+    side = next; only = null;
+    $("side-head").setAttribute("aria-pressed", String(side === "head"));
+    $("side-base").setAttribute("aria-pressed", String(side === "base"));
+    showDetails(null); listPaths(); draw();
+  }
+  $("side-head").addEventListener("click", () => setSide("head"));
+  $("side-base").addEventListener("click", () => setSide("base"));
+  $("all").addEventListener("change", draw);
+  setSide("head");
+}
+
+main();
+</script>
+</body>
+</html>

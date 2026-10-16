@@ -8,6 +8,7 @@ in memory and the model and Jev replay, so nothing touches the network.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -153,6 +154,7 @@ def settings(tmp_path: Path) -> Settings:
         github_app_private_key_path=path,
         theseus_token=TOKEN,
         theseus_repos=REPO,
+        domain="theseus.example",
     )
 
 
@@ -177,6 +179,7 @@ def client(settings: Settings, repo: FakeRepo, store: MemoryStore) -> Iterator[T
     app.dependency_overrides[routes.get_review] = lambda: build_review(
         store, RecordedIntent(), RecordedJev(), settings
     )
+    app.dependency_overrides[routes.get_store] = lambda: store
     with TestClient(app) as c:
         yield c
 
@@ -262,3 +265,66 @@ def test_each_commit_s_files_arrive_in_one_query(client: TestClient, repo: FakeR
     assert repo.queries == 2
     contents = [c for c in repo.router.calls if "/contents/" in c.request.url.path]
     assert contents == []
+
+
+# Each review's page -----------------------------------------------------------------------------------------
+
+
+def page_link(body: str) -> str:
+    [link] = re.findall(r"\[Open the graph Theseus checked →\]\((https://[^)]+)\)", body)
+    return link
+
+
+def test_the_comment_links_to_a_signed_page_with_both_graphs_from_the_store(
+    client: TestClient, repo: FakeRepo, store: MemoryStore
+) -> None:
+    result = post(client).json()
+    link = page_link(repo.comments[0]["body"])
+    assert link.startswith("https://theseus.example/reviews/demo-org/theseus/7?k=")
+    path = link.removeprefix("https://theseus.example")
+    page = client.get(path)
+    assert page.status_code == 200 and "cytoscape/3.30.2/cytoscape.min.js" in page.text
+    assert 'integrity="sha512-' in page.text and page.headers["cache-control"] == "no-store"
+
+    route, _, query = path.partition("?")
+    data = client.get(f"{route}/data?{query}").json()
+    assert (data["repo"], data["number"], data["head_sha"], data["base_sha"]) == (REPO, 7, HEAD, BASE)
+    assert data["verdict"]["level"] == "blocked" and len(data["result"]["opened"]) == 3
+    head = data["graphs"]["head"]
+    assert head["name"] == "demo-infra__pr7-head" and head == {
+        "name": head["name"],
+        **store.view(head["name"]),
+    }
+    assert (
+        len(head["nodes"]) == result["coverage"]["nodes"]
+        and len(head["edges"]) == result["coverage"]["edges"]
+    )
+    assert data["graphs"]["base"]["name"] == "demo-infra__pr7-base"
+    membership = next(e for e in head["edges"] if (e["src"], e["type"]) == ("user:priya-intern", "MEMBER_OF"))
+    assert membership["evidence"][0]["address"] == "aws_iam_user_group_membership.priya_support"
+
+
+@pytest.mark.parametrize("query", ["", "?k=", "?k=0123456789abcdef0123456789abcdef"])
+def test_a_page_without_the_right_signature_is_a_404(client: TestClient, query: str) -> None:
+    assert post(client).status_code == 200
+    for route in ("/reviews/demo-org/theseus/7", "/reviews/demo-org/theseus/7/data"):
+        assert client.get(f"{route}{query}").status_code == 404
+
+
+def test_a_signature_for_another_pr_or_repo_opens_nothing(
+    client: TestClient, repo: FakeRepo, settings: Settings
+) -> None:
+    from theseus.api import reviews
+
+    assert post(client).status_code == 200
+    k = page_link(repo.comments[0]["body"]).partition("?k=")[2]
+    assert client.get(f"/reviews/demo-org/theseus/8/data?k={k}").status_code == 404
+    other = reviews.signature(settings, "someone/else", 7)
+    assert client.get(f"/reviews/someone/else/7/data?k={other}").status_code == 404
+
+
+def test_a_pr_never_reviewed_has_no_page(client: TestClient, settings: Settings) -> None:
+    from theseus.api import reviews
+
+    k = reviews.signature(settings, REPO, 9)
+    assert client.get(f"/reviews/demo-org/theseus/9/data?k={k}").status_code == 404
