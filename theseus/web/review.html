@@ -89,7 +89,7 @@
   details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
   details summary { cursor: pointer; font-weight: 600; }
   details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
-  #full { height: 70vh; min-height: 420px; }
+  #full { min-height: 360px; }
   footer { padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
   .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
   @media (max-width: 720px) {
@@ -418,10 +418,18 @@ function render(data) {
   function drawFull() {
     const g = data.graphs.head;
     if (!g) { $("note").textContent = "The graph isn't in the store any more."; return; }
-    const links = g.edges.filter((e) => ACCESS_TYPES.has(e.type));
-    const linked = new Set(links.flatMap((e) => [e.src, e.dst]));
-    const nodes = g.nodes.filter((n) => linked.has(n.id));
-    $("note").textContent = `${nodes.length} people, roles and resources, and ${links.length} access links. The new ways in are pink.`;
+    const routes = new Set(opened.flatMap(routeOf));
+    const sensitive = (id) => ["regulated", "confidential"].includes(info(id).sensitivity);
+    // Internal data no path reaches (log groups, queues) only adds noise here.
+    const shown = (id) => lane(id) < 4 || sensitive(id) || routes.has(id);
+    const all = g.edges.filter((e) => ACCESS_TYPES.has(e.type));
+    const linked = new Set(all.flatMap((e) => [e.src, e.dst]));
+    const nodes = g.nodes.filter((n) => linked.has(n.id) && shown(n.id));
+    const keep = new Set(nodes.map((n) => n.id));
+    const links = all.filter((e) => keep.has(e.src) && keep.has(e.dst));
+    const hidden = [...linked].filter((id) => !keep.has(id)).length;
+    $("note").textContent = `${nodes.length} people, roles and sensitive resources, ${links.length} access links. ` +
+      `The new ways in are pink.${hidden ? ` ${hidden} internal resources are left out.` : ""}`;
     if (full) return;
     const go = () => {
       // Columns by lane; within a lane, order by where the links come from, so fewer lines cross.
@@ -441,8 +449,13 @@ function render(data) {
       // Lanes are centred on the tallest one.
       const tallest = Math.max(...cols.map((ids) => ids.length));
       cols.forEach((ids) => { const shift = ((tallest - ids.length) * 64) / 2; ids.forEach((id) => { pos.get(id).y += shift; }); });
-      const hot = new Set(opened.flatMap(routeOf));
+      const hot = routes;
       const hotEdges = new Set([...edges.keys()]);
+      // Drawn at a readable size across the page's width; the page scrolls, the graph doesn't zoom.
+      const box = $("full");
+      const graphW = (LANES.length - 1) * 250 + 150 + 60, graphH = (Math.max(...cols.map((ids) => ids.length)) - 1) * 64 + 42 + 70 + 60;
+      const scale = Math.min(1, box.clientWidth / graphW);
+      box.style.height = `${Math.ceil(graphH * scale) + 20}px`;
       const style = getComputedStyle(document.documentElement);
       const c = (name) => style.getPropertyValue(name).trim();
       full = cytoscape({
@@ -459,7 +472,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
         style: [
           { selector: "node", style: { shape: "round-rectangle", width: 150, height: 42, "background-color": c("--card"),
               "border-width": 1, "border-color": c("--tile-line"), label: "data(label)", "text-wrap": "wrap",
-              "text-valign": "center", "font-size": 10, color: c("--muted"), "text-max-width": 140 } },
+              "text-valign": "center", "font-size": 11, color: c("--muted"), "text-max-width": 140 } },
           { selector: "node[sens = 1]", style: { "border-color": c("--accent-soft"), "border-width": 1.5 } },
           { selector: "node[hot = 1]", style: { "border-color": c("--accent"), "border-width": 2.5, color: c("--text"),
               "font-weight": 600 } },
@@ -472,7 +485,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
               opacity: 1, "z-index": 10 } },
         ],
         layout: { name: "preset", padding: 30, fit: true },
-        wheelSensitivity: 0.2, autoungrabify: true,
+        userZoomingEnabled: false, userPanningEnabled: false, boxSelectionEnabled: false, autoungrabify: true,
       });
     };
     if (typeof cytoscape !== "undefined") { go(); return; }
