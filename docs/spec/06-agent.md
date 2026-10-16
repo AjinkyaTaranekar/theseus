@@ -26,6 +26,12 @@
 | Recording file | `recordings/llm/<key>.json` holding `{request, response, model, ms}`. `request` never holds the key or the endpoint. `response` is the provider-neutral part of the reply: `content`, `tool_calls` (`name`, `arguments` as JSON text), `finish_reason`, `usage` |
 | Errors | Raise `ModelError` with the purpose and key; never return a half-parsed answer |
 
+**Complete answers only:** live, record and replay accept only `finish_reason: "tool_calls"` or `"stop"`.
+Any other or missing reason raises `ModelError` with the purpose, recording key and finish reason before
+the message or tool arguments are read. A live response with no choices also raises `ModelError` with the
+purpose and key. These response validation errors fail immediately without retrying; record mode saves no rejected
+answer. The recording format and keys stay the same.
+
 **Checked live during prep:** through LiteLLM, GLM 5.3 on Crusoe answered a forced `submit_intent` call with
 an injection attempt in the PR text. It returned only the legitimate grant and set `suspicious`, in 1.5 to 6
 seconds. GLM 5.3 Flash gave the same answer, once it had capacity. The PoC's prompts below were tuned on

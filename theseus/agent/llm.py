@@ -80,16 +80,26 @@ def _is_transient(e: Exception) -> bool:
     return "no capacity" in str(e).lower()
 
 
-def _normalize(response: Any) -> dict[str, Any]:
+def _check_finish_reason(reason: Any, purpose: str, key: str) -> None:
+    if reason not in ("tool_calls", "stop"):
+        raise ModelError(f"{purpose} ({key}): the model returned finish_reason={reason!r}")
+
+
+def _normalize(response: Any, purpose: str, key: str) -> dict[str, Any]:
     """The parts of a LiteLLM response the wrapper keeps: provider-neutral, and stable to record."""
-    choice = response.choices[0]
+    choices = getattr(response, "choices", None)
+    if not choices:
+        raise ModelError(f"{purpose} ({key}): the model returned no choices")
+    choice = choices[0]
+    reason = getattr(choice, "finish_reason", None)
+    _check_finish_reason(reason, purpose, key)
     message = choice.message
     calls = [{"name": c.function.name, "arguments": c.function.arguments} for c in (message.tool_calls or [])]
     usage = getattr(response, "usage", None)
     return {
         "content": message.content or "",
         "tool_calls": calls,
-        "finish_reason": getattr(choice, "finish_reason", None),
+        "finish_reason": reason,
         "usage": {
             "prompt_tokens": getattr(usage, "prompt_tokens", None),
             "completion_tokens": getattr(usage, "completion_tokens", None),
@@ -173,7 +183,7 @@ class Llm:
                 log.warning("%s: %s, retrying in %.0f s", purpose, type(e).__name__, wait)
                 self._sleep(wait)
                 continue
-            return _normalize(response), int((time.perf_counter() - start) * 1000)
+            return _normalize(response, purpose, key), int((time.perf_counter() - start) * 1000)
         raise AssertionError("unreachable")
 
     def _reply(
@@ -185,6 +195,7 @@ class Llm:
         model: str,
         ms: int,
     ) -> LlmReply:
+        _check_finish_reason(response.get("finish_reason"), purpose, key)
         calls = response.get("tool_calls") or []
         forced = tool_choice.get("function", {}).get("name") if isinstance(tool_choice, dict) else None
         if forced and not any(c["name"] == forced for c in calls):
