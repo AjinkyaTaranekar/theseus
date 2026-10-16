@@ -316,10 +316,29 @@ each `Change` into ops. The fixes below say what AWS makes of them. Every candid
 
 Generate only the candidates that apply to the paths in hand; derive names from the graph, never hardcode them.
 
+E6 supplies optional keyword-only `base` and approved `requirements` to `rule_candidates`. Without
+those inputs A and S are omitted when they cannot be proved. A removes new memberships or new evidenced
+statements, selecting only added `(address, part)` evidence; widening an existing statement is not treated
+as a new statement. `Change.evidence` optionally selects those exact statements and never adds evidence.
+Statement reverts set `Change.added_only`; the adapter receives optional keyword-only `base_resources` and
+checks that each selected statement ID was absent from the base source policy. Merely newly visible graph
+edges from unchanged statements do not qualify. Without base resources such a revert is omitted.
+S retains only locations reached by certain paths satisfying the supplied requirements. An unexpressible
+change causes its entire rule candidate to be omitted, rather than applying part of the proposed fix.
+
+The simulator supplies `Candidate.ranking_facts`; drafts cannot supply them. `permissions_removed` counts
+certain direct `(source, edge type, destination, access)` facts lost from CAN, CAN_ASSUME and TRUSTS after
+rebuilding, not effective reachability, memberships, provenance or rebuild-local edge IDs. `unknown_steps`
+counts distinct unknown edge triplets on the remaining or newly opened dangerous paths. Missing facts stay
+`None` and cannot support a recommendation. The cloud adapter validates `PatchTraits.adds_broad_wildcard`:
+for AWS this covers wildcard actions, wildcard trust principals, wildcard ARN headers and unbounded resource
+names. An exact S3 bucket plus a nonempty prefix ending in `*`, or an exact named secret's generated `-*`
+suffix, is a bounded scope. An entire bucket `/*` is broad. Only added statements and role trust are checked.
+
 **Ranking** (fixed code, not model judgment):
 
 1. Verdict `pass` before `unknown` before `fail` before `invalid`.
-2. Fewer UNKNOWN steps first.
+2. Fewer distinct UNKNOWN graph steps first (`ranking_facts.unknown_steps`).
 3. The smallest change: fewer ops, then fewer permissions removed.
 4. No broad wildcard in an added statement.
 5. A person's candidates before rule candidates before the LLM's, then by ID. This only breaks ties: a
@@ -327,7 +346,11 @@ Generate only the candidates that apply to the paths in hand; derive names from 
 
 The first `pass` is `recommended`. Jev can veto, never approve: if Jev scores "could this fix break legitimate
 use?" above 0.5, the candidate is labeled "needs a closer look" and cannot be recommended. If nothing passes,
-say so and show the trade-off; never pick the least bad option silently.
+say so and show the trade-off; never pick the least bad option silently. A veto on the first pass does not
+silently promote another candidate. Scores must be finite probabilities in [0, 1]. When the injected Jev
+client supports `breakage`, PR mode scores passing candidates through its record/replay wrapper, using
+operations, approved requirements and modeled code calls. Offline clients may omit this advisory capability;
+no score is fabricated. Replay requires an actual breakage recording, and a missing recording is an error.
 
 ## 16. Finding mode (`engine/finding.py`)
 

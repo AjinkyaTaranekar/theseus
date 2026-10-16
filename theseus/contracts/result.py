@@ -203,6 +203,14 @@ class PatchOp(Contract):
     args: dict[str, Any] = Field(default_factory=dict)
 
 
+class RankingFacts(Contract):
+    """Engine-computed direct permission losses and adapter-checked added-statement breadth."""
+
+    unknown_steps: int = Field(default=0, ge=0)
+    permissions_removed: int = Field(ge=0)
+    adds_broad_wildcard: bool
+
+
 class Candidate(Contract):
     """A verified fix. `proposed_by` says who wrote it: "theseus" for a rule, the model string for the LLM,
     or the login of the person who proposed it. Who approved it is recorded when it is applied.
@@ -222,6 +230,7 @@ class Candidate(Contract):
     unknown: list[str] = Field(default_factory=list)
     recommended: bool = False
     needs_closer_look: bool = False
+    ranking_facts: RankingFacts | None = None
     seconds: float = 0.0
 
 
