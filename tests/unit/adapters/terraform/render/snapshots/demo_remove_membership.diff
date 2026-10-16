@@ -1,0 +1,13 @@
+--- terraform/people.tf
++++ terraform/people.tf
+@@ -32,10 +32,6 @@
+   name = "platform-engineers"
+ }
+ 
+-resource "aws_iam_user_group_membership" "sam_support" {
+-  user   = "sam-support"
+-  groups = ["support-engineers"]
+-}
+ 
+ resource "aws_iam_user_group_membership" "alex_analysts" {
+   user   = "alex-analyst"

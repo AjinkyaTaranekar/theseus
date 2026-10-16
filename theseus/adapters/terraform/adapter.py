@@ -1,4 +1,4 @@
-"""Terraform plan and source adapter; verified text edits follow in E9."""
+"""Terraform plan, source evidence and verified text edits."""
 
 from __future__ import annotations
 
@@ -7,16 +7,20 @@ from pathlib import Path
 from typing import Any
 
 from theseus.adapters.terraform.plan import read_plan
+from theseus.adapters.terraform.render import render
 from theseus.adapters.terraform.source_index import locate
 from theseus.contracts.adapters import IacRead
 from theseus.contracts.result import Evidence, PatchOp
-from theseus.errors import IngestError, PatchError
+from theseus.errors import IngestError
 
 log = logging.getLogger(__name__)
 
 
 class TerraformAdapter:
     name = "terraform"
+
+    def __init__(self, config: dict[str, Any] | None = None) -> None:
+        self._account = config.get("account") if config is not None else None
 
     def read(self, root: Path, plan: dict[str, Any]) -> IacRead:
         """The plan's resources, unresolved fields and source files relative to the world root."""
@@ -36,5 +40,5 @@ class TerraformAdapter:
         return locate(files, address, part)
 
     def render(self, files: dict[str, str], ops: list[PatchOp]) -> dict[str, str]:
-        """The edited files once E9 implements verified rendering; currently raises PatchError."""
-        raise PatchError("Terraform rendering belongs to E9")
+        """The source files with verified edits, or PatchError when an edit cannot be verified."""
+        return render(files, ops, account=self._account)
