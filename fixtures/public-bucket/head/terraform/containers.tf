@@ -1,5 +1,11 @@
+# Orders team: API and worker tasks on the shared application cluster.
+
 resource "aws_ecs_cluster" "apps" {
   name = "demo-apps"
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
@@ -62,9 +68,10 @@ resource "aws_ecs_task_definition" "orders_api" {
   task_role_arn            = "arn:aws:iam::111122223333:role/orders-api-task"
   execution_role_arn       = "arn:aws:iam::111122223333:role/ecs-task-execution"
   container_definitions = jsonencode([{
-    name      = "orders-api"
-    image     = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1"
-    essential = true
+    name                   = "orders-api"
+    image                  = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1"
+    essential              = true
+    readonlyRootFilesystem = true
     environment = [
       { name = "BILLING_API_URL", value = "https://billing-api.internal.demo.test" },
       { name = "ORDERS_TABLE", value = "demo-orders" },
@@ -82,9 +89,10 @@ resource "aws_ecs_task_definition" "orders_worker" {
   task_role_arn            = "arn:aws:iam::111122223333:role/orders-worker-task"
   execution_role_arn       = "arn:aws:iam::111122223333:role/ecs-task-execution"
   container_definitions = jsonencode([{
-    name      = "orders-worker"
-    image     = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1"
-    essential = true
+    name                   = "orders-worker"
+    image                  = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1"
+    essential              = true
+    readonlyRootFilesystem = true
     environment = [
       { name = "ORDERS_TABLE", value = "demo-orders" },
       { name = "ORDER_EVENTS_QUEUE_URL", value = "https://sqs.eu-west-1.amazonaws.com/111122223333/order-events" }

@@ -3,6 +3,7 @@ on:
   pull_request:
 permissions:
   contents: read
+  # Widened for previews to publish through github-deploy; remove when preview publishing moves.
   id-token: write
 jobs:
   preview:

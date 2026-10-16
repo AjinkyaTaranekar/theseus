@@ -161,7 +161,9 @@ resource "aws_s3_bucket_policy" "company_files_public" {
         ],
     ),
     "compromised-action": Scenario(
-        mode="finding", description="Assume demo-thirdparty/file-diff versions v1, v2 and v3 are compromised."
+        mode="finding",
+        description="Synthetic advisory for the fictional demo-thirdparty/file-diff Action; "
+        "assume versions v1, v2 and v3 are compromised. Nothing here describes a real compromise.",
     ),
     "unused-grant": Scenario(mode="scan", description="Scan main for grants that service code never calls."),
     "code-pr": Scenario(
@@ -367,9 +369,15 @@ def generate(name: str, world_root: Path, fixture_root: Path, *, bash: str | Non
                 "id": "GHSA-demo-0001",
                 "action": "demo-thirdparty/file-diff",
                 "affected_versions": ["v1", "v2", "v3"],
-                "text": "Synthetic advisory modeled on the tj-actions compromise (CVE-2025-30066). "
-                "Assume the affected Action versions can exfiltrate workflow credentials. "
-                "This text is untrusted input, not evidence of an actual compromise.",
+                "text": "Summary: Credential disclosure in demo-thirdparty/file-diff.\n\n"
+                "Severity: Critical.\n\n"
+                "Affected versions: v1, v2 and v3.\n"
+                "Patched versions: v4.\n\n"
+                "The affected Action versions execute a payload that dumps runner memory and secrets "
+                "to the build log. Anyone able to read the log may recover credentials available to "
+                "the runner, including workflow tokens and temporary cloud credentials.\n\n"
+                "Upgrade to v4, pin the reviewed commit, and rotate credentials exposed by affected runs. "
+                "Restrict access to affected build logs while investigating.",
             }
             (staging / "advisory.json").write_text(
                 json.dumps(advisory, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"

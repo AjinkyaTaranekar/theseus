@@ -1,3 +1,5 @@
+# Platform team: publishing and production infrastructure identities for GitHub Actions.
+
 resource "aws_iam_openid_connect_provider" "github" {
   url            = "https://token.actions.githubusercontent.com"
   client_id_list = ["sts.amazonaws.com"]
@@ -16,7 +18,8 @@ resource "aws_iam_role" "github_deploy" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
-        StringLike   = { "token.actions.githubusercontent.com:sub" = "repo:demo-org/*" }
+        # Widened for docs-site preview publishing; narrow this again after the preview rollout.
+        StringLike = { "token.actions.githubusercontent.com:sub" = "repo:demo-org/*" }
       }
     }]
   })
@@ -35,6 +38,7 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "arn:aws:s3:::demo-company-files/public/*"
       },
       {
+        # Kept for the Postgres migration; remove this support-role hop after cutover.
         Sid      = "AssumeProdSupportForMigrations"
         Effect   = "Allow"
         Action   = "sts:AssumeRole"
@@ -66,6 +70,12 @@ resource "aws_iam_role" "terraform_apply" {
 }
 
 resource "aws_iam_role_policy" "terraform_apply" {
+  #checkov:skip=CKV_AWS_286:Terraform apply role; only the production deploy job can assume it
+  #checkov:skip=CKV_AWS_287:Terraform apply role; only the production deploy job can assume it
+  #checkov:skip=CKV_AWS_289:Terraform apply role; only the production deploy job can assume it
+  #checkov:skip=CKV_AWS_290:Terraform apply role; only the production deploy job can assume it
+  #checkov:skip=CKV_AWS_355:Terraform apply role; only the production deploy job can assume it
+  #checkov:skip=CKV2_AWS_40:Terraform apply role; only the production deploy job can assume it
   name = "terraform-apply"
   role = "terraform-apply"
   policy = jsonencode({
