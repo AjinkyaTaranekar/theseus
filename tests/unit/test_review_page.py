@@ -18,7 +18,9 @@ def test_the_review_page_script_parses() -> None:
     html = PAGE.read_text(encoding="utf-8")
     script = html.split("<script>", 1)[1].split("</script>", 1)[0]
     check = "new Function(require('fs').readFileSync(0, 'utf8'))"
-    run = subprocess.run(["node", "-e", check], input=script, capture_output=True, text=True, timeout=30)
+    run = subprocess.run(
+        ["node", "-e", check], input=script, capture_output=True, text=True, encoding="utf-8", timeout=30
+    )
     assert run.returncode == 0, run.stderr
 
 
