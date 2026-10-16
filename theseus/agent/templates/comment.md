@@ -111,6 +111,10 @@ No fix passes every check. The table shows what each one breaks.
 {{ checkov }}
 
 {% endif %}
+{% if falkordb %}
+{{ falkordb }}
+
+{% endif %}
 {% if change_line %}
 **What the change does:** {{ change_line }}
 

@@ -137,7 +137,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `ChokePoint` | `id: str`, `score: float` |
 | `ToolCall` | `tool: str`, `input: dict`, `summary: str`, `ms: int` |
 | `Timings` | `engine_ms: int`, `llm_ms: int`, `jev_ms: int`, `total_ms: int` |
-| `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int` |
+| `Coverage` | `resources: int`, `modeled: int`, `skipped_types: dict[str, int]`, `code_calls_skipped: int`, `nodes: int`, `edges: int` (the head graph's size in the store; 0 when not recorded) |
 | `NodeInfo` | `category: Category \| None`, `sensitivity: Sensitivity \| None`: what the comment needs to name a node in plain words |
 | `AnalysisResult` | `scenario: str \| None`, `mode: Literal["pr","finding","scan"]`, `repo: str \| None`, `pr_number: int \| None`, `graphs: dict[str,str]`, `intent: Intent \| None`, `changes: list[ResourceChange]`, `headline: str`, `opened`, `closed`, `unchanged: list[PathRecord]`, `requirements: list[RequirementStatus]`, `unknowns: list[str]`, `min_cut: MinCut \| None`, `candidates: list[Candidate]`, `rotate: list[str]`, `unused_grants: list[UnusedGrant]`, `use_beyond_intent: list[BeyondIntent]`, `staging_to_prod: list[StagingToProd]`, `choke_points: list[ChokePoint]`, `finding: dict \| None`, `evidence: dict[str, Evidence]`, `tool_trace: list[ToolCall]`, `timings: Timings`, `coverage: Coverage`, `models: dict[str,str]` (the models that answered, such as `{"llm": "zai-org/GLM-5.3", "jev": "jev-1.13.0"}`; shown in the comment, never projected), `nodes: dict[str, NodeInfo]` (every node on a listed path; shown, never projected) |
 
@@ -296,7 +296,9 @@ reader who has never heard of Theseus. The check run's summary is the same card.
    recommended row in bold; "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass; and,
    if nothing passes, a sentence that says so
 10. **What Theseus could not check:** the unknowns
-11. **What Theseus checked:** Checkov's result on the same commit and why it can pass while a path opens, what
+11. **What Theseus checked:** Checkov's result on the same commit and why it can pass while a path opens; where
+    the graph was built ("Built in FalkorDB 4.22.0: 70 nodes and 146 edges for the head commit; the engine took
+    3.1 s."); what
     the change does ("Adds `a`. Opens 3 dangerous paths, closes 0."), the tool trace, unchanged paths, coverage
     ("Read <n> resources, modeled <m>; skipped <k> of types Theseus does not model, such as <the three most
     common>"), timings, and the versions in `models`

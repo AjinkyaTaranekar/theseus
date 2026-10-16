@@ -41,6 +41,7 @@ MAX_PAGES = 30  # GitHub lists at most 3,000 files on a PR
 TITLE_MAX = 255
 SUMMARY_MAX = 65_000
 ANNOTATIONS_MAX = 50  # per request
+BLOB_BATCH = 100  # files per GraphQL query
 
 
 def _read(rel: str) -> bool:
@@ -203,8 +204,9 @@ class GitHub:
 
     def world_files(self, repo: str, sha: str) -> dict[str, str]:
         """Every file a review reads under the world root at a commit, by path relative to the root, sorted:
-        `theseus.yaml`, `terraform/*.tf`, `services/**/*.py` and `workflows/**/*.yml`. Raises GitHubError when
-        the commit's tree is too large to list in one answer."""
+        `theseus.yaml`, `terraform/*.tf`, `services/**/*.py` and `workflows/**/*.yml`. One tree request,
+        then the files in GraphQL batches; a file GraphQL cannot give whole is read on its own. Raises
+        GitHubError when the commit's tree is too large to list in one answer."""
         tree = self._repo(repo, "GET", f"/git/trees/{quote(sha)}", params={"recursive": "1"}).json()
         if tree.get("truncated"):
             raise GitHubError(f"{repo}@{sha[:7]}: the tree is too large to list")
@@ -214,11 +216,59 @@ class GitHub:
             for e in tree.get("tree") or []
             if e.get("type") == "blob"
             and str(e.get("path", "")).startswith(prefix)
+            and self._under_world_root(e["path"])
             and _read(e["path"][len(prefix) :])
         )
-        files = {path[len(prefix) :]: self.read_file(repo, path, sha) for path in wanted}
-        log.info("%s@%s: read %d files under %s/", repo, sha[:7], len(files), self.world_root)
+        texts = self._blobs(repo, sha, wanted)
+        alone = [path for path in wanted if texts[path] is None]
+        files = {
+            path[len(prefix) :]: text
+            if (text := texts[path]) is not None
+            else self.read_file(repo, path, sha)
+            for path in wanted
+        }
+        log.info(
+            "%s@%s: read %d files under %s/ (%d on their own)",
+            repo,
+            sha[:7],
+            len(files),
+            self.world_root,
+            len(alone),
+        )
         return files
+
+    def _blobs(self, repo: str, sha: str, paths: list[str]) -> dict[str, str | None]:
+        """Each file's text at the commit through GraphQL, BLOB_BATCH files a query, or None for one it cannot
+        give whole (binary, truncated or missing). Paths reach the query only as variables."""
+        owner, name = repo.split("/", 1)
+        out: dict[str, str | None] = {}
+        for start in range(0, len(paths), BLOB_BATCH):
+            chunk = paths[start : start + BLOB_BATCH]
+            names = ", ".join(f"$e{n}: String!" for n in range(len(chunk)))
+            fields = " ".join(
+                f"f{n}: object(expression: $e{n}) {{ ... on Blob {{ text isBinary isTruncated }} }}"
+                for n in range(len(chunk))
+            )
+            query = (
+                f"query($owner: String!, $name: String!, {names}) "
+                f"{{ repository(owner: $owner, name: $name) {{ {fields} }} }}"
+            )
+            variables = {"owner": owner, "name": name} | {f"e{n}": f"{sha}:{p}" for n, p in enumerate(chunk)}
+            found = self._graphql(repo, query, variables).get("repository") or {}
+            for n, path in enumerate(chunk):
+                blob = found.get(f"f{n}") or {}
+                whole = (
+                    blob.get("text") is not None and not blob.get("isBinary") and not blob.get("isTruncated")
+                )
+                out[path] = blob["text"] if whole else None
+        return out
+
+    def _graphql(self, repo: str, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        body = {"query": query, "variables": variables}
+        found = self._call("POST", "/graphql", bearer=self.installation_token(repo), json=body).json()
+        if found.get("errors"):
+            raise GitHubError(f"POST /graphql: {found['errors'][0].get('message', 'error')}")
+        return found.get("data") or {}
 
     def can_write(self, repo: str, user: str) -> bool:
         """Whether the user has write, maintain or admin permission on the repo."""

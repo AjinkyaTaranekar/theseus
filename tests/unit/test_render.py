@@ -29,6 +29,7 @@ from theseus.agent.render import (
     cut_sentence,
     do_line,
     escape,
+    falkordb_line,
     mermaid,
     needs_and_grants,
     pick_diagrams,
@@ -699,6 +700,19 @@ def test_unknowns_and_what_theseus_checked_are_folded() -> None:
     assert "Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s." in inside
     assert "Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`." in inside
     assert "Models: not recorded." in render(intern().model_copy(update={"models": {}}))
+
+
+def test_the_falkordb_line_says_where_the_graph_lives_and_how_big_it_is() -> None:
+    sized = intern().model_copy(
+        update={"coverage": intern().coverage.model_copy(update={"nodes": 70, "edges": 146})}
+    )
+    assert falkordb_line(sized, "4.22.0") == (
+        "Built in FalkorDB 4.22.0: 70 nodes and 146 edges for the head commit; the engine took 1.2 s."
+    )
+    assert falkordb_line(sized, None).startswith("Built in FalkorDB: 70 nodes")
+    comment = render_comment(sized, REPO, SHA, CHECKOV, falkordb="4.22.0")
+    assert "Built in FalkorDB 4.22.0" in folded(comment, "What Theseus checked")
+    assert falkordb_line(intern(), "4.22.0") is None  # no size recorded
 
 
 def test_the_change_line_names_what_is_added_updated_and_deleted() -> None:

@@ -561,6 +561,17 @@ def coverage_line(result: AnalysisResult) -> Md:
     return Md(line)
 
 
+def falkordb_line(result: AnalysisResult, version: str | None) -> Md | None:
+    """Where the graph lives and how big it is: "Built in FalkorDB 4.22.0: 70 nodes and 146 edges ..."."""
+    cov = result.coverage
+    if not cov.nodes:
+        return None
+    where = f"FalkorDB {escape(version)}" if version else "FalkorDB"
+    took = f"; the engine took {result.timings.engine_ms / 1000:.1f} s" if result.timings.engine_ms else ""
+    size = f"{_plural(cov.nodes, 'node')} and {_plural(cov.edges, 'edge')}"
+    return Md(f"Built in {where}: {size} for the head commit{took}.")
+
+
 def timings_line(result: AnalysisResult) -> Md:
     t = result.timings
     if not t.total_ms:
@@ -608,6 +619,7 @@ def _context(
     checkov: dict[str, Any] | None,
     world_root: str,
     scale: int,
+    falkordb: str | None,
 ) -> dict[str, Any]:
     caps = {k: max(1, v // scale) for k, v in CAPS.items()}
     status = verdict(result)
@@ -626,6 +638,7 @@ def _context(
         "risks": risks,
         "risks_more": risks_more,
         "checkov": checkov_line(checkov, bool(result.opened)) if pr else None,
+        "falkordb": falkordb_line(result, falkordb),
         "opened": [_path_row(p) for p in opened[: caps["opened"]]],
         "opened_more": max(0, len(opened) - caps["opened"]),
         "diagrams": [
@@ -663,12 +676,14 @@ def render_comment(
     head_sha: str,
     checkov: dict[str, Any] | None = None,
     world_root: str = "demo-infra",
+    falkordb: str | None = None,
 ) -> str:
-    """The whole PR comment, marker first. Long lists are cut short, so the comment fits GitHub's limit."""
+    """The whole PR comment, marker first. `falkordb` is the version the graphs were built in. Long lists are
+    cut short, so the comment fits GitHub's limit."""
     template = _ENV.get_template("comment.md")
     scale = 1
     while True:
-        comment = template.render(**_context(result, repo, head_sha, checkov, world_root, scale))
+        comment = template.render(**_context(result, repo, head_sha, checkov, world_root, scale, falkordb))
         if len(comment) < MAX_CHARS or scale >= 64:
             return comment
         scale *= 2

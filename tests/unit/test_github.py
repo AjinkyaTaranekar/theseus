@@ -895,3 +895,59 @@ def test_a_review_labels_the_pr_and_a_stale_run_does_not(client: TestClient, fak
     fake.head = "c" * 40
     assert analyze(client).status_code == 200
     assert fake.pr_labels == []
+
+
+# Reading a commit's world -----------------------------------------------------------------------------------
+
+
+def tree_of(*paths: str) -> dict[str, Any]:
+    return {"sha": HEAD, "truncated": False, "tree": [{"path": p, "type": "blob"} for p in paths]}
+
+
+def test_a_commit_s_world_is_read_in_one_query_and_a_large_file_on_its_own(
+    gh: GitHub, fake: FakeGitHub
+) -> None:
+    fake.router.get(f"/repos/{REPO}/git/trees/{HEAD}").respond(
+        200,
+        json=tree_of(
+            "demo-infra/theseus.yaml",
+            "demo-infra/terraform/people.tf",
+            "demo-infra/terraform/big.tf",
+            "demo-infra/README.md",
+            "theseus/config.py",
+        ),
+    )
+    queries: list[dict[str, Any]] = []
+
+    def graphql(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        queries.append(body)
+        found = {}
+        for key, expression in body["variables"].items():
+            if key.startswith("e"):
+                path = expression.partition(":")[2]
+                big = path.endswith("big.tf")
+                found[f"f{key[1:]}"] = {
+                    "text": "x" if big else f"# {path}",
+                    "isBinary": False,
+                    "isTruncated": big,
+                }
+        return httpx.Response(200, json={"data": {"repository": found}})
+
+    fake.router.post("/graphql").mock(side_effect=graphql)
+    files = gh.world_files(REPO, HEAD)
+    assert files == {
+        "terraform/big.tf": "# demo-infra/terraform/big.tf\n",  # from the contents API
+        "terraform/people.tf": "# demo-infra/terraform/people.tf",
+        "theseus.yaml": "# demo-infra/theseus.yaml",
+    }
+    [query] = queries
+    assert query["variables"]["owner"] == "demo-org" and query["variables"]["name"] == "theseus"
+    assert "demo-infra" not in query["query"]  # paths travel only as variables
+
+
+def test_a_graphql_error_is_a_github_error(gh: GitHub, fake: FakeGitHub) -> None:
+    fake.router.get(f"/repos/{REPO}/git/trees/{HEAD}").respond(200, json=tree_of("demo-infra/theseus.yaml"))
+    fake.router.post("/graphql").respond(200, json={"errors": [{"message": "Something went wrong"}]})
+    with pytest.raises(GitHubError, match="POST /graphql: Something went wrong"):
+        gh.world_files(REPO, HEAD)

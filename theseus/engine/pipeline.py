@@ -96,6 +96,8 @@ def coverage(world: World, rows: GraphRows, deps: Deps) -> Coverage:
         modeled=len(world.resources) - skipped,
         skipped_types=dict(sorted(world.skipped_types.items())),
         code_calls_skipped=calls_skipped,
+        nodes=len(rows.nodes),
+        edges=len(rows.edges),
     )
 
 

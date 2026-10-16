@@ -64,7 +64,9 @@ workflows only from the repo root's `.github/workflows/`, so they never run, and
 | Auth | A JWT signed with the App's private key, exchanged for an installation token (httpx and PyJWT) |
 
 **Reading files at a commit.** The backend reads `terraform/`, `services/`, `workflows/` and `theseus.yaml` under
-the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs through the contents API.
+the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs: one tree request lists them, then one
+GraphQL query per 100 files reads them, each path passed as a variable (`<sha>:<path>`), never inside the query.
+A file GraphQL cannot give whole (binary or truncated) is read through the contents API.
 
 **Writing is fenced to the world root.** Every commit the App makes (apply, containment, scan fixes) may change
 only files under the world root. The backend checks each path before committing and refuses the whole commit
