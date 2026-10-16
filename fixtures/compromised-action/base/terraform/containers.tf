@@ -1,5 +1,11 @@
+# Orders team: API and worker tasks on the shared application cluster.
+
 resource "aws_ecs_cluster" "apps" {
   name = "demo-apps"
+  setting {
+    name  = "containerInsights"
+    value = "enabled"
+  }
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
@@ -36,6 +42,21 @@ resource "aws_iam_role_policy_attachment" "orders_api_table" {
   policy_arn = "arn:aws:iam::111122223333:policy/orders-table-rw"
 }
 
+# The worker fulfils orders from this queue; the queue key's policy (platform.tf) lets this role encrypt for it.
+resource "aws_iam_role_policy" "orders_api_events" {
+  name = "orders-api-events"
+  role = "orders-api-task"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "SendOrderEvents"
+      Effect   = "Allow"
+      Action   = "sqs:SendMessage"
+      Resource = "arn:aws:sqs:eu-west-1:111122223333:order-events"
+    }]
+  })
+}
+
 resource "aws_iam_role" "orders_worker_task" {
   name = "orders-worker-task"
   assume_role_policy = jsonencode({
@@ -53,6 +74,21 @@ resource "aws_iam_role_policy_attachment" "orders_worker_table" {
   policy_arn = "arn:aws:iam::111122223333:policy/orders-table-rw"
 }
 
+# Long-polls the queue and deletes each message once its order is fulfilled; failures go to the DLQ by redrive.
+resource "aws_iam_role_policy" "orders_worker_events" {
+  name = "orders-worker-events"
+  role = "orders-worker-task"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "ConsumeOrderEvents"
+      Effect   = "Allow"
+      Action   = ["sqs:ReceiveMessage", "sqs:DeleteMessage"]
+      Resource = "arn:aws:sqs:eu-west-1:111122223333:order-events"
+    }]
+  })
+}
+
 resource "aws_ecs_task_definition" "orders_api" {
   family                   = "orders-api"
   requires_compatibilities = ["FARGATE"]
@@ -62,9 +98,10 @@ resource "aws_ecs_task_definition" "orders_api" {
   task_role_arn            = "arn:aws:iam::111122223333:role/orders-api-task"
   execution_role_arn       = "arn:aws:iam::111122223333:role/ecs-task-execution"
   container_definitions = jsonencode([{
-    name      = "orders-api"
-    image     = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1"
-    essential = true
+    name                   = "orders-api"
+    image                  = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-api:2.3.1"
+    essential              = true
+    readonlyRootFilesystem = true
     environment = [
       { name = "BILLING_API_URL", value = "https://billing-api.internal.demo.test" },
       { name = "ORDERS_TABLE", value = "demo-orders" },
@@ -82,9 +119,10 @@ resource "aws_ecs_task_definition" "orders_worker" {
   task_role_arn            = "arn:aws:iam::111122223333:role/orders-worker-task"
   execution_role_arn       = "arn:aws:iam::111122223333:role/ecs-task-execution"
   container_definitions = jsonencode([{
-    name      = "orders-worker"
-    image     = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1"
-    essential = true
+    name                   = "orders-worker"
+    image                  = "111122223333.dkr.ecr.eu-west-1.amazonaws.com/orders-worker:2.3.1"
+    essential              = true
+    readonlyRootFilesystem = true
     environment = [
       { name = "ORDERS_TABLE", value = "demo-orders" },
       { name = "ORDER_EVENTS_QUEUE_URL", value = "https://sqs.eu-west-1.amazonaws.com/111122223333/order-events" }

@@ -11,6 +11,16 @@ data_locations:
 sensitive_overrides:             # node ID -> class; a person's override always beats Jev
   "s3://demo-terraform-state/": regulated
   "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
+  # Queues, the topic and the log groups carry events and request metadata, never customer data.
+  "sqs:order-events": internal
+  "sqs:order-events-dlq": internal
+  "sns:invoice-created": internal
+  "log-group:/aws/lambda/analytics-export": internal
+  "log-group:/aws/lambda/billing-api": internal
+  "log-group:/aws/lambda/billing-job": internal
+  "log-group:/aws/lambda/support-portal": internal
+  "log-group:/ecs/orders-api": internal
+  "log-group:/ecs/orders-worker": internal
 environments:                    # anything not listed is prod
   staging:
     - workflow:demo-org/docs-site/preview.yml

@@ -1,4 +1,7 @@
+# Platform team: support and analytics access to production data.
+
 resource "aws_iam_role" "prod_support" {
+  #checkov:skip=CKV_AWS_61:Callers need an identity-policy grant; only the support group and migration role are granted assumption
   name = "prod-support"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -40,6 +43,7 @@ resource "aws_iam_role_policy" "prod_support_read" {
 }
 
 resource "aws_iam_role" "analytics_read" {
+  #checkov:skip=CKV_AWS_61:Callers need an identity-policy grant; the data-analysts group's policy grants assumption
   name = "analytics-read"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"

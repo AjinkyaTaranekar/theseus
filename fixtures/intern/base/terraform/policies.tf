@@ -1,3 +1,5 @@
+# Platform team: shared data grants attached to team and workload identities.
+
 resource "aws_iam_policy" "app_logs_read" {
   name = "app-logs-read"
   policy = jsonencode({
