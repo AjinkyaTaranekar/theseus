@@ -220,8 +220,9 @@ def consequence(result: AnalysisResult) -> Md:
         holds = words.holds(_sensitivity(use.resource, result))
         return Md(f"**{escape(lead)}**, which holds {holds}. The PR doesn't mention it.")
     if result.unknowns:
-        n = _plural(len(result.unknowns), "part")
-        return Md(f"**Theseus couldn't check {n} of this change.** They're listed below.")
+        n = len(result.unknowns)
+        listed = "It's listed below." if n == 1 else "They're listed below."
+        return Md(f"**Theseus couldn't check {_plural(n, 'part')} of this change.** {listed}")
     return Md("**No new access to sensitive data.**")
 
 

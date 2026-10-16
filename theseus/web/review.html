@@ -204,9 +204,9 @@ function kindOf(id, info) {
 }
 function short(id) {
   // A storage location reads best as its folder; the full name is in the tooltip.
-  const name = nameOf(id).replace(/\/$/, "");
-  const parts = name.split("/");
-  return parts.length > 1 ? parts[parts.length - 1] + "/" : name;
+  const full = nameOf(id), folder = full.endsWith("/");
+  const parts = full.replace(/\/$/, "").split("/");
+  return parts[parts.length - 1] + (folder && parts.length > 1 ? "/" : "");
 }
 function access(grants) {
   const g = (grants || []).filter((x) => x === "read" || x === "write").sort();
