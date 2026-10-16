@@ -54,7 +54,7 @@ Regenerate it with `python tools/dep_graph.py` whenever `tools/tasks.csv` change
 
 | Task | Feature | Files it creates | It achieves | Needs first |
 | --- | --- | --- | --- | --- |
-| [E1](E1.md) | Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `theseus/adapters/terraform/plan.py`, `theseus/adapters/terraform/source_index.py` | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 10 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | F2, F4 |
+| [E1](E1.md) | Importer: plan, structure, workloads and coverage | `theseus/importer/world.py`, `theseus/adapters/terraform/plan.py`, `theseus/adapters/terraform/source_index.py` | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 19 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | F2, F4 |
 | [E2](E2.md) | IAM: statements, matching, CAN and CAN_ASSUME | `theseus/adapters/aws/iam.py`, `theseus/adapters/aws/policies.py`, `theseus/adapters/aws/managed.py` | All unit tests pass | F2 |
 | [E3](E3.md) | Graph load, path diff and required access | `theseus/graph/store.py`, `theseus/graph/load.py`, `theseus/graph/queries.py` | `analyze` on the intern fixture matches `expected.json` for opened, closed and R1 to R17 | E1, E2, F3, F5 |
 | [A1](A1.md) | LLM intent extraction | `theseus/agent/llm.py`, `theseus/agent/intent.py`, `tests/replay/test_intent.py` | Replay tests pass on 10 PR texts | F2 |
