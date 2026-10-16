@@ -145,7 +145,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 | Task | Creates | Changes |
 | --- | --- | --- |
-| E4 Minimum cut with MaxFlow | `theseus/engine/mincut.py`, `theseus/graph/algos.py`, `tests/unit/test_mincut.py`, `tests/golden/test_mincut_fixtures.py` | `theseus/engine/pipeline.py` |
+| E4 Minimum cut with MaxFlow | `theseus/engine/mincut.py`, `theseus/graph/algos.py`, `tests/unit/test_mincut.py`, `tests/golden/test_mincut_fixtures.py` | `theseus/engine/pipeline.py`, `theseus/graph/store.py` |
 | E5 Simulator on GRAPH.COPY | `theseus/adapters/aws/patch.py`, `theseus/engine/simulate.py`, `tests/unit/adapters/aws/test_patch.py`, `tests/golden/test_simulate_intern.py` | `theseus/graph/load.py` |
 | E6 Rule-based fixes and ranking | `theseus/engine/candidates.py`, `theseus/adapters/aws/changes.py`, `tests/unit/adapters/aws/test_changes.py`, `tests/golden/test_public_bucket.py`, `tests/unit/test_ranking.py` | `theseus/engine/pipeline.py`, `tests/golden/test_intern.py` |
 | E9 Terraform patch renderer | `theseus/adapters/terraform/render.py`, `tests/unit/adapters/terraform/render/` | `theseus/adapters/terraform/adapter.py` |
@@ -218,7 +218,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 | ID | Task | Lane | Needs first | Done when | Size |
 | --- | --- | --- | --- | --- | --- |
-| E4 | Minimum cut with MaxFlow | Engine | E3 | Intern max flow is 1,000,000; the Action's is 1, with the right cut edge | M |
+| E4 | Minimum cut with MaxFlow | Engine | E3, A3 | Intern max flow is 1,000,000; the Action's is 1, with the right cut edge | M |
 | E5 | Simulator on GRAPH.COPY | Engine | E3 | Each candidate gets a verdict | M |
 | E6 | Rule-based fixes and ranking | Engine | E5 | For the intern: A fails, C is UNKNOWN, D fails | M |
 | E9 | Terraform patch renderer | Engine | F2, F4 | Every op renders and the result parses | M |

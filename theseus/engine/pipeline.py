@@ -1,7 +1,7 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
-PR mode here uses the `theseus.yaml` requirements only; intent (A3) and the rest of the result (E4 onward)
-build on it. The store is FalkorDB in the product; `MemoryStore` only in offline tests.
+PR mode reports all requirements and protects approved ones in a combined cut for actors with opened paths.
+The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ from theseus.contracts.result import (
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
-from theseus.engine.intent_effect import changes, headline
+from theseus.engine.intent_effect import approved, changes, headline
+from theseus.engine.mincut import min_cut
 from theseus.errors import IngestError
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
@@ -131,8 +132,22 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     before: Analysis = analyze(deps.store, base_state, requirements, who)
     after: Analysis = analyze(deps.store, head_state, requirements, who)
     found = diff(before, after)
+    opened_actors = sorted({path.actor for path in found.opened})
+    head_rows = {node.id: node for node in head_state.rows.nodes}
+    cut = (
+        min_cut(deps.store, head_state, after, opened_actors, approved(requirements, intent, head_rows))
+        if opened_actors
+        else None
+    )
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
     base_evidence, base_nodes = _listed(found.closed, base_state)
+    if cut is not None:
+        all_evidence = step_evidence(head_state.rows)
+        for edge in cut.cut:
+            head_evidence[edge.evidence] = all_evidence[edge.evidence]
+            for node_id in (edge.src, edge.dst):
+                node = head_rows[node_id]
+                head_nodes[node_id] = NodeInfo(category=node.category, sensitivity=node.sensitivity)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms = base_jev + head_jev
@@ -148,6 +163,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         unchanged=found.unchanged,
         requirements=after.requirements,
         unknowns=sorted(set(head_state.rows.unknowns)),
+        min_cut=cut,
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
         timings=Timings(
             engine_ms=total_ms - jev_ms - llm_ms, llm_ms=llm_ms, jev_ms=jev_ms, total_ms=total_ms

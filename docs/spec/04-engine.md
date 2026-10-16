@@ -240,8 +240,10 @@ Analyze base and head with the same actors and the same requirements (config plu
 | `USED` = 1,000 | A `CAN` edge from a role to a resource when a workload running as that role has a `CALLS` edge to that resource whose `grants` share an access with it (task C3) |
 | 1 | Every other edge |
 
-- **Sources:** the actor (PR and scan modes), or every matched workflow (finding mode).
-- **Sinks:** that actor's dangerous targets in the analyzed graph, minus any source (FalkorDB requires the
+- **Sources:** in PR mode, all actors with opened dangerous paths share one combined cut in
+  `AnalysisResult.min_cut`; no opened paths leaves it null. Scan mode uses the actor; finding mode uses
+  every matched workflow. Capacities protect approved requirements across the whole graph.
+- **Sinks:** those sources' dangerous targets in the analyzed graph, minus any source (FalkorDB requires the
   two sets not to overlap).
 - **FLOW rows:** one per (source, target) pair over the traversal and grant edges, with capacities summed
   and `eids` sorted, written by Q_SET_FLOW (`03-graph.md`). A cut `FLOW` edge cuts every edge in its `eids`.
