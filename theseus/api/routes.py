@@ -1,7 +1,8 @@
 """The analysis routes and the App's webhook (docs/spec/05-contracts.md, "API"; 07-github-and-deploy.md).
 
 A request from the Action runs the real review (A5) and posts it on the PR as the comment and the `Theseus`
-check run. A `{fixture}` request still answers from that fixture's stub, for the Try-it page (S4).
+check run. A `{fixture}` request to `/analyze` or `/finding` still answers from that fixture's stub, for the
+Try-it page (S4); `/scan` runs the real scan (C3).
 """
 
 from __future__ import annotations
@@ -116,6 +117,20 @@ def get_review(request: Request) -> Review:
 
 ReviewDep = Annotated[Review, Depends(get_review)]
 
+# The scan behind `/scan`: a scan fixture's name to its result. `api/app.py` builds the real one at startup;
+# tests replace it.
+Scan = Callable[[str], AnalysisResult]
+
+
+def get_scan(request: Request) -> Scan:
+    scan = getattr(request.app.state, "scan", None)
+    if scan is None:
+        raise HTTPException(503, "the scan engine is not ready")
+    return scan
+
+
+ScanDep = Annotated[Scan, Depends(get_scan)]
+
 
 def get_store(request: Request) -> reviews.ReviewStore:
     """The store the graphs live in, for each review's page; `api/app.py` sets it at startup."""
@@ -154,12 +169,19 @@ def load_expected(name: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def stub_for(fixture: str | None, mode: str) -> AnalysisResult:
-    if fixture is None:
-        raise HTTPException(501, "only {fixture} requests are answered until the engine lands (E3, A5)")
+def fixture_of(fixture: str, mode: str) -> dict[str, Any]:
+    """The fixture's expected.json, or 400 and 404 when the name is bad, the fixture is missing or it is not
+    a `mode` scenario."""
     expected = load_expected(fixture)
     if expected.get("mode") != mode:
         raise HTTPException(400, f"fixture {fixture!r} is a {expected.get('mode')} scenario, not {mode}")
+    return expected
+
+
+def stub_for(fixture: str | None, mode: str) -> AnalysisResult:
+    if fixture is None:
+        raise HTTPException(501, "only {fixture} requests are answered until the engine lands (E3, A5)")
+    expected = fixture_of(fixture, mode)
     log.info("stub result for fixture %s", fixture)
     return result_from_expected(expected)
 
@@ -341,9 +363,18 @@ def finding(req: FindingRequest) -> AnalysisResult:
 
 
 @router.post("/scan", response_model=AnalysisResult)
-def scan(req: ScanRequest) -> AnalysisResult:
-    """Scan mode."""
-    return stub_for(req.fixture, "scan")
+def scan(req: ScanRequest, run: ScanDep) -> AnalysisResult:
+    """Scan mode (C3). With `{fixture}`, the real scan of that fixture's `main`: the dangerous paths already
+    there, the grants its code never calls and candidate U. A repo needs the issue and fix PRs that
+    `/theseus apply` (A9) will open, so it is refused until then."""
+    if req.fixture is None:
+        raise HTTPException(501, "scanning a repo opens an issue and fix PRs, which wait for apply (A9)")
+    fixture_of(req.fixture, "scan")
+    try:
+        return run(req.fixture)
+    except TheseusError as e:
+        log.error("scan of %s failed: %s", req.fixture, e)
+        raise HTTPException(500, f"the scan could not finish: {e}") from e
 
 
 # The App's webhook ------------------------------------------------------------------------------------------

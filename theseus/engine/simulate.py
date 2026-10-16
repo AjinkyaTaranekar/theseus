@@ -5,8 +5,8 @@ from __future__ import annotations
 import logging
 
 from theseus.contracts.adapters import Adapters
-from theseus.contracts.engine import CandidateDraft, GraphState, GraphStore
-from theseus.contracts.result import Candidate, GraphRows, RankingFacts, Requirement
+from theseus.contracts.engine import Analysis, CandidateDraft, GraphState, GraphStore
+from theseus.contracts.result import Candidate, EdgeRow, GraphRows, RankingFacts, Requirement
 from theseus.contracts.schema import RESOURCE, is_candidate_id
 from theseus.engine.analyze import analyze
 from theseus.errors import GraphError, PatchError
@@ -53,6 +53,34 @@ def _permissions(rows: GraphRows) -> set[tuple[str, str, str, str]]:
     }
 
 
+def _call_label(call: EdgeRow, access: str) -> str:
+    where = call.evidence[0] if call.evidence else None
+    place = f" ({where.file}:{where.line})" if where and where.file != "unknown" and where.line else ""
+    return f"{call.src} -> {call.dst} ({access}){place}"
+
+
+def _lost_calls(head: GraphRows, before: Analysis, after: Analysis) -> tuple[list[str], list[str]]:
+    """The code calls that lose their access, and those whose access becomes unknown (04-engine.md section
+    14). A call the head's role could not make anyway is not the fix's doing, so it is not counted."""
+
+    def reaches(analysis: Analysis, call: EdgeRow, access: str, unknown: bool) -> bool:
+        return any(
+            p.target == call.dst and access in p.grants and p.unknown == unknown
+            for p in analysis.paths.get(call.src, [])
+        )
+
+    broken, unclear = [], []
+    for call in sorted((e for e in head.edges if e.type == "CALLS"), key=lambda e: (e.src, e.dst, e.eid)):
+        for access in sorted(set(call.grants)):
+            if not reaches(before, call, access, unknown=False) or reaches(
+                after, call, access, unknown=False
+            ):
+                continue
+            label = _call_label(call, access)
+            (unclear if reaches(after, call, access, unknown=True) else broken).append(label)
+    return broken, unclear
+
+
 def simulate(
     store: GraphStore,
     head: GraphState,
@@ -65,7 +93,8 @@ def simulate(
 
     Callers supply config and approved intent requirements (A3 performs the suspicious-intent filter).
     Sensitive intent never constrains a fix. Existing sensitivity and its provenance are kept without a
-    model call. Code-call preservation is added by C3; calls_broken stays empty until then.
+    model call. A code call that loses its access fails the candidate; `calls_broken` names it, with its
+    file and line.
     """
     name = candidate_graph(head.name, draft.id)
     copy_graph(store, head.name, name)
@@ -119,8 +148,10 @@ def simulate(
         for req in after.requirements
         if req.id in enforced and req.status == "missing" and old_status[req.id] != "missing"
     )
+    calls_broken, calls_unknown = _lost_calls(head.rows, before, after)
     unknown = sorted(
         {
+            *(f"call {label}: access is unknown" for label in calls_unknown),
             *(
                 f"requirement {req.id}: access is unknown"
                 for req in after.requirements
@@ -134,12 +165,14 @@ def simulate(
         }
     )
     certain = sorted({path.id for path in [*remaining, *opened] if not path.unknown})
-    if certain or broken:
+    if certain or broken or calls_broken:
         reasons = []
         if certain:
             reasons.append("Dangerous paths remain or were introduced: " + ", ".join(certain))
         if broken:
             reasons.append("Required access lost: " + ", ".join(broken))
+        if calls_broken:
+            reasons.append("Code would break, it calls: " + ", ".join(calls_broken))
         verdict, reason = "fail", "; ".join(reasons)
     elif unknown:
         verdict, reason = "unknown", "; ".join(unknown)
@@ -156,6 +189,7 @@ def simulate(
         paths_left=paths_left,
         new_paths=new_paths,
         requirements_broken=broken,
+        calls_broken=calls_broken,
         unknown=unknown,
         ranking_facts=RankingFacts(
             unknown_steps=len(

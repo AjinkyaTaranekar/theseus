@@ -20,15 +20,8 @@ def test_help_lists_the_four_commands() -> None:
         assert command in out.stdout
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [
-        ["finding", "fixtures/compromised-action"],
-        ["scan", "fixtures/unused-grant"],
-    ],
-)
-def test_unbuilt_commands_exit_2(argv: list[str], capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(argv) == 2
+def test_unbuilt_commands_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["finding", "fixtures/compromised-action"]) == 2
     assert "not implemented yet" in capsys.readouterr().err
 
 
@@ -105,3 +98,41 @@ def test_analyze_refuses_a_fixture_that_is_not_a_pr() -> None:
 
     with pytest.raises(TheseusError, match="'scan' fixture"):
         cli.analyze_fixture(Path("fixtures/unused-grant"), MemoryStore(), None, get_settings())
+
+
+def test_scan_refuses_to_run_without_falkordb(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unreachable(settings: object) -> None:
+        raise GraphError("cannot reach FalkorDB at example:1")
+
+    monkeypatch.setattr(cli, "get_client", unreachable)
+    assert main(["scan", "fixtures/unused-grant"]) == 1
+    assert "cannot reach FalkorDB" in capsys.readouterr().err
+
+
+def test_scan_reads_a_scan_fixture_through_the_real_adapters() -> None:
+    from pathlib import Path
+
+    from tests.golden.conftest import RecordedJev
+    from theseus.config import get_settings
+    from theseus.graph.store import MemoryStore
+
+    store = MemoryStore()
+    result = cli.scan_fixture(Path("fixtures/unused-grant"), store, RecordedJev(), get_settings())
+    assert result.mode == "scan" and result.graphs == {"main": "fx__unused-grant__main"}
+    assert [(g.workload, g.resource, g.access) for g in result.unused_grants] == [
+        ("workload:support-portal", "secret:prod-db-credentials", "read")
+    ]
+    assert [(c.id, c.verdict) for c in result.candidates] == [("U", "pass")]
+
+
+def test_scan_refuses_a_fixture_that_is_not_a_scan() -> None:
+    from pathlib import Path
+
+    from theseus.config import get_settings
+    from theseus.errors import TheseusError
+    from theseus.graph.store import MemoryStore
+
+    with pytest.raises(TheseusError, match="'pr' fixture"):
+        cli.scan_fixture(Path("fixtures/intern"), MemoryStore(), None, get_settings())
