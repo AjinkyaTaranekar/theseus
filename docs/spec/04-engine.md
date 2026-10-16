@@ -195,7 +195,8 @@ in `unknowns` as `"code: <file>:<line> <call> target unresolved"`.
 ## 8. Sensitivity and environments
 
 - Jev classifies every `Resource` node as `public`, `internal`, `confidential` or `regulated` (prompt in
-  `06-agent.md`). `sensitive_overrides` in `theseus.yaml` always wins. `sensitive` is true for
+  `06-agent.md`). `sensitive_overrides` in `theseus.yaml` always wins, so the pipeline asks Jev only about
+  resources without an override. `sensitive` is true for
   `confidential` and `regulated`. `sensitivity_source` is `human` for an override, `jev` for Jev's class, and
   `fallback` when the fast model answered because Jev could not. With no label it is `unclassified` and
   `sensitive` is false.
