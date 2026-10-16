@@ -139,6 +139,7 @@ A5: until then `/analyze` returns a stub that fails every PR changing the world 
 | --- | --- |
 | Branch `demo/<scenario>-<take>`, label `demo`, title as in `02-demo-world.md` | Easy to find, filter and close; product PRs never use the label |
 | A demo PR changes only `demo-infra/` | The Action's `paths` filter, and a clean diff on screen |
+| CI skips a `demo/` branch; its only check is `Theseus` | CI's tests pin `demo-infra/` to `main`, so they fail by design on a PR that changes it |
 | A product PR never changes `demo-infra/` (except tasks F4 and C1) | CODEOWNERS sends `demo-infra/` to both humans |
 | Practice: open, check, close. Record on a fresh branch per take | Closing deletes the PR's graphs; old takes never clutter the video |
 | `main` holds the world with no scenario applied | Each PR starts from the same `main` the fixtures were made from |
