@@ -1,7 +1,7 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
-PR mode here uses the `theseus.yaml` requirements only; intent (A3) and the rest of the result (E4 onward)
-build on it. The store is FalkorDB in the product; `MemoryStore` only in offline tests.
+PR mode compares intent with engine-verified access and verifies applicable rule fixes on graph copies.
+The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from pathlib import Path
 
 from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
-from theseus.contracts.engine import Analysis, Deps, GraphState, World
+from theseus.contracts.engine import Analysis, CandidateDraft, Deps, GraphState, World
 from theseus.contracts.result import (
     AnalysisResult,
     Coverage,
@@ -27,7 +27,9 @@ from theseus.contracts.result import (
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
-from theseus.engine.intent_effect import changes, headline
+from theseus.engine.candidates import rank, rule_candidates
+from theseus.engine.intent_effect import approved, changes, headline
+from theseus.engine.simulate import simulate
 from theseus.errors import IngestError
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
@@ -131,11 +133,52 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     before: Analysis = analyze(deps.store, base_state, requirements, who)
     after: Analysis = analyze(deps.store, head_state, requirements, who)
     found = diff(before, after)
+    enforced = approved(requirements, intent, {n.id: n for n in head_state.rows.nodes})
+    candidates = []
+    for fix in rule_candidates(head_state, after, found.opened, None, base=base_state, requirements=enforced):
+        operations = []
+        for change in fix.changes:
+            translated = deps.adapters.cloud.ops_for(
+                change, head_state.rows, head.resources, base_resources=base.resources
+            )
+            if not translated:
+                break
+            operations.extend(translated)
+        else:
+            unique = {op.model_dump_json(): op for op in operations}
+            draft = CandidateDraft(
+                id=fix.id,
+                source="rule",
+                proposed_by="theseus",
+                title=fix.title,
+                ops=[unique[key] for key in sorted(unique)],
+            )
+            candidates.append(
+                simulate(
+                    deps.store,
+                    head_state,
+                    draft,
+                    sorted({p.actor for p in found.opened}),
+                    enforced,
+                    deps.adapters,
+                )
+            )
+    risk_start = time.perf_counter()
+    scores = {}
+    if hasattr(deps.jev, "breakage"):
+        calls = [
+            {"workload": edge.src, "resource": edge.dst, "access": str(edge.props.get("access", ""))}
+            for edge in head_state.rows.edges
+            if edge.type == "CALLS"
+        ]
+        scores = deps.jev.breakage(candidates, enforced, calls)
+    risk_ms = int((time.perf_counter() - risk_start) * 1000)
+    candidates = rank(candidates, scores)
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
     base_evidence, base_nodes = _listed(found.closed, base_state)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
-    jev_ms = base_jev + head_jev
+    jev_ms = base_jev + head_jev + risk_ms
     return AnalysisResult(
         scenario=scenario_of(head),
         mode="pr",
@@ -147,6 +190,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         closed=found.closed,
         unchanged=found.unchanged,
         requirements=after.requirements,
+        candidates=candidates,
         unknowns=sorted(set(head_state.rows.unknowns)),
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
         timings=Timings(

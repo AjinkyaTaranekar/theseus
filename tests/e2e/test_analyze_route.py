@@ -248,7 +248,14 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
         "theseus: grants more than it says",
         "theseus: regulated data",
     ]
-    assert store.list_graphs() == ["demo-infra__pr7-base", "demo-infra__pr7-head"]
+    assert store.list_graphs() == [
+        "demo-infra__pr7-base",
+        "demo-infra__pr7-fix-a",
+        "demo-infra__pr7-fix-c",
+        "demo-infra__pr7-fix-d",
+        "demo-infra__pr7-head",
+    ]
+    assert {c["id"]: c["verdict"] for c in result["candidates"]} == {"A": "fail", "C": "unknown", "D": "fail"}
 
 
 def test_the_review_reads_only_the_world_root_at_both_commits(client: TestClient, repo: FakeRepo) -> None:

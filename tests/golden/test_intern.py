@@ -51,3 +51,9 @@ def test_a_pr_that_asks_for_the_database_still_opens_it_and_needs_an_owner() -> 
         "Your PR asks for customer-db, a database. "
         "Access to sensitive data needs an owner's approval in theseus.yaml."
     )
+
+
+def test_rule_fixes_match_the_intern_answer_key() -> None:
+    result = project(analyze("intern"))
+    wanted = expected("intern")["candidates"]
+    assert {k: result["candidates"][k] for k in ("A", "C", "D")} == {k: wanted[k] for k in ("A", "C", "D")}

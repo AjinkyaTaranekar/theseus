@@ -57,7 +57,13 @@ Which rules belong to which adapter in `04-engine.md`: Terraform owns sections 2
   back as text. AWS's catalog is `04-engine.md` section 13, typed in `adapters/aws/ops.py`.
 - **Changes:** candidate rules decide what to change in graph terms, as a `Change`: remove an edge, narrow a grant
   to some resources, restrict a trust to some subjects, or deny some principals. The cloud adapter turns a
-  `Change` into ops, or returns none when it cannot express it. So rules stay in core.
+  `Change` into ops, or returns none when it cannot express it. So rules stay in core. Optional `Change.evidence` selects existing `(address, part)` grant evidence for a
+  revert, so removing a newly added statement does not delete a pre-existing statement on the same edge.
+  `Change.added_only` requires the adapter to check optional `base_resources` for a pre-existing statement;
+  newly visible edges alone do not prove the source policy gained a statement.
+- **Patch traits:** `CloudAdapter.patch_traits(ops)` validates operations and reports
+  `PatchTraits.adds_broad_wildcard`. The simulator computes direct permission losses and unknown graph steps
+  from the rebuilt graph; core never reads vendor-specific operation arguments to rank candidates.
 
 ## Catalogs: adapters as data
 
