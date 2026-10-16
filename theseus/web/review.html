@@ -69,7 +69,8 @@
   .tag { position: absolute; font: 600 11.5px/1.3 var(--mono); padding: 4px 7px; border-radius: 4px; white-space: nowrap;
          background: var(--accent); color: #fff; }
   .tag.quiet { background: var(--chip); color: var(--muted); }
-  .edge-label { font: 11px/1 var(--mono); fill: var(--muted); }
+  .edge-label { font: 11px/1 var(--mono); fill: var(--muted); paint-order: stroke; stroke: var(--bg);
+                stroke-width: 5px; stroke-linejoin: round; }
   .edge-label.new { fill: var(--accent); font-weight: 700; }
 
   section { padding: 28px 0 8px; }
@@ -114,8 +115,8 @@
   <div class="board">
     <div class="bar">
       <div class="seg" role="group" aria-label="View">
-        <button type="button" id="v-before" aria-pressed="false">Before</button>
-        <button type="button" id="v-after" aria-pressed="true">After this PR</button>
+        <button type="button" id="v-before" aria-pressed="false">Today</button>
+        <button type="button" id="v-after" aria-pressed="true">If merged</button>
         <button type="button" id="v-full" aria-pressed="false">Whole graph</button>
       </div>
       <span class="note" id="note"></span>
@@ -151,7 +152,7 @@ const CATEGORIES = { objectstorage: "storage", filestorage: "file share", blocks
                      secret: "secret", encryptionkey: "key", aimodel: "AI model", logstore: "logs",
                      messagequeue: "queue", messagetopic: "topic", datastream: "stream" };
 // What the data is, for people outside security.
-const HOLDS = { regulated: "personal and payment data", confidential: "business data",
+const HOLDS = { regulated: "personal, payment or health data", confidential: "business data",
                 internal: "internal data", public: "public data" };
 const TAGS = { regulated: "Customer data", confidential: "Business data" };
 const VERBS = { MEMBER_OF: "is in", CAN_ASSUME: "can become", TRUSTS: "can log in as", RUNS_AS: "runs as",
@@ -271,14 +272,13 @@ function render(data) {
     : asked.length ? ` The PR only asked to ${list(asked)}.` : " The PR says it changes no access.";
   if (opened.length) {
     const top = opened[0];
-    title.append(`${nameOf(top.actor)} can now ${access(top.grants)} `);
+    title.append(`This PR would let ${nameOf(top.actor)} ${access(top.grants)} `);
     title.append(el("em", nameOf(top.target)));
     title.append(".");
-    const more = opened.length > 1 ? ` This PR opens ${opened.length} ways in.` : "";
-    lede.textContent = `${nameOf(top.target)} holds ${HOLDS[top.sensitivity] || "data Theseus can't classify"}.${more}${askedLine}`;
+    lede.textContent = `${nameOf(top.target)} holds ${HOLDS[top.sensitivity] || "data Theseus can't classify"}.${askedLine}`;
   } else if ((r.use_beyond_intent || []).length) {
     const use = r.use_beyond_intent[0];
-    title.textContent = `${nameOf(use.workload)}'s code now reads ${nameOf(use.resource)}.`;
+    title.textContent = `This PR would make ${nameOf(use.workload)}'s code read ${nameOf(use.resource)}.`;
     lede.textContent = `${askedLine.trim()} See ${use.file}:${use.line}.`.trim();
   } else if ((r.unknowns || []).length) {
     title.textContent = "Part of this change couldn't be checked.";
@@ -289,7 +289,7 @@ function render(data) {
   }
 
   // The picture: one row per way in, left to right, the way access flows.
-  const COL = 196, ROW = 128, W = 132, H = 92, PAD = 28;
+  const COL = 216, ROW = 132, W = 132, H = 92, PAD = 28;
   const place = new Map(), used = new Map();
   let rows = 0;
   const routeOf = (p) => (p.steps.length ? [p.steps[0].from, ...p.steps.map((s) => s.to)] : [p.actor]);
@@ -318,6 +318,9 @@ function render(data) {
     if (!p.steps.length) outOfReach.add(p.target);
   }
   const exposed = new Set(opened.map((p) => p.target));
+  // A secret that opens another exposed target is tagged by what it opens.
+  const keyTo = new Map();
+  for (const p of opened) for (const s of p.steps) if (s.type === "UNLOCKS" && exposed.has(s.to)) keyTo.set(s.from, s.to);
   const cols = Math.max(1, ...[...place.values()].map((v) => v.col + 1));
 
   function drawBoard(mode) {
@@ -358,7 +361,7 @@ function render(data) {
       layer.append(path);
       const label = svg("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, "text-anchor": "middle",
                                   class: `edge-label${hot ? " new" : ""}` });
-      label.textContent = fresh && before ? "not there yet" : verb(step);
+      label.textContent = fresh && before ? "not there today" : verb(step);
       layer.append(label);
     }
 
@@ -377,7 +380,8 @@ function render(data) {
       canvas.append(tile);
       // A tag over the data this PR exposes, the way a reviewer would say it.
       if (exposed.has(id)) {
-        const tag = el("div", before ? "Out of reach before" : TAGS[sens] || "Sensitive data", { class: `tag${before ? " quiet" : ""}` });
+        const label = keyTo.has(id) ? `Key to ${short(keyTo.get(id))}` : TAGS[sens] || "Sensitive data";
+        const tag = el("div", before ? "Out of reach today" : label, { class: `tag${before ? " quiet" : ""}` });
         tag.style.left = `${pos.x}px`; tag.style.top = `${pos.y - 27}px`;
         canvas.append(tag);
       }
@@ -388,45 +392,88 @@ function render(data) {
       const a = at(first.step.from), b = at(first.step.to);
       const ev = (r.evidence || {})[first.step.evidence];
       const where = ev && ev.line ? ` · ${ev.file.split("/").pop()}:${ev.line}` : "";
-      const tag = el("div", before ? "This PR adds this" : `New in this PR${where}`, { class: `tag${before ? " quiet" : ""}` });
+      const tag = el("div", before ? "This PR adds it" : `Added by this PR${where}`, { class: `tag${before ? " quiet" : ""}` });
       tag.style.left = `${a.x + W - 30}px`; tag.style.top = `${Math.max(a.y, b.y) + H + 10}px`;
       canvas.append(tag);
     }
     const actor = nameOf(opened[0].actor);
     $("note").textContent = before
-      ? `Before this PR, ${actor} couldn't reach the highlighted data.`
-      : `${opened.length} new ${opened.length === 1 ? "way" : "ways"} in.`;
+      ? `Today, ${actor} can't reach the highlighted data.`
+      : `If merged: ${opened.length} new ${opened.length === 1 ? "way" : "ways"} in.`;
   }
 
-  // The whole graph, as FalkorDB holds it, for anyone who wants to look around.
+  let full = null;
+  // Every access link in the PR's graph, laid out the way access flows: who acts, the groups and roles
+  // they pass through, the secrets, then the data. Code calls are left out to keep it readable.
+  const ACCESS_TYPES = new Set(["MEMBER_OF", "CAN_ASSUME", "TRUSTS", "RUNS_AS", "CAN", "UNLOCKS"]);
+  const LANES = ["Who acts", "Groups", "Roles", "Secrets", "Data"];
+  function lane(id) {
+    const prefix = id.split(":")[0];
+    if (["user", "entry", "workflow", "workload", "action"].includes(prefix)) return 0;
+    if (prefix === "group") return 1;
+    if (prefix === "role") return 2;
+    const cat = (info(id).category || "").toLowerCase();
+    return cat === "secret" || cat === "encryptionkey" ? 3 : 4;
+  }
   let full = null;
   function drawFull() {
     const g = data.graphs.head;
     if (!g) { $("note").textContent = "The graph isn't in the store any more."; return; }
-    $("note").textContent = `${g.nodes.length} resources and ${g.edges.length} connections. The new ways in are highlighted.`;
+    const links = g.edges.filter((e) => ACCESS_TYPES.has(e.type));
+    const linked = new Set(links.flatMap((e) => [e.src, e.dst]));
+    const nodes = g.nodes.filter((n) => linked.has(n.id));
+    $("note").textContent = `${nodes.length} people, roles and resources, and ${links.length} access links. The new ways in are pink.`;
     if (full) return;
     const go = () => {
+      // Columns by lane; within a lane, order by where the links come from, so fewer lines cross.
+      const cols = LANES.map(() => []);
+      for (const n of nodes) cols[lane(n.id)].push(n.id);
+      const pos = new Map();
+      const preds = new Map();
+      for (const e of links) { if (!preds.has(e.dst)) preds.set(e.dst, []); preds.get(e.dst).push(e.src); }
+      cols.forEach((ids, c) => {
+        const weight = (id) => {
+          const from = (preds.get(id) || []).filter((s) => pos.has(s));
+          return from.length ? from.reduce((sum, s) => sum + pos.get(s).y, 0) / from.length : Infinity;
+        };
+        ids.sort((a, b) => (c === 0 ? 0 : weight(a) - weight(b)) || kindOf(a, info(a)).localeCompare(kindOf(b, info(b))) || a.localeCompare(b));
+        ids.forEach((id, i) => pos.set(id, { x: c * 250, y: i * 64 }));
+      });
+      // Lanes are centred on the tallest one.
+      const tallest = Math.max(...cols.map((ids) => ids.length));
+      cols.forEach((ids) => { const shift = ((tallest - ids.length) * 64) / 2; ids.forEach((id) => { pos.get(id).y += shift; }); });
       const hot = new Set(opened.flatMap(routeOf));
+      const hotEdges = new Set([...edges.keys()]);
       const style = getComputedStyle(document.documentElement);
       const c = (name) => style.getPropertyValue(name).trim();
       full = cytoscape({
         container: $("full"),
         elements: [
-          ...g.nodes.map((n) => ({ data: { id: n.id, label: `${kindOf(n.id, info(n.id))}\n${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0 } })),
-          ...g.edges.map((e, i) => ({ data: { id: `e${i}`, source: e.src, target: e.dst,
-                                               hot: hot.has(e.src) && hot.has(e.dst) ? 1 : 0 } })),
+          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label, lane: 1 }, position: { x: i * 250, y: -70 } })),
+          ...nodes.map((n) => ({ data: { id: n.id, label: `${kindOf(n.id, info(n.id))}
+${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
+                                         sens: ["regulated", "confidential"].includes(info(n.id).sensitivity) ? 1 : 0 },
+                                 position: pos.get(n.id) })),
+          ...links.map((e, i) => ({ data: { id: `e${i}`, source: e.src, target: e.dst,
+                                            hot: hotEdges.has(`${e.src}|${e.type}|${e.dst}`) ? 1 : 0 } })),
         ],
         style: [
-          { selector: "node", style: { shape: "round-rectangle", width: 96, height: 44, "background-color": c("--card"),
+          { selector: "node", style: { shape: "round-rectangle", width: 150, height: 42, "background-color": c("--card"),
               "border-width": 1, "border-color": c("--tile-line"), label: "data(label)", "text-wrap": "wrap",
-              "text-valign": "center", "font-size": 9, color: c("--muted"), "text-max-width": 88 } },
-          { selector: "node[hot = 1]", style: { "border-color": c("--accent"), "border-width": 2, color: c("--text") } },
+              "text-valign": "center", "font-size": 10, color: c("--muted"), "text-max-width": 140 } },
+          { selector: "node[sens = 1]", style: { "border-color": c("--accent-soft"), "border-width": 1.5 } },
+          { selector: "node[hot = 1]", style: { "border-color": c("--accent"), "border-width": 2.5, color: c("--text"),
+              "font-weight": 600 } },
+          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 12,
+              "font-weight": 700, color: c("--muted"), "text-transform": "uppercase", width: 150, height: 24 } },
           { selector: "edge", style: { width: 1, "line-color": c("--line"), "target-arrow-color": c("--line"),
-              "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.7 } },
-          { selector: "edge[hot = 1]", style: { width: 2, "line-color": c("--accent"), "target-arrow-color": c("--accent") } },
+              "target-arrow-shape": "triangle", "curve-style": "unbundled-bezier", "control-point-distances": [0],
+              "arrow-scale": 0.7, opacity: 0.8 } },
+          { selector: "edge[hot = 1]", style: { width: 2.5, "line-color": c("--accent"), "target-arrow-color": c("--accent"),
+              opacity: 1, "z-index": 10 } },
         ],
-        layout: { name: "cose", animate: false, nodeRepulsion: 12000, idealEdgeLength: 90, padding: 24 },
-        wheelSensitivity: 0.2,
+        layout: { name: "preset", padding: 30, fit: true },
+        wheelSensitivity: 0.2, autoungrabify: true,
       });
     };
     if (typeof cytoscape !== "undefined") { go(); return; }
@@ -475,7 +522,7 @@ function render(data) {
   // Access that was there before this PR: not its doing, but worth knowing.
   if (already.length) {
     $("already-section").hidden = false;
-    $("already-title").textContent = `${already.length} more ${already.length === 1 ? "way" : "ways"} in already existed before this PR`;
+    $("already-title").textContent = `${already.length} more ${already.length === 1 ? "way" : "ways"} in exist today, without this PR`;
     for (const p of already) $("already").append(el("li", `${nameOf(p.actor)} → ${nameOf(p.target)}`));
   }
 
