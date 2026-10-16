@@ -8,7 +8,7 @@ import pytest
 
 from tests.golden.conftest import FIXTURES, deps_for, expected, world
 from theseus.contracts.engine import Deps, GraphState
-from theseus.contracts.result import AnalysisResult, project
+from theseus.contracts.result import AnalysisResult, compare, project
 from theseus.engine.finding import blast_radius, match_advisory, rotate_list, with_finding
 from theseus.engine.pipeline import prepare_state, run_finding
 from theseus.graph.load import load_graph
@@ -92,12 +92,72 @@ def test_run_finding_matches_the_answer_key(deps: Deps) -> None:
     assert isinstance(result, AnalysisResult)
     assert result.mode == "finding"
     assert result.finding is not None and result.finding["id"] == "GHSA-demo-0001"
-    got, want = project(result), expected(SCENARIO)
+    assert result.finding["workflows"] == [PREVIEW, LINT]
     # Candidate K, `recommended` and `staging_to_prod` belong to FM6 and FM4.
-    keys = ["scenario", "mode", "min_cut", "rotate"]
-    from theseus.contracts.result import compare
+    assert compare(project(result), expected(SCENARIO), ["scenario", "mode", "min_cut", "rotate"]) == []
 
-    assert compare(got, want, keys) == []
-    assert got["rotate"] == ["secret:prod-db-credentials"]
+
+def test_run_finding_lists_the_blast_radius_with_its_evidence(deps: Deps) -> None:
+    result = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    assert {p.target for p in result.opened} == {
+        "db:customer-db",
+        "s3://demo-company-files/invoices/",
+        "secret:prod-db-credentials",
+    }
+    assert result.closed == [] and result.unchanged == []
     cited = {s.evidence for p in result.opened for s in p.steps}
-    assert cited <= set(result.evidence)
+    assert cited and cited <= set(result.evidence)
+    assert result.min_cut is not None and {e.evidence for e in result.min_cut.cut} <= set(result.evidence)
+    assert result.headline == (
+        "2 workflows run demo-thirdparty/file-diff at an affected version. "
+        "If compromised, they reach 3 sensitive resources."
+    )
+
+
+def test_run_finding_is_deterministic(deps: Deps) -> None:
+    first = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    second = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    drop = {"timings": True}
+    assert first.model_dump(exclude=drop) == second.model_dump(exclude=drop)
+
+
+def test_an_advisory_that_matches_no_workflow_reaches_nothing(deps: Deps) -> None:
+    patched = {**advisory(), "affected_versions": ["v4"]}
+    result = run_finding(world(SCENARIO, "base"), patched, deps)
+    assert result.opened == [] and result.rotate == [] and result.min_cut is None
+    assert result.finding is not None and result.finding["workflows"] == []
+    assert result.headline == "No workflow uses demo-thirdparty/file-diff at an affected version."
+
+
+def test_an_advisory_for_an_action_nobody_uses_adds_a_finding_but_no_edge(deps: Deps) -> None:
+    other = {**advisory(), "action": "nobody/uses-this"}
+    result = run_finding(world(SCENARIO, "base"), other, deps)
+    assert result.opened == [] and result.rotate == []
+    base, _ = prepare_state(world(SCENARIO, "base"), "base", deps)
+    rows = with_finding(base.rows, other)
+    assert "finding:GHSA-demo-0001" in {n.id for n in rows.nodes}
+    assert not [e for e in rows.edges if e.type == "AFFECTS"]
+
+
+@pytest.mark.falkordb
+def test_falkordb_and_memory_agree_on_the_finding(monkeypatch: pytest.MonkeyPatch) -> None:
+    import os
+    from dataclasses import replace
+
+    from theseus.config import get_settings
+    from theseus.engine import pipeline
+    from theseus.graph.client import get_client
+    from theseus.graph.store import FalkorStore
+
+    name = f"fm3_parity__{os.getpid()}"
+    monkeypatch.setattr(pipeline, "graph_name", lambda world, side: f"{name}__{side}")
+    base = world(SCENARIO, "base")
+    memory = run_finding(base, advisory(), deps_for(SCENARIO))
+    falkor = FalkorStore(get_client(get_settings()))
+    try:
+        result = run_finding(base, advisory(), replace(deps_for(SCENARIO), store=falkor))
+        assert compare(project(result), project(memory)) == []
+        assert result.rotate == ["secret:prod-db-credentials"]
+        assert [p.route for p in result.opened] == [p.route for p in memory.opened]
+    finally:
+        falkor.delete(f"{name}__base")

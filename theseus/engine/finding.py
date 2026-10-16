@@ -9,7 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from theseus.contracts.engine import GraphState, GraphStore
+from theseus.contracts.engine import Analysis, GraphState, GraphStore
 from theseus.contracts.result import EdgeRow, Evidence, GraphRows, NodeRow, PathRecord
 from theseus.engine.analyze import analyze
 
@@ -62,10 +62,14 @@ def blast_radius(store: GraphStore, state: GraphState, workflows: list[str]) -> 
     return analyze(store, state, [], workflows).dangerous
 
 
-def rotate_list(store: GraphStore, state: GraphState, workflows: list[str]) -> list[str]:
-    """Every secret any of these workflows can reach by a valid path, sorted."""
+def secrets_reached(analysis: Analysis, state: GraphState) -> list[str]:
+    """Every secret any analyzed actor can reach by a valid path, sorted."""
     nodes = {n.id: n for n in state.rows.nodes}
-    found = analyze(store, state, [], workflows)
     return sorted(
-        {p.target for paths in found.paths.values() for p in paths if nodes[p.target].category == SECRET}
+        {p.target for paths in analysis.paths.values() for p in paths if nodes[p.target].category == SECRET}
     )
+
+
+def rotate_list(store: GraphStore, state: GraphState, workflows: list[str]) -> list[str]:
+    """Every secret any of these workflows can reach, sorted: the credentials to rotate."""
+    return secrets_reached(analyze(store, state, [], workflows), state)

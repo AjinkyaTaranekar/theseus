@@ -28,7 +28,7 @@ from theseus.contracts.result import (
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
-from theseus.engine.finding import action_id, match_advisory, rotate_list, with_finding
+from theseus.engine.finding import action_id, match_advisory, secrets_reached, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.errors import IngestError
@@ -202,11 +202,11 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
         mode="finding",
         graphs={"base": state.name},
         headline=finding_headline(advisory, workflows, found.dangerous),
-        unchanged=found.dangerous,
+        opened=found.dangerous,
         requirements=found.requirements,
         unknowns=sorted(set(state.rows.unknowns)),
         min_cut=cut,
-        rotate=rotate_list(deps.store, state, workflows),
+        rotate=secrets_reached(found, state),
         finding={
             "id": advisory["id"],
             "action": action_id(advisory),
