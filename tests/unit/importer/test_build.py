@@ -57,7 +57,7 @@ def test_real_fixture_counts_and_only_new_membership() -> None:
         ("Group", 3),
         ("Role", 11),
         ("Workload", 6),
-        ("Resource", 10),
+        ("Resource", 19),
         ("Requirement", 17),
     ]:
         assert sum(label in n.labels for n in base.nodes) == count
@@ -66,7 +66,9 @@ def test_real_fixture_counts_and_only_new_membership() -> None:
     assert after - before == {("MEMBER_OF", "user:priya-intern", "group:support-engineers")}
     assert not before - after
     edge = next(e for e in head.edges if e.type == "MEMBER_OF" and e.src == "user:priya-intern")
-    assert [(ev.file, ev.line) for ev in edge.evidence] == [("terraform/people.tf", 77)]
+    people = (ROOT / "fixtures/intern/head/terraform/people.tf").read_text(encoding="utf-8").splitlines()
+    line = people.index('resource "aws_iam_user_group_membership" "priya_support" {') + 1
+    assert [(ev.file, ev.line) for ev in edge.evidence] == [("terraform/people.tf", line)]
     assert all(
         e.evidence
         and all(

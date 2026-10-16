@@ -31,9 +31,38 @@ def test_world_reads_fixture_and_counts_skipped_types() -> None:
     config = yaml.safe_load((root / "theseus.yaml").read_text())
     plan = json.loads((root.parent / "base.plan.json").read_text())
     world = load_world(root, plan, adapters(config))
-    assert len(world.resources) == 60
-    assert world.skipped_types == {"aws_ecs_cluster": 1}
-    assert len(world.iac_files) == 8 and len(world.ci_files) == 4 and len(world.code_files) == 6
+    assert len(world.resources) == 122
+    # C1's skipped files: the network, the platform services, and each bucket's settings.
+    assert world.skipped_types == {
+        "aws_apigatewayv2_api": 1,
+        "aws_cloudwatch_event_rule": 2,
+        "aws_cloudwatch_event_target": 2,
+        "aws_db_parameter_group": 1,
+        "aws_db_subnet_group": 1,
+        "aws_default_security_group": 1,
+        "aws_ecr_repository": 2,
+        "aws_ecs_cluster": 1,
+        "aws_internet_gateway": 1,
+        "aws_kms_alias": 1,
+        "aws_kms_key": 1,
+        "aws_lambda_permission": 2,
+        "aws_route53_record": 2,
+        "aws_route53_zone": 1,
+        "aws_route_table": 1,
+        "aws_route_table_association": 2,
+        "aws_s3_bucket_lifecycle_configuration": 4,
+        "aws_s3_bucket_notification": 4,
+        "aws_s3_bucket_public_access_block": 4,
+        "aws_s3_bucket_server_side_encryption_configuration": 4,
+        "aws_s3_bucket_versioning": 4,
+        "aws_security_group": 2,
+        "aws_subnet": 4,
+        "aws_vpc": 1,
+        "aws_vpc_endpoint": 1,
+        "aws_vpc_security_group_egress_rule": 1,
+        "aws_vpc_security_group_ingress_rule": 1,
+    }
+    assert len(world.iac_files) == 12 and len(world.ci_files) == 4 and len(world.code_files) == 23
     assert all(
         not Path(path).is_absolute()
         for files in [world.iac_files, world.ci_files, world.code_files]

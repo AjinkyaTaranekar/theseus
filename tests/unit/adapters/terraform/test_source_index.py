@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -17,10 +18,13 @@ def test_real_resource_and_statement_lines() -> None:
         for p in (ROOT / "demo-infra" / "terraform").glob("*.tf")
     }
     adapter = TerraformAdapter()
-    for address, sid, line in [
-        ("aws_iam_role_policy.prod_support_read", "ReadInvoices", 27),
-        ("aws_iam_role_policy.prod_support_read", "ReadDbSecret", 33),
+    roles = files["terraform/roles.tf"].splitlines()
+    for address, sid in [
+        ("aws_iam_role_policy.prod_support_read", "ReadInvoices"),
+        ("aws_iam_role_policy.prod_support_read", "ReadDbSecret"),
     ]:
+        # The statement's own `Sid = "..."` line, found in the file, so an added comment never breaks this.
+        (line,) = [i for i, text in enumerate(roles, 1) if re.fullmatch(rf'\s*Sid\s*=\s*"{sid}"', text)]
         ev = adapter.locate(files, address, sid)
         assert ev.file == "terraform/roles.tf" and ev.line == line
         assert ev.part == sid
