@@ -13,7 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A demo PR (branch demo/<scenario>-<take>) changes demo-infra/ on purpose, so the tests that pin it to
+  # main fail by design; its review is the Theseus check (docs/spec/07-github-and-deploy.md, "Demo PRs").
   check:
+    if: ${{ !startsWith(github.head_ref, 'demo/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -55,6 +58,7 @@ jobs:
           python tools/check_commit_msg.py "$RUNNER_TEMP/pr-title.txt"
 
   windows:
+    if: ${{ !startsWith(github.head_ref, 'demo/') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -73,6 +77,7 @@ jobs:
 
   # The falkordb-marked tests, against the version FalkorDB Cloud runs (docs/spec/07, "Where FalkorDB runs").
   falkordb:
+    if: ${{ !startsWith(github.head_ref, 'demo/') }}
     runs-on: ubuntu-latest
     services:
       falkordb:
@@ -104,6 +109,7 @@ jobs:
 
   # Nobody builds the image on a laptop, so CI does, before it reaches the VM.
   image:
+    if: ${{ !startsWith(github.head_ref, 'demo/') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
