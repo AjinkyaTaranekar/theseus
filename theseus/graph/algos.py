@@ -97,7 +97,7 @@ def max_flow(
 
 def brandes(rows: GraphRows) -> list[ChokePoint]:
     """Betweenness of every node over the path-type edges: directed, unweighted, unnormalized, parallel edges
-    counted once, as `algo.betweenness` scores them. Highest score first, then by ID."""
+    counted once. Highest score first, then by ID."""
     nodes = sorted({n.id for n in rows.nodes})
     out: dict[str, list[str]] = {n: [] for n in nodes}
     for src, dst in sorted({(e.src, e.dst) for e in rows.edges if e.type in PATH_TYPES}):
@@ -138,7 +138,6 @@ def choke_points(store: GraphStore, state: GraphState, top: int = 5) -> list[Cho
     (found on the compromised-action graph), and a ranking that changes between runs is not a fact the engine
     can report. `store.betweenness` still returns the store's own scores for anyone who wants them; `store`
     is part of the contract's signature and is not read here."""
-    log.debug("choke points of %s computed exactly; %s's own estimate is not used", state.name, type(store))
     roles = {n.id for n in state.rows.nodes if "Role" in n.labels}
     rounded = (ChokePoint(id=c.id, score=round(c.score, 6)) for c in brandes(state.rows) if c.id in roles)
     return sorted(rounded, key=lambda c: (-c.score, c.id))[:top]

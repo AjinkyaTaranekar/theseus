@@ -161,6 +161,13 @@ class BrokenJev(RecordedJev):
         raise ModelError("urgency: Jev is down")
 
 
+class ReplayingJev(RecordedJev):
+    """The real Jev in replay mode: urgency for a request nobody recorded is an error, as in the product."""
+
+    def urgency(self, finding_summary: str, blast_summary: str) -> JevAnswer:
+        return self.jev.urgency(finding_summary, blast_summary)
+
+
 def finding_with(deps: Deps, jev: object) -> AnalysisResult:
     return run_finding(world(SCENARIO, "base"), advisory(), replace(deps, jev=jev))
 
@@ -202,6 +209,14 @@ def test_a_jev_without_urgency_and_a_failing_jev_leave_it_out_and_change_nothing
     assert (
         plain.model_dump(exclude=drop) == broken.model_dump(exclude=drop) == urgent.model_dump(exclude=drop)
     )
+
+
+def test_an_unrecorded_urgency_is_left_out_in_replay_mode(
+    deps: Deps, caplog: pytest.LogCaptureFixture
+) -> None:
+    result = finding_with(deps, ReplayingJev())
+    assert result.finding is not None and "urgency" not in result.finding
+    assert "urgency unavailable" in caplog.text and [p.target for p in result.opened]
 
 
 @pytest.mark.falkordb
