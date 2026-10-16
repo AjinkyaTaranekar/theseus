@@ -31,7 +31,9 @@ from theseus.engine.analyze import analyze, diff, step_evidence
 from theseus.engine.finding import action_id, match_advisory, secrets_reached, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
-from theseus.errors import IngestError
+from theseus.engine.staging import staging_to_prod
+from theseus.errors import IngestError, ModelError
+from theseus.graph.algos import choke_points
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
 
@@ -166,6 +168,8 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         requirements=after.requirements,
         unknowns=sorted(set(head_state.rows.unknowns)),
         min_cut=cut,
+        staging_to_prod=staging_to_prod(Analysis(dangerous=found.opened), head_state),
+        choke_points=choke_points(deps.store, head_state),
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
         timings=Timings(
             engine_ms=total_ms - jev_ms - llm_ms, llm_ms=llm_ms, jev_ms=jev_ms, total_ms=total_ms
@@ -196,6 +200,8 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
                 nodes[node_id] = NodeInfo(
                     category=by_id[node_id].category, sensitivity=by_id[node_id].sensitivity
                 )
+    urgency, urgency_ms = finding_urgency(advisory, workflows, found.dangerous, state, deps)
+    jev_ms += urgency_ms
     total_ms = int((time.perf_counter() - start) * 1000)
     return AnalysisResult(
         scenario=scenario_of(world),
@@ -207,17 +213,63 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
         unknowns=sorted(set(state.rows.unknowns)),
         min_cut=cut,
         rotate=secrets_reached(found, state),
+        staging_to_prod=staging_to_prod(found, state),
+        choke_points=choke_points(deps.store, state),
         finding={
             "id": advisory["id"],
             "action": action_id(advisory),
             "affected_versions": sorted(advisory.get("affected_versions") or []),
             "workflows": workflows,
+            **urgency,
         },
         evidence=dict(sorted(evidence.items())),
         timings=Timings(engine_ms=total_ms - jev_ms, jev_ms=jev_ms, total_ms=total_ms),
         coverage=coverage(world, state.rows, deps),
         nodes=dict(sorted(nodes.items())),
     )
+
+
+def finding_urgency(
+    advisory: dict[str, Any], workflows: list[str], dangerous: list[PathRecord], state: GraphState, deps: Deps
+) -> tuple[dict[str, Any], int]:
+    """Jev's urgency for the finding as `{"urgency": {"p", "source"}}`, and the milliseconds Jev took.
+
+    It never blocks containment: with no Jev, no matched workflow, or a Jev (and fallback) that fails, the
+    dict is empty and the reason is logged. The advisory's text goes to Jev as untrusted data; the blast
+    radius is worded from the engine's facts alone."""
+    if not workflows or not hasattr(deps.jev, "urgency"):
+        return {}, 0
+    start = time.perf_counter()
+    summary = blast_summary(workflows, dangerous, state)
+    try:
+        answer = deps.jev.urgency(advisory.get("text") or advisory["id"], summary)
+    except ModelError:
+        log.warning("urgency unavailable for %s; left out", advisory["id"], exc_info=True)
+        return {}, int((time.perf_counter() - start) * 1000)
+    ms = int((time.perf_counter() - start) * 1000)
+    if answer.noul is None:
+        log.warning("urgency for %s came back without a probability; left out", advisory["id"])
+        return {}, ms
+    return {"urgency": {"p": answer.noul, "source": answer.source}}, ms
+
+
+def blast_summary(workflows: list[str], dangerous: list[PathRecord], state: GraphState) -> str:
+    """The blast radius in words, from the engine's facts only: the matched workflows with their environment,
+    and each sensitive target with its class and route."""
+    nodes = {n.id: n for n in state.rows.nodes}
+    lines = [
+        "Matched workflows, assumed compromised: "
+        + ", ".join(f"{w} ({nodes[w].env})" for w in workflows if w in nodes)
+        + "."
+    ]
+    for path in sorted(dangerous, key=lambda p: (p.actor, p.target)):
+        lines.append(
+            f"{path.actor} reaches {path.target} ({nodes[path.target].sensitivity or 'unclassified'}) "
+            f"in {len(path.steps)} hops: {' -> '.join(path.route)}."
+        )
+    if not dangerous:
+        lines.append("No sensitive resource is reachable.")
+    return "\n".join(lines)
 
 
 def finding_headline(advisory: dict[str, Any], workflows: list[str], dangerous: list[PathRecord]) -> str:

@@ -130,7 +130,9 @@ class MemoryStore:
         return edmonds_karp(sources, sinks, rows)
 
     def betweenness(self, graph: str) -> list[ChokePoint]:
-        raise GraphError("MemoryStore has no betweenness yet; task FM4 adds it")
+        from theseus.graph.algos import brandes
+
+        return brandes(self._rows(graph))
 
     def workflows_using(self, graph: str, action: str) -> list[WorkflowUse]:
         rows = self._rows(graph)
@@ -339,7 +341,14 @@ class FalkorStore:
         )
 
     def betweenness(self, graph: str) -> list[ChokePoint]:
-        raise GraphError("FalkorStore runs betweenness from task FM4")
+        known = {row[0] for row in self._query(graph, queries.Q_REL_TYPES)}
+        types = sorted(known & PATH_SET)
+        if not types:
+            return []
+        return [
+            ChokePoint(id=node_id, score=float(score))
+            for node_id, score in self._query(graph, queries.Q_BETWEENNESS, {"types": types})
+        ]
 
     def workflows_using(self, graph: str, action: str) -> list[WorkflowUse]:
         found = self._query(graph, queries.Q_WORKFLOWS_USING, {"action": action})
