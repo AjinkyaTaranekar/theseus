@@ -20,7 +20,7 @@
 | Structured output | A forced tool call: `tool_choice={"type": "function", "function": {"name": "submit_<thing>"}}`, where the tool's parameters are the output schema. Parse the arguments JSON and validate it with Pydantic before using it |
 | Sampling | `temperature=0` on every call. No provider-specific parameters (thinking budgets, reasoning effort): they break switching |
 | Import | Import `litellm` only inside the record and live paths, after setting `LITELLM_LOCAL_MODEL_COST_MAP=True` (otherwise the import downloads a price list) and `litellm.suppress_debug_info = True`. Replay never imports it |
-| Retries | Rate limits, timeouts, 5xx and "No capacity available" (Crusoe returns it as a 503 under load): up to 3 retries with backoff. Authentication and bad requests fail at once |
+| Retries | Named rate-limit, timeout, connection and server errors, plus generic `APIError` with an integer `status_code >= 500`: up to 3 retries with backoff (1, 2, 4 seconds). A generic `APIError` with a 4xx status fails at once, even if its message says "No capacity available". Without an integer status, that message keeps the existing retry fallback. Authentication and bad requests fail at once |
 | Modes | `THESEUS_MODE=replay` (default in tests: read `recordings/`, fail if missing), `record` (call live and save), `live` (call live, save nothing) |
 | Recording key | `<purpose>-<first 12 hex chars of sha256(canonical JSON of model, messages, tools, tool_choice)>` |
 | Recording file | `recordings/llm/<key>.json` holding `{request, response, model, ms}`. `request` never holds the key or the endpoint. `response` is the provider-neutral part of the reply: `content`, `tool_calls` (`name`, `arguments` as JSON text), `finish_reason`, `usage` |
