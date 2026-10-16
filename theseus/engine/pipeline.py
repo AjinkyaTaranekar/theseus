@@ -10,6 +10,7 @@ import logging
 import re
 import time
 from pathlib import Path
+from typing import Any
 
 from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
@@ -27,6 +28,7 @@ from theseus.contracts.result import (
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
+from theseus.engine.finding import action_id, match_advisory, rotate_list, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.errors import IngestError
@@ -164,6 +166,64 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         ),
         coverage=coverage(head, head_state.rows, deps),
         nodes=dict(sorted({**base_nodes, **head_nodes}.items())),
+    )
+
+
+def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisResult:
+    """Finding mode: the advisory's workflows assumed compromised, what they reach, the cheapest cut between
+    them and it, and the secrets to rotate. The advisory's text is never read, only its Action and versions."""
+    start = time.perf_counter()
+    state, jev_ms = prepare_state(world, "base", deps)
+    workflows = match_advisory(state.rows, advisory)
+    state = state.model_copy(update={"rows": with_finding(state.rows, advisory)})
+    load_graph(deps.store, state)
+    requirements = config_requirements(world)
+    found: Analysis = analyze(deps.store, state, requirements, workflows)
+    cut = min_cut(deps.store, state, found, workflows, requirements) if found.dangerous else None
+    evidence, nodes = _listed(found.dangerous, state)
+    if cut is not None:
+        all_evidence = step_evidence(state.rows)
+        by_id = {n.id: n for n in state.rows.nodes}
+        for edge in cut.cut:
+            evidence[edge.evidence] = all_evidence[edge.evidence]
+            for node_id in (edge.src, edge.dst):
+                nodes[node_id] = NodeInfo(
+                    category=by_id[node_id].category, sensitivity=by_id[node_id].sensitivity
+                )
+    total_ms = int((time.perf_counter() - start) * 1000)
+    return AnalysisResult(
+        scenario=scenario_of(world),
+        mode="finding",
+        graphs={"base": state.name},
+        headline=finding_headline(advisory, workflows, found.dangerous),
+        unchanged=found.dangerous,
+        requirements=found.requirements,
+        unknowns=sorted(set(state.rows.unknowns)),
+        min_cut=cut,
+        rotate=rotate_list(deps.store, state, workflows),
+        finding={
+            "id": advisory["id"],
+            "action": action_id(advisory),
+            "affected_versions": sorted(advisory.get("affected_versions") or []),
+            "workflows": workflows,
+        },
+        evidence=dict(sorted(evidence.items())),
+        timings=Timings(engine_ms=total_ms - jev_ms, jev_ms=jev_ms, total_ms=total_ms),
+        coverage=coverage(world, state.rows, deps),
+        nodes=dict(sorted(nodes.items())),
+    )
+
+
+def finding_headline(advisory: dict[str, Any], workflows: list[str], dangerous: list[PathRecord]) -> str:
+    """One sentence from the engine's facts: how many workflows run the Action and how many sensitive
+    resources they reach. Never from the advisory's text."""
+    if not workflows:
+        return f"No workflow uses {advisory['action']} at an affected version."
+    reached = len({p.target for p in dangerous})
+    return (
+        f"{len(workflows)} workflow{'s' if len(workflows) != 1 else ''} run {advisory['action']} at an affected "
+        f"version. If compromised, {'they reach' if len(workflows) != 1 else 'it reaches'} {reached} sensitive "
+        f"resource{'s' if reached != 1 else ''}."
     )
 
 
