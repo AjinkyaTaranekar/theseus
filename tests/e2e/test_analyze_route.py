@@ -176,7 +176,11 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
 
     [comment] = repo.comments
     body = comment["body"]
-    assert body.startswith(MARKER) and result["headline"] in body
+    assert body.startswith(MARKER)
+    # The card says what Priya could do, each hop with its own access: the role reads the secret, and the
+    # secret opens the database to reads and changes.
+    assert "**priya-intern**, a user, could read and change **customer-db**, a database" in body
+    assert "can read **prod-db-credentials** → unlocks **customer-db**" in body
     for target in ("db:customer-db", "s3://demo-company-files/invoices/", "secret:prod-db-credentials"):
         assert f"| `user:priya-intern` | `{target}` (" in body
     # Each hop links to its line at the head commit the review read.
@@ -185,6 +189,14 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
     [check] = repo.checks
     assert (check["head_sha"], check["status"], check["conclusion"]) == (HEAD, "completed", "failure")
     assert check["output"]["title"].startswith("Merge blocked")
+    # The note sits on the line the PR adds: Priya's membership.
+    [note] = check["output"]["annotations"]
+    assert (note["path"], note["start_line"], note["annotation_level"]) == (
+        "demo-infra/terraform/people.tf",
+        83,
+        "failure",
+    )
+    assert note["title"] == "Opens 3 new ways to sensitive data"
     assert store.list_graphs() == ["demo-infra__pr7-base", "demo-infra__pr7-head"]
 
 

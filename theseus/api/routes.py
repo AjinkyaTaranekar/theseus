@@ -18,7 +18,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel
 
-from theseus.agent.render import MARKER, code, render_comment, verdict
+from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
@@ -194,7 +194,10 @@ def analyze(
             raise HTTPException(500, f"the review could not finish: {e}") from e
         comment = render_comment(result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root)
         status = verdict(result)
-        gh.upsert_check(req.repo, req.head_sha, status.conclusion, status.title, card(comment))
+        notes = annotations(result, settings.theseus_world_root)
+        gh.upsert_check(
+            req.repo, req.head_sha, status.conclusion, status.title, card(comment), annotations=notes
+        )
         if pr["head"]["sha"] == req.head_sha:
             gh.upsert_comment(req.repo, req.pr_number, comment)
         else:

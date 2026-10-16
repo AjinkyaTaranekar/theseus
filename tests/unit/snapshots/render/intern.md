@@ -1,39 +1,21 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**Your PR says it lets Priya read the app logs. Your change also lets priya-intern reach customer-db.**
+**priya-intern**, a user, could read **customer-db**, a database with personal, payment or health data (1 of 3 new ways in).
 
-#### What happened
+**Says:** let Priya read the app logs.\
+**Needs:** read **demo-app-logs/** · **Grants too:** **customer-db**, **prod-db-credentials** and **demo-company-files/invoices/**\
+**Why:** **priya-intern** is a member of **support-engineers** ([terraform/people.tf:20](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L20), changed here) → can switch into **prod-support** → can read **prod-db-credentials** → unlocks **customer-db**.\
+**Do:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya). Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.
 
-This PR adds `aws_iam_user_group_membership.priya_support`.\
-Because of that, 3 new ways to reach sensitive data open. The most serious:\
-**priya-intern** (a user) is a member of the **support-engineers** group,\
-→ which can switch into the **prod-support** role,\
-→ which can read the **prod-db-credentials** secret,\
-→ which unlocks the **customer-db** database.\
-Each of the 3 is under **The path, step by step** below.
+<details>
+<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
 
-#### What's at risk
+**What's at risk**
 
 - **customer-db**, a database: personal, payment or health data, or a key that opens it
 - **prod-db-credentials**, a secret: the key that opens **customer-db**
 - **demo-company-files/invoices/**, a storage location: business-sensitive data, such as invoices or contracts
-
-#### What the PR said it needs
-
-"Let Priya read the app logs."\
-It asks only for: **priya-intern** to read **demo-app-logs/**.
-
-#### What to do
-
-✅ **Reply `/theseus apply B`** to commit fix B: A new support-logs-read role for Priya.\
-Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.\
-Or ask the author to change the PR.
-
-Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
-
-<details>
-<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
 
 | Actor | Target | Hops |
 | --- | --- | --- |
@@ -127,7 +109,9 @@ Reply `/theseus apply B` to commit a fix.
 </details>
 
 <details>
-<summary><b>Technical details</b></summary>
+<summary><b>What Theseus checked</b></summary>
+
+Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
 **What the change does:** Adds `aws_iam_user_group_membership.priya_support`. Opens 3 dangerous paths, closes 0.
 
@@ -150,5 +134,12 @@ Read 46 resources, modeled 31; skipped 15 of types Theseus does not model, such 
 Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s.
 
 Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`.
+
+</details>
+
+<details>
+<summary><b>What is Theseus?</b></summary>
+
+Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
 
 </details>

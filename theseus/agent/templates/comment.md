@@ -5,45 +5,33 @@
 **{{ headline }}**
 
 {% endif %}
+{% if consequence %}
+{{ consequence }}
+
+{% endif %}
 {% if suspicious %}
-> ⚠️ **Warning:** text in this PR tries to steer the review. Theseus ignored it, and nothing the PR asks for counts as approved.
+> ⚠️ Text in this PR tries to steer the review. Theseus ignored it, and nothing the PR asks for counts as approved.
 
 {% endif %}
-#### What happened
-
-{{ happened }}
-
-{% if risks %}
-#### What's at risk
-
-{% for risk in risks %}
-- {{ risk }}
-{% endfor %}
-{% if risks_more %}
-- and {{ risks_more }} more, under **The path, step by step**
-{% endif %}
-
-{% endif %}
-{% if asked %}
-#### What the PR said it needs
-
-{{ asked }}
-
-{% endif %}
-{% if todo %}
-#### What to do
-
-{{ todo }}
-
-{% endif %}
-{% if checkov %}
-{{ checkov }}
+{% if lines %}
+{{ lines }}
 
 {% endif %}
 {% if opened %}
 <details>
 <summary><b>The path, step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, with links to each line)</summary>
 
+{% if risks %}
+**What's at risk**
+
+{% for risk in risks %}
+- {{ risk }}
+{% endfor %}
+{% if risks_more %}
+- and {{ risks_more }} more, in the table below
+{% endif %}
+
+{% endif %}
 | Actor | Target | Hops |
 | --- | --- | --- |
 {% for p in opened %}
@@ -64,6 +52,16 @@ and {{ opened_more }} more not shown.
 {% endfor %}
 
 {% endfor %}
+</details>
+
+{% elif risks %}
+<details>
+<summary><b>What's at risk</b></summary>
+
+{% for risk in risks %}
+- {{ risk }}
+{% endfor %}
+
 </details>
 
 {% endif %}
@@ -107,8 +105,12 @@ No fix passes every check. The table shows what each one breaks.
 
 {% endif %}
 <details>
-<summary><b>Technical details</b></summary>
+<summary><b>What Theseus checked</b></summary>
 
+{% if checkov %}
+{{ checkov }}
+
+{% endif %}
 {% if change_line %}
 **What the change does:** {{ change_line }}
 
@@ -146,5 +148,12 @@ and {{ unchanged_more }} more not shown.
 {{ timings }}
 
 {{ versions }}
+
+</details>
+
+<details>
+<summary><b>What is Theseus?</b></summary>
+
+Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
 
 </details>

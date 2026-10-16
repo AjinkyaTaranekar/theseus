@@ -1,39 +1,21 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**stub**
+**priya-intern**, a user, could read **customer-db**, a data store with data of unknown sensitivity (1 of 3 new ways in).
 
-#### What happened
+**Says:** stub.\
+**Needs:** read **demo-app-logs/** · **Grants too:** **customer-db**, **demo-company-files/invoices/** and **prod-db-credentials**\
+**Why:** **priya-intern** is a member of **support-engineers** → can switch into **prod-support** → can read **prod-db-credentials** → unlocks **customer-db**.\
+**Do:** reply `/theseus apply B` to commit fix B (Candidate B). Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.
 
-This PR adds `aws_iam_user_group_membership.priya_support`.\
-Because of that, 3 new ways to reach sensitive data open. The most serious:\
-**priya-intern** (a user) is a member of the **support-engineers** group,\
-→ which can switch into the **prod-support** role,\
-→ which can read the **prod-db-credentials** data store,\
-→ which unlocks the **customer-db** data store.\
-Each of the 3 is under **The path, step by step** below.
+<details>
+<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
 
-#### What's at risk
+**What's at risk**
 
 - **customer-db**, a data store: data of unknown sensitivity
 - **demo-company-files/invoices/**, a data store: data of unknown sensitivity
 - **prod-db-credentials**, a data store: the key that opens **customer-db**
-
-#### What the PR said it needs
-
-"stub"\
-It asks only for: **priya-intern** to read **demo-app-logs/**.
-
-#### What to do
-
-✅ **Reply `/theseus apply B`** to commit fix B: Candidate B.\
-Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.\
-Or ask the author to change the PR.
-
-Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
-
-<details>
-<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
 
 | Actor | Target | Hops |
 | --- | --- | --- |
@@ -114,7 +96,9 @@ Reply `/theseus apply B` to commit a fix.
 </details>
 
 <details>
-<summary><b>Technical details</b></summary>
+<summary><b>What Theseus checked</b></summary>
+
+Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
 **What the change does:** Adds `aws_iam_user_group_membership.priya_support`. Opens 3 dangerous paths, closes 0.
 
@@ -134,5 +118,12 @@ Coverage: not recorded.
 Timings: not recorded.
 
 Models: not recorded.
+
+</details>
+
+<details>
+<summary><b>What is Theseus?</b></summary>
+
+Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
 
 </details>
