@@ -353,10 +353,10 @@ Compare the intent's grants with the head analysis. **Grants beyond intent** are
 uses beyond intent. Intent never covers sensitive data (section 10), so a path the PR asked for is among them.
 The headline:
 
-- `Your PR says <purpose>. Your change grants <the most sensitive opened target>.`
+- `Your PR says: <purpose>. Your change grants <the most sensitive opened target>.`
 - When that target, or the most sensitive use, is one the intent asks for: `Your PR asks for <target>.
   Access to sensitive data needs an owner's approval in theseus.yaml.`
-- With no IAM change but a use beyond intent: `Your PR says <purpose>. Your code now reads <resource>.`, naming
+- With no IAM change but a use beyond intent: `Your PR says: <purpose>. Your code now reads <resource>.`, naming
   the most sensitive use, and a database before the secret that unlocks it.
 - With nothing beyond intent: `This change matches its stated purpose.`
 - When the PR states no purpose (`stated: false`): `This PR doesn't say what it's for. Your change grants

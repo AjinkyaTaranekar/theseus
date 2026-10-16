@@ -13,7 +13,8 @@ from theseus.adapters.aws.adapter import AwsAdapter
 from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
-from theseus.agent.jev import JevAnswer
+from theseus.agent.jev import Jev, JevAnswer
+from theseus.agent.llm import LlmReply
 from theseus.config import get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, World
@@ -27,16 +28,42 @@ RECORDED = ROOT / "recordings/jev/sensitivity-38b5f02e4cbd.json"
 
 
 class RecordedJev:
-    """Jev's recorded answers by node ID. A resource it was never asked about fails the test, loudly."""
+    """Jev's recorded answers by node ID. A resource it was never asked about fails the test, loudly. Steering
+    is replayed by Jev itself: those recordings are keyed by the PR text alone."""
 
     def __init__(self) -> None:
         answers = json.loads(RECORDED.read_text(encoding="utf-8"))["answers"]
         self.answers = {k: JevAnswer.model_validate(v) for k, v in answers.items()}
+        self.jev = Jev(get_settings().model_copy(update={"theseus_mode": "replay"}))
 
     def sensitivity(self, resources: list[tuple[str, str, str]]) -> dict[str, JevAnswer]:
         missing = sorted(r[0] for r in resources if r[0] not in self.answers)
         assert not missing, f"Jev was never recorded on {missing}"
         return {r[0]: self.answers[r[0]] for r in resources}
+
+    def steering(self, pull_request: dict[str, Any]) -> JevAnswer:
+        return self.jev.steering(pull_request)
+
+
+class RecordedIntent:
+    """A1's recorded intent answer for the same PR text. A1 recorded it before C1 added nine resources to the
+    vocabulary, so the request no longer hashes to its key; the PR text and the answer are the same. A PR it
+    never recorded fails the test, loudly."""
+
+    def call(self, purpose: str, messages: list[dict[str, Any]], *args: Any, **kwargs: Any) -> LlmReply:
+        pr = messages[-1]["content"]
+        for path in sorted((ROOT / "recordings/llm").glob(f"{purpose}-*.json")):
+            recording = json.loads(path.read_text(encoding="utf-8"))
+            if recording["request"]["messages"][-1]["content"] == pr:
+                (call,) = recording["response"]["tool_calls"]
+                return LlmReply(
+                    tool=call["name"],
+                    arguments=json.loads(call["arguments"]),
+                    model=recording["model"],
+                    ms=0,
+                    key=path.stem,
+                )
+        raise AssertionError(f"no {purpose} recording for this PR text: {pr[:120]}")
 
 
 def adapters_for(root: Path) -> Adapters:
@@ -57,7 +84,7 @@ def deps_for(scenario: str) -> Deps:
     return Deps(
         store=MemoryStore(),
         adapters=adapters_for(FIXTURES / scenario / side),
-        llm=None,
+        llm=RecordedIntent(),
         jev=RecordedJev(),
         settings=get_settings(),
     )

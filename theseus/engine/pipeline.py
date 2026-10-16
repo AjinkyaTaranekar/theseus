@@ -11,6 +11,7 @@ import re
 import time
 from pathlib import Path
 
+from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
 from theseus.contracts.engine import Analysis, Deps, GraphState, World
 from theseus.contracts.result import (
@@ -18,14 +19,15 @@ from theseus.contracts.result import (
     Coverage,
     Evidence,
     GraphRows,
+    Intent,
     NodeInfo,
     PathRecord,
     Requirement,
-    ResourceChange,
     Timings,
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
+from theseus.engine.intent_effect import changes, headline
 from theseus.errors import IngestError
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
@@ -78,20 +80,6 @@ def actors(*states: GraphState) -> list[str]:
     return sorted({n.id for s in states for n in s.rows.nodes if set(n.labels) & ACTOR_LABELS})
 
 
-def changes(base: World, head: World) -> list[ResourceChange]:
-    """Every resource the change creates, deletes or updates, by address."""
-    b = {r.address: r for r in base.resources}
-    h = {r.address: r for r in head.resources}
-    out = [ResourceChange(address=a, type=h[a].type, action="create") for a in h.keys() - b.keys()]
-    out += [ResourceChange(address=a, type=b[a].type, action="delete") for a in b.keys() - h.keys()]
-    out += [
-        ResourceChange(address=a, type=h[a].type, action="update")
-        for a in b.keys() & h.keys()
-        if b[a].values != h[a].values
-    ]
-    return sorted(out, key=lambda c: (c.address, c.action))
-
-
 def coverage(world: World, rows: GraphRows, deps: Deps) -> Coverage:
     skipped = sum(world.skipped_types.values())
     calls_skipped = (
@@ -120,42 +108,54 @@ def _listed(paths: list[PathRecord], state: GraphState) -> tuple[dict[str, Evide
     return cited, info
 
 
-def headline(opened: list[PathRecord]) -> str:
-    """A plain count until A3 says what the PR opens in words."""
-    if not opened:
-        return "This change opens no dangerous path."
-    return f"This change opens {len(opened)} dangerous {'path' if len(opened) == 1 else 'paths'}."
-
-
 def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) -> AnalysisResult:
-    """PR mode: both states loaded into the store and analyzed with the same actors and requirements."""
+    """PR mode: both states loaded into the store and analyzed with the same actors and requirements, the
+    config's and the PR's intent; then the headline says what the PR says against what the change grants."""
     start = time.perf_counter()
     base_state, base_jev = prepare_state(base, "base", deps)
     head_state, head_jev = prepare_state(head, "head", deps)
     for state in (base_state, head_state):
         load_graph(deps.store, state)
-    requirements = config_requirements(head)
+    llm_start = time.perf_counter()
+    intent = read_intent(pr_title, pr_body, head_state, deps)
+    llm_ms = int((time.perf_counter() - llm_start) * 1000)
+    # Every requirement gets a status; only theseus.yaml's cover (analyze), and E4 counts the approved ones.
+    requirements = [*config_requirements(head), *(to_requirements(intent) if intent else [])]
     who = actors(base_state, head_state)
     before: Analysis = analyze(deps.store, base_state, requirements, who)
     after: Analysis = analyze(deps.store, head_state, requirements, who)
     found = diff(before, after)
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
     base_evidence, base_nodes = _listed(found.closed, base_state)
+    info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms = base_jev + head_jev
     return AnalysisResult(
         scenario=scenario_of(head),
         mode="pr",
         graphs={"base": base_state.name, "head": head_state.name},
+        intent=intent,
         changes=changes(base, head),
-        headline=headline(found.opened),
+        headline=headline(intent, found.opened, [], info),
         opened=found.opened,
         closed=found.closed,
         unchanged=found.unchanged,
         requirements=after.requirements,
         unknowns=sorted(set(head_state.rows.unknowns)),
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
-        timings=Timings(engine_ms=total_ms - jev_ms, jev_ms=jev_ms, total_ms=total_ms),
+        timings=Timings(
+            engine_ms=total_ms - jev_ms - llm_ms, llm_ms=llm_ms, jev_ms=jev_ms, total_ms=total_ms
+        ),
         coverage=coverage(head, head_state.rows, deps),
         nodes=dict(sorted({**base_nodes, **head_nodes}.items())),
     )
+
+
+def read_intent(pr_title: str, pr_body: str, state: GraphState, deps: Deps) -> Intent | None:
+    """What the PR says it needs, on the head graph's IDs, through the LLM wrapper (A1). None without one.
+    Jev screens the text for steering when it can."""
+    if deps.llm is None:
+        log.warning("no LLM in Deps; the PR's intent is not read")
+        return None
+    steering = deps.jev if hasattr(deps.jev, "steering") else None
+    return extract_intent(pr_title, pr_body, vocabulary(state.rows), llm=deps.llm, jev=steering)
