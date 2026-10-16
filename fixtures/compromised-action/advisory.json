@@ -1,0 +1,10 @@
+{
+  "action": "demo-thirdparty/file-diff",
+  "affected_versions": [
+    "v1",
+    "v2",
+    "v3"
+  ],
+  "id": "GHSA-demo-0001",
+  "text": "Summary: Credential disclosure in demo-thirdparty/file-diff.\n\nSeverity: Critical.\n\nAffected versions: v1, v2 and v3.\nPatched versions: v4.\n\nThe affected Action versions execute a payload that dumps runner memory and secrets to the build log. Anyone able to read the log may recover credentials available to the runner, including workflow tokens and temporary cloud credentials.\n\nUpgrade to v4, pin the reviewed commit, and rotate credentials exposed by affected runs. Restrict access to affected build logs while investigating."
+}
