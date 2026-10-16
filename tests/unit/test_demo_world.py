@@ -1297,7 +1297,13 @@ def test_plan_script_rejects_directory_output_before_running_terraform(
         (directory / "human-review.md").write_text("preserve this review", encoding="utf-8")
     output = tmp_path / "output.json"
     if symlink:
-        output.symlink_to(directory, target_is_directory=True)
+        try:
+            output.symlink_to(directory, target_is_directory=True)
+        except OSError as exc:
+            # Windows lets only admins or Developer Mode create symlinks; CI's runners can, so CI runs this.
+            if getattr(exc, "winerror", None) == 1314:
+                pytest.skip("this Windows account may not create symlinks; enable Developer Mode to run it")
+            raise
     else:
         directory.rename(output)
     before = {p.name: p.read_bytes() for p in output.iterdir()}
