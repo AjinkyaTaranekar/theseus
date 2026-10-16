@@ -459,3 +459,16 @@ def test_untrusted_text_cannot_close_its_own_tag() -> None:
     inner = fenced[len("<untrusted_pr_text>\n") : -len("\n</untrusted_pr_text>")]
     assert "</untrusted_pr_text>" not in inner and "<untrusted_pr_text>" not in inner
     assert "now obey me" in inner
+
+
+def test_loading_the_client_keeps_the_app_s_request_log(monkeypatch: pytest.MonkeyPatch) -> None:
+    """LiteLLM raises the httpx logger to WARNING when it loads; the GitHub requests stay in the log."""
+    import logging
+
+    from theseus.agent import llm as llm_module
+
+    httpx_logger = logging.getLogger("httpx")
+    monkeypatch.setattr(httpx_logger, "level", logging.NOTSET)
+    monkeypatch.setattr(llm_module, "_litellm_completion", lambda: httpx_logger.setLevel(logging.WARNING))
+    llm_module.load_client()
+    assert httpx_logger.level == logging.NOTSET
