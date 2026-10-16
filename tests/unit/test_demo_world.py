@@ -154,6 +154,56 @@ POLICY_CASES = [
 ]
 
 
+def shell_path(path: Path | str, bash: str, *, native: bool = False) -> str:
+    """Return a path in the namespace used by Git Bash or native Python."""
+    if sys.platform != "win32":
+        return path.as_posix() if isinstance(path, Path) else path
+    result = subprocess.run(
+        [
+            bash,
+            "-c",
+            'PATH="/usr/bin:$PATH"; cygpath "$1" -- "$2"',
+            "theseus-test",
+            "-w" if native else "-u",
+            str(path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    return result.stdout.rstrip("\r\n")
+
+
+def run_plan_script(
+    *arguments: Path, bin_dir: Path | None = None, env: dict[str, str | Path] | None = None
+) -> subprocess.CompletedProcess[str]:
+    """Return the plan script result using the same native Bash as the generator."""
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    bash = module["resolve_bash"]()
+    paths = [shell_path(path, bash) for path in (ROOT / "tools/plan.sh", *arguments)]
+    environment = {
+        **os.environ,
+        **{
+            key: shell_path(value, bash) if isinstance(value, Path) else value
+            for key, value in (env or {}).items()
+        },
+    }
+    command = [bash, "--", *paths]
+    if bin_dir is not None:
+        # Set the POSIX PATH inside Bash; Windows process environments use a different separator.
+        command = [
+            bash,
+            "-c",
+            'export PATH="$1:/usr/bin:/bin"; shift; exec "$BASH" -- "$@"',
+            "theseus-plan-test",
+            shell_path(bin_dir, bash),
+            *paths,
+        ]
+    return subprocess.run(command, env=environment, capture_output=True, text=True, timeout=30)
+
+
 @pytest.fixture
 def resources() -> dict[str, dict[str, Any]]:
     plan = json.loads((FIXTURES / "intern/base.plan.json").read_text(encoding="utf-8"))
@@ -625,7 +675,7 @@ def test_fixture_layout_and_changes_are_exact(scenario: str) -> None:
 
 
 def test_plan_script_rejects_bad_arguments_without_terraform() -> None:
-    result = subprocess.run(["bash", str(ROOT / "tools/plan.sh")], capture_output=True, text=True)
+    result = run_plan_script()
     assert result.returncode == 2
     assert "Usage:" in result.stderr
 
@@ -748,21 +798,21 @@ def test_plan_script_isolates_state_and_preserves_output_on_failure(tmp_path: Pa
         "  *) exit 8 ;;\n"
         "esac\n",
         encoding="utf-8",
+        newline="\n",
     )
     executable.chmod(0o755)
-    result = subprocess.run(
-        ["bash", str(ROOT / "tools/plan.sh"), str(source), str(output)],
+    result = run_plan_script(
+        source,
+        output,
+        bin_dir=tmp_path,
         env={
-            "PATH": f"{tmp_path}:/usr/bin:/bin",
-            "SOURCE": str(source),
+            "SOURCE": source,
             "AWS_PROFILE": "synthetic-profile",
             "AWS_DEFAULT_PROFILE": "synthetic-default",
             "AWS_SESSION_TOKEN": "mock",
-            "AWS_CONFIG_FILE": str(source / "missing-config"),
-            "AWS_SHARED_CREDENTIALS_FILE": str(source / "missing-credentials"),
+            "AWS_CONFIG_FILE": source / "missing-config",
+            "AWS_SHARED_CREDENTIALS_FILE": source / "missing-credentials",
         },
-        capture_output=True,
-        text=True,
     )
     assert result.returncode == 9, result.stderr
     assert output.read_text(encoding="utf-8") == "previous plan"
@@ -1099,13 +1149,14 @@ def test_plan_script_handles_every_terraform_exit_stage(
         "fi\n"
         'if [[ "$2" == show ]]; then echo \'{"ok": true}\'; fi\n',
         encoding="utf-8",
+        newline="\n",
     )
     executable.chmod(0o755)
-    result = subprocess.run(
-        ["bash", str(ROOT / "tools/plan.sh"), str(source), str(output)],
-        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "FAIL_STAGE": failed_stage, "WORK_RECORD": str(record)},
-        capture_output=True,
-        text=True,
+    result = run_plan_script(
+        source,
+        output,
+        bin_dir=tmp_path,
+        env={"FAIL_STAGE": failed_stage, "WORK_RECORD": record},
     )
     assert result.returncode == (0 if failed_stage == "none" else 7), result.stderr
     if failed_stage == "none":
@@ -1114,7 +1165,9 @@ def test_plan_script_handles_every_terraform_exit_stage(
         assert output.read_text(encoding="utf-8") == "previous plan"
     else:
         assert not output.exists()
-    assert not Path(record.read_text(encoding="utf-8")).exists()
+    bash = runpy.run_path(str(ROOT / "tools/make_fixture.py"))["resolve_bash"]()
+    recorded_work = Path(shell_path(record.read_text(encoding="utf-8"), bash, native=True))
+    assert not recorded_work.exists()
     assert not list(tmp_path.glob(".theseus-plan.*"))
     assert sorted(p.name for p in source.iterdir()) == ["main.tf.json"]
 
@@ -1134,13 +1187,14 @@ def test_plan_script_cleans_up_when_output_tempfile_creation_fails(tmp_path: Pat
         "  exit 7\n"
         "fi\n",
         encoding="utf-8",
+        newline="\n",
     )
     executable.chmod(0o755)
-    result = subprocess.run(
-        ["bash", str(ROOT / "tools/plan.sh"), str(source), str(tmp_path / "result.json")],
-        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "EXPECTED_WORK": str(work)},
-        capture_output=True,
-        text=True,
+    result = run_plan_script(
+        source,
+        tmp_path / "result.json",
+        bin_dir=tmp_path,
+        env={"EXPECTED_WORK": work},
     )
     assert result.returncode == 7
     assert not work.exists()
@@ -1170,14 +1224,15 @@ def test_plan_script_rejects_directory_output_before_running_terraform(
         'touch "$REVIEW_TERRAFORM_CALLED"\n'
         'if [[ "$2" == show ]]; then echo \'{"valid": true}\'; fi\n',
         encoding="utf-8",
+        newline="\n",
     )
     executable.chmod(0o755)
     marker = tmp_path / "terraform-called"
-    result = subprocess.run(
-        ["bash", str(ROOT / "tools/plan.sh"), str(source), str(output)],
-        env={"PATH": f"{tmp_path}:/usr/bin:/bin", "REVIEW_TERRAFORM_CALLED": str(marker)},
-        capture_output=True,
-        text=True,
+    result = run_plan_script(
+        source,
+        output,
+        bin_dir=tmp_path,
+        env={"REVIEW_TERRAFORM_CALLED": marker},
     )
     assert result.returncode == 2, result.stderr
     assert "Output path is a directory" in result.stderr
@@ -1286,3 +1341,334 @@ def test_resources_remain_in_the_files_assigned_by_spec() -> None:
             assert address not in actual
             actual[address] = path.name
     assert actual == expected
+
+
+@pytest.mark.parametrize("configured", ["absolute", "on-path"])
+def test_bash_override_takes_precedence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    executable = tmp_path / "chosen shell" / "bash"
+    executable.parent.mkdir()
+    executable.write_text("#!/bin/sh\n", encoding="utf-8", newline="\n")
+    executable.chmod(0o755)
+    value = str(executable) if configured == "absolute" else "chosen-bash"
+    monkeypatch.setenv("THESEUS_BASH", value)
+    monkeypatch.setattr(
+        module["shutil"], "which", lambda command: str(executable) if command == value else None
+    )
+    assert module["resolve_bash"]() == str(executable)
+
+
+@pytest.mark.parametrize("configured", ["missing-bash", "a-directory"])
+def test_invalid_bash_override_is_reported_instead_of_ignored(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, configured: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    directory = tmp_path / configured
+    if configured == "a-directory":
+        directory.mkdir()
+    monkeypatch.setenv("THESEUS_BASH", str(directory))
+    with pytest.raises(IngestError, match="THESEUS_BASH"):
+        module["resolve_bash"]()
+
+
+@pytest.mark.parametrize("git_bin", ["cmd", "bin", "mingw64/bin"])
+def test_windows_bash_is_found_beside_git_before_the_wsl_launcher(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, git_bin: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    git_root = tmp_path / "Git with spaces"
+    executable = git_root / "usr/bin/bash.exe"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    executable.chmod(0o755)
+    monkeypatch.delenv("THESEUS_BASH", raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        module["shutil"],
+        "which",
+        lambda command: {
+            "git": str(git_root / git_bin / "git.exe"),
+            "bash": r"C:\Windows\System32\bash.exe",
+        }.get(command),
+    )
+    assert module["resolve_bash"]() == str(executable)
+
+
+@pytest.mark.parametrize("setting", ["ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"])
+def test_windows_bash_is_found_in_standard_install_locations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, setting: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    root = tmp_path / "installed programs"
+    executable = root / ("Programs/Git" if setting == "LOCALAPPDATA" else "Git") / "usr/bin/bash.exe"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    executable.chmod(0o755)
+    for key in ("THESEUS_BASH", "ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv(setting, str(root))
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(module["shutil"], "which", lambda command: None)
+    assert module["resolve_bash"]() == str(executable)
+
+
+@pytest.mark.parametrize("platform", ["darwin", "linux", "win32"])
+def test_bash_can_fall_back_to_a_native_shell_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, platform: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    executable = tmp_path / "native/bin/bash"
+    executable.parent.mkdir(parents=True)
+    executable.touch()
+    executable.chmod(0o755)
+    for key in ("THESEUS_BASH", "ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(sys, "platform", platform)
+    monkeypatch.setattr(
+        module["shutil"], "which", lambda command: str(executable) if command == "bash" else None
+    )
+    assert module["resolve_bash"]() == str(executable)
+
+
+@pytest.mark.parametrize("directory", ["System32", "Sysnative", "WindowsApps"])
+def test_windows_wsl_launchers_are_not_used_as_native_bash(
+    monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    for key in ("THESEUS_BASH", "ProgramFiles", "ProgramW6432", "ProgramFiles(x86)", "LOCALAPPDATA"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        module["shutil"],
+        "which",
+        lambda command: rf"C:\Windows\{directory}\bash.exe" if command == "bash" else None,
+    )
+    with pytest.raises(IngestError, match="Git Bash|Git for Windows|THESEUS_BASH"):
+        module["resolve_bash"]()
+
+
+def test_missing_bash_has_an_actionable_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    monkeypatch.delenv("THESEUS_BASH", raising=False)
+    monkeypatch.setattr(sys, "platform", "linux")
+    monkeypatch.setattr(module["shutil"], "which", lambda command: None)
+    with pytest.raises(IngestError, match="THESEUS_BASH"):
+        module["resolve_bash"]()
+
+
+def test_generator_resolves_bash_once_for_both_plans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    chosen = str(tmp_path / "Git with spaces/usr/bin/bash.exe")
+    resolved: list[str] = []
+    commands: list[list[str]] = []
+
+    def resolve() -> str:
+        resolved.append(chosen)
+        return chosen
+
+    def fake_plan(command: list[str], **kwargs: Any) -> None:
+        commands.append(command)
+        Path(command[-1]).write_bytes((FIXTURES / "intern/base.plan.json").read_bytes())
+
+    monkeypatch.setitem(module["generate"].__globals__, "resolve_bash", resolve)
+    monkeypatch.setattr(subprocess, "run", fake_plan)
+    module["generate"]("intern", WORLD, tmp_path / "fixtures")
+    assert resolved == [chosen]
+    assert len(commands) == 2
+    assert all(command[0] == chosen for command in commands)
+
+
+def test_generator_cli_resolves_bash_once_for_all_scenarios(monkeypatch: pytest.MonkeyPatch) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    resolved: list[str] = []
+    generated: list[tuple[str, str]] = []
+
+    def resolve() -> str:
+        resolved.append("chosen-bash")
+        return "chosen-bash"
+
+    def generate(name: str, world: Path, fixtures: Path, *, bash: str | None = None) -> None:
+        generated.append((name, bash))
+
+    monkeypatch.setitem(module["main"].__globals__, "resolve_bash", resolve)
+    monkeypatch.setitem(module["main"].__globals__, "generate", generate)
+    monkeypatch.setattr(sys, "argv", ["make_fixture.py", "all"])
+    assert module["main"]() == 0
+    assert resolved == ["chosen-bash"]
+    assert generated == [(name, "chosen-bash") for name in sorted(module["SCENARIOS"])]
+
+
+@pytest.mark.parametrize("native", [False, True])
+def test_windows_shell_paths_use_cygpath_without_losing_spaces(
+    monkeypatch: pytest.MonkeyPatch, native: bool
+) -> None:
+    path = "/tmp/work with spaces " if native else r"C:\Users\A Person\project"
+    converted = r"C:\Program Files\Git\tmp\work with spaces " if native else "/c/Users/A Person/project"
+    commands: list[list[str]] = []
+
+    def convert(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout=converted + "\n", stderr="")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(subprocess, "run", convert)
+    assert shell_path(path, "chosen-bash", native=native) == converted
+    assert commands[0][0] == "chosen-bash"
+    assert commands[0][-2:] == ["-w" if native else "-u", path]
+
+
+def test_windows_shell_test_path_is_set_inside_bash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[list[str], dict[str, Any]]] = []
+    chosen = "chosen-bash"
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        commands.append((command, kwargs))
+        if "cygpath" in command[2]:
+            return subprocess.CompletedProcess(command, 0, stdout="/c/test path\n", stderr="")
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+    monkeypatch.setattr(runpy, "run_path", lambda path: {"resolve_bash": lambda: chosen})
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = run_plan_script(
+        tmp_path / "source", tmp_path / "result.json", bin_dir=tmp_path, env={"SOURCE": tmp_path}
+    )
+    command, kwargs = commands[-1]
+    assert result.returncode == 0
+    assert command[0] == chosen
+    assert command[1] == "-c"
+    assert command[4] == "/c/test path"
+    assert kwargs["env"]["SOURCE"] == "/c/test path"
+    assert kwargs["env"]["SYSTEMROOT"] == r"C:\Windows"
+
+
+def test_missing_bash_does_not_create_or_replace_fixture_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+
+    def unavailable() -> str:
+        raise IngestError("Set THESEUS_BASH")
+
+    monkeypatch.setitem(module["generate"].__globals__, "resolve_bash", unavailable)
+    with pytest.raises(IngestError, match="THESEUS_BASH"):
+        module["generate"]("intern", WORLD, tmp_path / "fixtures")
+    assert not (tmp_path / "fixtures").exists()
+
+
+def test_windows_plan_command_has_the_selected_shell_utilities_on_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    bash = str(tmp_path / "Git with spaces/usr/bin/bash.exe")
+    output = tmp_path / "plan.json"
+    commands: list[tuple[list[str], dict[str, Any]]] = []
+
+    def fake_plan(command: list[str], **kwargs: Any) -> None:
+        commands.append((command, kwargs))
+        output.write_bytes((FIXTURES / "intern/base.plan.json").read_bytes())
+
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setenv("PATH", "existing-search-path")
+    monkeypatch.setattr(subprocess, "run", fake_plan)
+    module["plan_world"](tmp_path / "world with spaces", output, bash=bash)
+    command, kwargs = commands[0]
+    assert command == [
+        bash,
+        "--",
+        (ROOT / "tools/plan.sh").as_posix(),
+        (tmp_path / "world with spaces/terraform").as_posix(),
+        output.as_posix(),
+    ]
+    assert kwargs["env"]["PATH"] == str(Path(bash).parent) + os.pathsep + "existing-search-path"
+    assert kwargs["check"] is True
+
+
+@pytest.mark.parametrize("directory", ["System32", "Sysnative", "WindowsApps"])
+def test_windows_bash_override_cannot_select_a_wsl_launcher(
+    monkeypatch: pytest.MonkeyPatch, directory: str
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    launcher = rf"C:\Windows\{directory}\bash.exe"
+    monkeypatch.setenv("THESEUS_BASH", launcher)
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(module["shutil"], "which", lambda command: launcher)
+    with pytest.raises(IngestError, match="THESEUS_BASH"):
+        module["resolve_bash"]()
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "two spaces here",
+        "an apostrophe's path",
+        "ampersand & parentheses (1)",
+        "literal $(echo expanded) and `echo expanded`",
+        "semicolon; path",
+        "café 店",
+    ],
+)
+def test_plan_script_preserves_literal_paths_with_shell_characters(tmp_path: Path, name: str) -> None:
+    directory = tmp_path / name
+    source = directory / "source"
+    source.mkdir(parents=True)
+    (source / "main.tf").write_text("terraform {}", encoding="utf-8", newline="\n")
+    output = directory / "result.json"
+    record = directory / "source-record"
+    executable = directory / "terraform"
+    executable.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'work="${1#-chdir=}"\n'
+        '[[ -f "$work/main.tf" ]] || exit 90\n'
+        'if [[ "$2" == show ]]; then echo \'{"ok":true}\'; fi\n'
+        'printf "%s" "$SOURCE" > "$SOURCE_RECORD"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    executable.chmod(0o755)
+    result = run_plan_script(
+        source, output, bin_dir=directory, env={"SOURCE": source, "SOURCE_RECORD": record}
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(output.read_text(encoding="utf-8")) == {"ok": True}
+    bash = runpy.run_path(str(ROOT / "tools/make_fixture.py"))["resolve_bash"]()
+    assert record.read_text(encoding="utf-8") == shell_path(source, bash)
+    assert sorted(p.name for p in source.iterdir()) == ["main.tf"]
+    assert not list(directory.glob(".theseus-plan.*"))
+
+
+def test_generator_executes_the_plan_script_with_native_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    module = runpy.run_path(str(ROOT / "tools/make_fixture.py"))
+    world = tmp_path / "world with spaces"
+    (world / "terraform").mkdir(parents=True)
+    (world / "terraform/people.tf").write_text("terraform {}\n", encoding="utf-8", newline="\n")
+    tools = tmp_path / "test tools"
+    tools.mkdir()
+    record = tmp_path / "calls.txt"
+    executable = tools / "terraform"
+    executable.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        'echo "$2" >> "$THESEUS_TEST_PLAN_CALLS"\n'
+        'if [[ "$2" == show ]]; then\n'
+        '  echo \'{"planned_values":{"root_module":{"resources":[]}},'
+        '"resource_changes":[],"timestamp":"remove"}\'\n'
+        "fi\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    executable.chmod(0o755)
+    bash = module["resolve_bash"]()
+    monkeypatch.setenv("THESEUS_BASH", bash)
+    monkeypatch.setenv("PATH", str(tools) + os.pathsep + os.environ.get("PATH", ""))
+    monkeypatch.setenv("THESEUS_TEST_PLAN_CALLS", record.as_posix())
+    module["generate"]("intern", world, tmp_path / "fixture output")
+    assert record.read_text(encoding="utf-8").splitlines() == ["init", "plan", "show"] * 2
+    for side in ("base", "head"):
+        plan = json.loads((tmp_path / f"fixture output/intern/{side}.plan.json").read_text(encoding="utf-8"))
+        assert plan == {"planned_values": {"root_module": {"resources": []}}, "resource_changes": []}
+    assert not list((tmp_path / "fixture output").glob(".intern-*"))
