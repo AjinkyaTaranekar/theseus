@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Generate scenario inputs from demo-infra; human answer keys are never touched."""
+"""Generate scenario inputs from demo-infra; human answer keys are never touched.
+
+Windows uses Git for Windows' native Bash. Set THESEUS_BASH to select another Bash executable.
+"""
 
 from __future__ import annotations
 
@@ -9,7 +12,8 @@ import logging
 import os
 import shutil
 import subprocess
-from pathlib import Path
+import sys
+from pathlib import Path, PureWindowsPath
 from tempfile import mkdtemp
 from typing import Literal
 
@@ -220,9 +224,56 @@ class _RecoveryError(IngestError):
     """A failed rollback whose staged backups must remain available for recovery."""
 
 
-def plan_world(world: Path, output: Path) -> None:
+def resolve_bash() -> str:
+    """Return the configured native Bash, preferring Git for Windows over WSL."""
+    wsl_launchers = {"system32", "sysnative", "windowsapps"}
+    configured = os.environ.get("THESEUS_BASH")
+    if configured:
+        executable = shutil.which(configured)
+        if executable is None or (
+            sys.platform == "win32" and PureWindowsPath(executable).parent.name.casefold() in wsl_launchers
+        ):
+            raise IngestError(f"THESEUS_BASH must name a native Bash executable, not WSL: {configured}")
+        return executable
+    if sys.platform == "win32":
+        roots: list[Path] = []
+        git = shutil.which("git")
+        if git:
+            roots.extend(Path(git).parents)
+        for setting in ("ProgramW6432", "ProgramFiles", "ProgramFiles(x86)", "LOCALAPPDATA"):
+            directory = os.environ.get(setting)
+            if directory:
+                suffix = "Programs/Git" if setting == "LOCALAPPDATA" else "Git"
+                roots.append(Path(directory) / suffix)
+        for root in roots:
+            executable = root / "usr/bin/bash.exe"
+            if executable.is_file():
+                return str(executable)
+    executable = shutil.which("bash")
+    if executable is not None:
+        launcher = PureWindowsPath(executable).parent.name.casefold()
+        if sys.platform != "win32" or launcher not in wsl_launchers:
+            return executable
+    raise IngestError("Native Bash was not found; install Git Bash or set THESEUS_BASH to its bash.exe")
+
+
+def plan_world(world: Path, output: Path, *, bash: str) -> None:
     """Write deterministic Terraform plan JSON for a copied world."""
-    subprocess.run(["bash", str(ROOT / "tools/plan.sh"), str(world / "terraform"), str(output)], check=True)
+    environment = None
+    if sys.platform == "win32":
+        environment = dict(os.environ)
+        environment["PATH"] = str(Path(bash).parent) + os.pathsep + environment.get("PATH", "")
+    subprocess.run(
+        [
+            bash,
+            "--",
+            (ROOT / "tools/plan.sh").as_posix(),
+            (world / "terraform").as_posix(),
+            output.as_posix(),
+        ],
+        env=environment,
+        check=True,
+    )
     plan = json.loads(output.read_text(encoding="utf-8"))
     if (
         not isinstance(plan, dict)
@@ -289,7 +340,7 @@ def apply_changes(scenario: Scenario, head: Path) -> None:
         path.write_text(content, encoding="utf-8", newline="\n")
 
 
-def generate(name: str, world_root: Path, fixture_root: Path) -> None:
+def generate(name: str, world_root: Path, fixture_root: Path, *, bash: str | None = None) -> None:
     """Write one fixture's generated inputs, preserving every human-owned file."""
     if name not in SCENARIOS:
         raise IngestError(f"Unknown scenario: {name}")
@@ -298,15 +349,16 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
     preserve_staging = False
     published = False
     try:
+        bash = resolve_bash() if bash is None else bash
         fixture_root.mkdir(parents=True, exist_ok=True)
         # Finish both plans before replacing any existing inputs. A failed plan leaves the old fixture intact.
         staging = Path(mkdtemp(prefix=f".{name}-", dir=fixture_root))
         shutil.copytree(world_root, staging / "base", ignore=COPY_IGNORE)
-        plan_world(staging / "base", staging / "base.plan.json")
+        plan_world(staging / "base", staging / "base.plan.json", bash=bash)
         if scenario.mode == "pr":
             shutil.copytree(staging / "base", staging / "head")
             apply_changes(scenario, staging / "head")
-            plan_world(staging / "head", staging / "head.plan.json")
+            plan_world(staging / "head", staging / "head.plan.json", bash=bash)
             (staging / "pr.md").write_text(
                 f"# {scenario.title}\n\n{scenario.body}\n", encoding="utf-8", newline="\n"
             )
@@ -358,8 +410,9 @@ def main() -> int:
     args = parser.parse_args()
     names = sorted(SCENARIOS) if args.scenario == "all" else [args.scenario]
     try:
+        bash = resolve_bash() if args.scenario != "code-pr" else None
         for name in names:
-            generate(name, ROOT / "demo-infra", ROOT / "fixtures")
+            generate(name, ROOT / "demo-infra", ROOT / "fixtures", bash=bash)
     except IngestError as exc:
         log.error("%s", exc)
         return 1
