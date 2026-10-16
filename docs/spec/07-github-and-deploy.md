@@ -64,7 +64,9 @@ workflows only from the repo root's `.github/workflows/`, so they never run, and
 | Auth | A JWT signed with the App's private key, exchanged for an installation token (httpx and PyJWT) |
 
 **Reading files at a commit.** The backend reads `terraform/`, `services/`, `workflows/` and `theseus.yaml` under
-the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs through the contents API.
+the world root (`THESEUS_WORLD_ROOT`, default `demo-infra`) at both SHAs: one tree request lists them, then one
+GraphQL query per 100 files reads them, each path passed as a variable (`<sha>:<path>`), never inside the query.
+A file GraphQL cannot give whole (binary or truncated) is read through the contents API.
 
 **Writing is fenced to the world root.** Every commit the App makes (apply, containment, scan fixes) may change
 only files under the world root. The backend checks each path before committing and refuses the whole commit
@@ -84,19 +86,34 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 
 | Moment | What starts it | What happens |
 | --- | --- | --- |
-| A PR that changes `demo-infra/` is opened or reopened, drafts included | The Action (`opened`, `reopened`) | A full review: plans, Checkov, analysis, the comment and the check |
+| A PR that changes `demo-infra/` is opened or reopened, drafts included | The Action (`opened`, `reopened`) | A full review: plans, Checkov, analysis, the comment and the check. The App shows the check in progress at once (below) |
 | A commit is pushed to it | The Action (`synchronize`) | A full review of the new head. The newest run cancels an older one still running |
 | Its title or description is edited | The Action (`edited`) | A full review. Intent comes from that text, and the headline asks authors who said nothing to say what the PR is for |
 | A fix is applied with `/theseus apply <ID>` | The App's commit (`synchronize`) | A full review of the fixed head |
 | Someone with write access comments `/theseus review` | The App (`issue_comment`) | The App re-runs the PR's latest Theseus workflow run for the head commit |
 | Someone clicks **Re-run** on the `Theseus` check | The App (`check_run`, `rerequested`) | The same as `/theseus review` |
 | A PR changes nothing under `demo-infra/` | The App (`pull_request`) | No review: a `success` check, "Nothing under demo-infra changed" |
+| The Theseus workflow fails or times out before its review | `Theseus publish` (`POST /review-failed`) | The check fails, "Review could not run", with a link to the run, unless a verdict is already on the commit. A run cancelled by a newer push is left alone |
 | A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
 | A push to `main` | The App (`push`) | A scan of `main` |
 
 **Re-running** repeats the newest Theseus workflow run for the PR's head commit, so the plans are made
 again. If that run is still going, nothing more starts. A check on a PR that changes nothing under the world
 root has no run to repeat; Re-run posts its `success` check again.
+
+**While a review runs, the check says so.** From the moment a PR that changes the world root is opened, pushed
+to, edited or reviewed again, the App shows the commit's `Theseus` check in progress, so the merge box waits
+and says why:
+
+| Stage | Set by | Check title |
+| --- | --- | --- |
+| The Action plans both commits | The `pull_request` webhook | Reviewing: planning both commits |
+| `/theseus review` or Re-run | The webhook, after it re-runs the workflow | Reviewing again: planning both commits |
+| The backend builds the graphs and traces paths | `/analyze`, as it starts | Reviewing: tracing paths in FalkorDB |
+| Done | `/analyze` | The verdict, or "Review could not finish" with the reason |
+
+Each summary says in a sentence what Theseus is doing. A check already in progress is updated; a finished one
+gets a new check run, so the commit's earlier verdict stays in its history.
 
 **Webhooks** are checked against `GITHUB_WEBHOOK_SECRET` (`X-Hub-Signature-256`) before anything in them is
 read, and an event from a repo outside `THESEUS_REPOS` is refused. Registering the App, installing it and
@@ -113,25 +130,72 @@ workflow replays the event that first started it, and that copy may be out of da
 
 A comment cannot stop a merge; a required check can.
 
-**Today: a review gate.** The ruleset "main: reviewed by the other human" (active) requires a PR with one
-approving review, so the other human signs off every change. A "Request changes" review blocks the merge until it
-is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins may
-bypass it through the PR in an emergency, and GitHub records that. The `Theseus` check below is added to it with
-A5: until then `/analyze` returns a stub that fails every PR changing the world root.
+**The ruleset "main: reviewed by the other human"** (active) requires a PR with one approving review, so the
+other human signs off every change, and the `Theseus` check. A "Request changes" review blocks the merge until
+it is resolved. A push dismisses an earlier approval, and `main` cannot be force-pushed or deleted. Repo admins
+may bypass it through the PR in an emergency, and GitHub records that.
 
-- **One ruleset on `main`** requires the `Theseus` check, with its source set to the Theseus App, so a workflow
-  in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and `neutral`
-  let it through. Repo admins can bypass it in an emergency, and GitHub records the bypass. A person creates
-  the ruleset once the App exists (F7).
+- **The ruleset requires the `Theseus` check,** with its source set to the Theseus App (ID 5336067), so a
+  workflow in a PR cannot post a passing check of the same name. `failure` blocks the merge; `success` and
+  `neutral` let it through; a check still in progress keeps it waiting. A person added the check to the
+  ruleset with A5.
 - **Every PR gets the check** (the table above). Without that, a PR that never runs the Action would wait for
   the check forever.
 - **A check belongs to one commit.** Each push needs a new review, so a pass never covers code it did not see.
 - **It fails closed.** If the backend is down, no check arrives, and the merge box shows it as expected and
-  waiting. When the backend is back, `/theseus review` starts the review.
+  waiting. When the backend is back, `/theseus review` starts the review. A review that cannot finish, or a
+  workflow that fails before it, fails the check with the reason and how to try again.
 - **Applying a fix unblocks the merge.** The App's commit starts a new review; when the fixed head opens no
   dangerous path, the check passes.
 - **The check's title is the verdict in plain words,** because the merge box shows it. Its summary is the
   comment's first section.
+
+## The review page
+
+The card ends with **Open the graph Theseus checked →**, a link to
+`https://<DOMAIN>/reviews/<owner>/<repo>/<number>?k=<signature>`. The page (`theseus/web/review.html`) draws
+the PR's head and base graphs with Cytoscape.js (cdnjs, a pinned version with SRI): the opened paths
+highlighted, the hop the PR adds in red, each node's class and who set it, and each arrow's evidence linked to
+its line. "Before it" shows the base graph and the paths the PR closes.
+
+- **Everything comes from FalkorDB.** After each review of the PR's current head, the backend keeps the result in
+  the store (`theseus__docs`, one document per PR) before it posts the comment, so the link works at once. The
+  page reads the result and both graphs from the store when it is opened. A restart or a redeploy changes
+  nothing; a newer review replaces them, and closing the PR deletes the graphs.
+- **The link is signed.** `k` is the first 32 hex characters of HMAC-SHA256 of `review:<owner>/<repo>#<number>`
+  with `THESEUS_TOKEN`. Anyone who can read the comment can open the page; a wrong or missing `k`, another PR,
+  or a repo outside `THESEUS_REPOS` gets a 404 that says nothing about what exists. Without `DOMAIN` or
+  `THESEUS_TOKEN` the comment has no link.
+- **The page carries no data in its URL.** A review's graphs are about 100 KB; a URL holds a few KB, and a copy
+  in a link could never be taken back.
+
+## Labels
+
+After each review of a PR's current head, the App sets its labels from the result (`agent/labels.py`), so the PR
+list shows what Theseus found at a glance and the labels can be counted later. Every label starts with
+`theseus: `. The App adds and removes only those, never `demo` or a person's labels, and creates any the repo
+lacks with its colour and description. A re-run of an old commit leaves the labels to the newer run.
+
+| Labels | When |
+| --- | --- |
+| `theseus: S0` to `theseus: S6`, exactly one | Severity, by the first rule that holds (below) |
+| `theseus: blocked`, `theseus: needs a look`, `theseus: clear`, exactly one | The verdict, as the check run's |
+| `theseus: regulated data` or `theseus: confidential data` | The most sensitive class an opened path or a code read beyond intent reaches |
+| `theseus: grants more than it says` | The PR states a purpose, and the change reaches data its intent does not ask for |
+| `theseus: steering text` | The intent is suspicious |
+
+**Severity.** Code that reads data beyond intent counts like a path to that data: it is use, not only the
+chance of it.
+
+| Severity | The first that holds |
+| --- | --- |
+| S0 | Anyone on the internet can reach regulated data |
+| S1 | Someone inside reaches regulated data, or the internet reaches confidential data |
+| S2 | A new path or code read reaches confidential data |
+| S3 | A new path or code read reaches data of unknown sensitivity |
+| S4 | Theseus could not check part of the change |
+| S5 | No new access, but the PR states no purpose or its text steers the review |
+| S6 | No new access to sensitive data |
 
 ## Demo PRs
 
@@ -139,6 +203,7 @@ A5: until then `/analyze` returns a stub that fails every PR changing the world 
 | --- | --- |
 | Branch `demo/<scenario>-<take>`, label `demo`, title as in `02-demo-world.md` | Easy to find, filter and close; product PRs never use the label |
 | A demo PR changes only `demo-infra/` | The Action's `paths` filter, and a clean diff on screen |
+| CI skips a `demo/` branch; its only check is `Theseus` | CI's tests pin `demo-infra/` to `main`, so they fail by design on a PR that changes it |
 | A product PR never changes `demo-infra/` (except tasks F4 and C1) | CODEOWNERS sends `demo-infra/` to both humans |
 | Practice: open, check, close. Record on a fresh branch per take | Closing deletes the PR's graphs; old takes never clutter the video |
 | `main` holds the world with no scenario applied | Each PR starts from the same `main` the fixtures were made from |

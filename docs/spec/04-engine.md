@@ -353,17 +353,17 @@ Compare the intent's grants with the head analysis. **Grants beyond intent** are
 uses beyond intent. Intent never covers sensitive data (section 10), so a path the PR asked for is among them.
 The headline:
 
-- `Your PR says <purpose>. Your change grants <the most sensitive opened target>.`
+- `Your PR says: <purpose>. Your change grants <the most sensitive opened target>.`
 - When that target, or the most sensitive use, is one the intent asks for: `Your PR asks for <target>.
   Access to sensitive data needs an owner's approval in theseus.yaml.`
-- With no IAM change but a use beyond intent: `Your PR says <purpose>. Your code now reads <resource>.`, naming
+- With no IAM change but a use beyond intent: `Your PR says: <purpose>. Your code now reads <resource>.`, naming
   the most sensitive use, and a database before the secret that unlocks it.
 - With nothing beyond intent: `This change matches its stated purpose.`
 - When the PR states no purpose (`stated: false`): `This PR doesn't say what it's for. Your change grants
   <target>.`, `... Your code now reads <resource>.`, or `This PR doesn't say what it's for. It opens no
   dangerous path.`
 
-**What the change does** opens the comment's "What happened", from the plan and never from a model: the resources the
+**What the change does** opens the comment's "What Theseus checked", from the plan and never from a model: the resources the
 change creates, updates or deletes (`AnalysisResult.changes`, from the base and head worlds), then the
 dangerous paths it opens and closes. For example: `Adds aws_iam_user_group_membership.priya_support. Opens 3
 dangerous paths, closes 0.` It is the same whether or not the PR has a description.
@@ -373,6 +373,10 @@ unlocks it (a database before its secret), then the shortest path, then by ID.
 
 **Plain names.** The headline names nodes as the comment does, with `engine/words.py`: the node's own name
 and what it is ("customer-db, a database"), never a vendor's resource type.
+
+**In the comment,** the headline is said as two lines of the card: what the PR says, then what it needs
+against what the change grants (`05-contracts.md`, "The PR comment"). The result keeps it for the Action's log
+and the Try-it page.
 
 ## 19. Writing fixes back to Terraform (`adapters/terraform/render.py`, task E9)
 
