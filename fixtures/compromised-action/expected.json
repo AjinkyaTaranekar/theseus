@@ -1,0 +1,36 @@
+{
+  "scenario": "compromised-action",
+  "mode": "finding",
+  "min_cut": {
+    "value": 1,
+    "cuttable": true,
+    "cut": [
+      [
+        "workflow:demo-org/docs-site/preview.yml",
+        "TRUSTS",
+        "role:github-deploy"
+      ]
+    ]
+  },
+  "candidates": {
+    "K": "pass"
+  },
+  "recommended": "K",
+  "rotate": [
+    "secret:prod-db-credentials"
+  ],
+  "staging_to_prod": [
+    [
+      "workflow:demo-org/docs-site/preview.yml",
+      "db:customer-db"
+    ],
+    [
+      "workflow:demo-org/docs-site/preview.yml",
+      "s3://demo-company-files/invoices/"
+    ],
+    [
+      "workflow:demo-org/docs-site/preview.yml",
+      "secret:prod-db-credentials"
+    ]
+  ]
+}
