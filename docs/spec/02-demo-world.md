@@ -350,19 +350,22 @@ skipped.
 ## Services (task C1)
 
 Real-looking code, a few modules per service, 40 to 150 lines a module. No tests inside `demo-infra/`. The code
-reader (task C2) must turn exactly these calls into edges. Line numbers come from the files once C1 merges.
+reader (task C2) must turn exactly these calls into edges. Line numbers come from the files once C1 merges. A
+workload's calls to one resource are one `CALLS` edge whose `grants` hold every access and whose evidence holds
+every call's line (spec 04 section 7). On `main` that is 10 `CALLS` and 3 `REQUESTS`; 5 calls are counted as
+skipped (the queue's send, receive and delete, the topic's publish, and the payment provider).
 
 | File | Functions and what they call | Edges the code reader makes |
 | --- | --- | --- |
 | `orders_api/app.py` | FastAPI app. `POST /orders` → `create_order`: `billing.customer_status`, then `store.put_order`, then `events.publish_order_created`. `GET /orders/{order_id}` → `store.get_order`. `GET /health` | none (calls go through the modules below) |
-| `orders_api/store.py` | `ORDERS_TABLE = os.environ["ORDERS_TABLE"]`; `_ddb = boto3.client("dynamodb")`; `put_order` → `_ddb.put_item(TableName=ORDERS_TABLE, ...)`; `get_order` → `_ddb.get_item(TableName=ORDERS_TABLE, ...)` | `CALLS` write and `CALLS` read to `dynamodb:demo-orders` |
+| `orders_api/store.py` | `ORDERS_TABLE = os.environ["ORDERS_TABLE"]`; `_ddb = boto3.client("dynamodb")`; `put_order` → `_ddb.put_item(TableName=ORDERS_TABLE, ...)`; `get_order` → `_ddb.get_item(TableName=ORDERS_TABLE, ...)` | One `CALLS` to `dynamodb:demo-orders`, grants read and write |
 | `orders_api/events.py` | `_sqs.send_message(QueueUrl=os.environ["ORDER_EVENTS_QUEUE_URL"], ...)` | none: the queue is a node, but spec 04 section 7 has no `sqs` pattern; counted as skipped |
 | `orders_api/billing.py` | `BILLING_API_URL = os.environ["BILLING_API_URL"]`; `customer_status` → `httpx.get(f"{BILLING_API_URL}/customers/{customer_id}/status", timeout=2)` | `REQUESTS` to `workload:billing-api` |
 | `orders_worker/worker.py` | `main()`: long-poll `_sqs.receive_message`, call `fulfil.handle`, then `_sqs.delete_message` | none; counted as skipped |
 | `orders_worker/fulfil.py` | `handle`: `_ddb.get_item(TableName=ORDERS_TABLE, ...)`, `reserve_stock` (pure), `_ddb.update_item(TableName=ORDERS_TABLE, ...)` to set `status = "fulfilled"` | `CALLS` read and write to `dynamodb:demo-orders` |
 | `billing_job/handler.py` | `handler(event, context)`: for each order from `invoices.fulfilled_orders`, `invoices.render`, `invoices.store`, `payments.charge`, then `_sns.publish(TopicArn=os.environ["INVOICE_TOPIC_ARN"], ...)` | none of its own; the `sns` call is counted as skipped, as above |
 | `billing_job/invoices.py` | `fulfilled_orders` → `_ddb.query(TableName=ORDERS_TABLE, IndexName="by_status", ...)`; `render` builds the PDF bytes; `store` → `_s3.put_object(Bucket=INVOICES_BUCKET, Key=f"invoices/{order_id}.pdf", Body=pdf)` | `CALLS` read to `dynamodb:demo-orders`; `CALLS` write to `s3://demo-company-files/invoices/` |
-| `billing_job/payments.py` | `charge`: `_sm.get_secret_value(SecretId=PAYMENTS_SECRET)`, then `httpx.post("https://api.payments.example/v1/charges", ...)` | `CALLS` read to `secret:payments-api-key`; the external host makes no edge |
+| `billing_job/payments.py` | `charge`: `_sm.get_secret_value(SecretId=PAYMENTS_SECRET)`, then `httpx.post("https://api.payments.example/v1/charges", ...)` | `CALLS` read to `secret:payments-api-key`; the external host makes no edge and is counted as skipped |
 | `billing_api/handler.py` | `handler(event, context)`: routes `GET /invoices/{id}`, `GET /customers/{id}`, `GET /customers/{id}/status` to `queries` with a connection from `db.connect()` | none of its own |
 | `billing_api/db.py` | `DB_SECRET = os.environ["DB_SECRET"]`; `connect`: `_sm.get_secret_value(SecretId=DB_SECRET)`, then `psycopg.connect(host=..., dbname=os.environ["DB_NAME"], user=..., password=...)` | `CALLS` read to `secret:prod-db-credentials`; `CALLS` `db:connect` to `db:customer-db` |
 | `billing_api/queries.py` | SQL for invoices, customers and status, run on the connection passed in | none |
