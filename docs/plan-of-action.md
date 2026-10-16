@@ -104,7 +104,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 **Decisions the kit settles, so agents never invent them:**
 
-- Every name in the demo world (about 110 resources and six services), from Terraform addresses to statement Sids, and each scenario's expected outcome. The world lives in demo-infra/ in this repo; demo PRs change only that folder, and the App may write only there.
+- Every name in the demo world (122 resources and six services), from Terraform addresses to statement Sids, and each scenario's expected outcome. The world lives in demo-infra/ in this repo; demo PRs change only that folder, and the App may write only there.
 - The IAM subset, and that everything outside it is UNKNOWN.
 - Capacities: 1,000,000 for required routes and non-permission edges, 1,000 for grants the code uses, 1 otherwise.
 - Candidate IDs: A revert, B the LLM, C conditional Deny, D cut the shared hop, S scope down, K containment, U unused grant.
@@ -202,7 +202,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 | ID | Task | Lane | Needs first | Done when | Size |
 | --- | --- | --- | --- | --- | --- |
-| E1 | Importer: plan, structure, workloads and coverage | Engine | F2, F4 | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 10 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | L |
+| E1 | Importer: plan, structure, workloads and coverage | Engine | F2, F4 | Intern base has 4 users, 3 groups, 11 roles, 6 workloads, 19 resources and 17 requirements; head adds exactly one `MEMBER_OF` edge | L |
 | E2 | IAM: statements, matching, CAN and CAN\_ASSUME | Engine | F2 | All unit tests pass, including attached and shared managed policies | L |
 | E3 | Graph load, path diff and required access | Engine | E1, E2, F3, F5 | `analyze` on the intern fixture matches `expected.json` for opened, closed and R1 to R17 | M |
 | A1 | LLM intent extraction | Agent and GitHub | F2 | Replay tests pass on 10 PR texts | M |
