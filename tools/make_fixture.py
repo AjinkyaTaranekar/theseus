@@ -22,8 +22,17 @@ log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parents[1]
 
 
+class Edit(BaseModel):
+    """One change to a file of the head world: `find` must occur in it exactly once."""
+
+    file: str
+    find: str
+    replace: str
+
+
 class Scenario(BaseModel):
-    """The mode, text and source addition for one scenario in spec 02."""
+    """The mode, text and source changes for one scenario in spec 02: an addition appended to `file`, exact
+    `edits`, and `new_files` (path under the world root -> content)."""
 
     mode: Literal["pr", "finding", "scan"]
     description: str
@@ -31,6 +40,75 @@ class Scenario(BaseModel):
     body: str = ""
     file: str = ""
     addition: str = ""
+    edits: list[Edit] = []
+    new_files: dict[str, str] = {}
+
+
+PUBLIC_ACCESS_BLOCK = """resource "aws_s3_bucket_public_access_block" "company_files" {
+  bucket                  = aws_s3_bucket.company_files.bucket
+  block_public_acls       = true
+  block_public_policy     = {policy}
+  ignore_public_acls      = true
+  restrict_public_buckets = {policy}
+}"""
+
+SUPPORT_PORTAL_ENV = """      BILLING_API_URL = "https://billing-api.internal.demo.test"
+      ORDERS_API_URL  = "https://orders-api.internal.demo.test"
+"""
+
+CUSTOMER_EXPORT = '''"""Customer export for the support team's mailing tool.
+
+Support asked for a list of active customers' emails to send the refund-policy update. This reads them
+straight from the customer database with the shared credentials, one query, and returns them for the admin
+page.
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+from typing import Any
+
+import boto3
+import psycopg
+
+log = logging.getLogger(__name__)
+
+DB_SECRET = os.environ["DB_SECRET"]
+
+_sm = boto3.client("secretsmanager")
+
+ACTIVE_CUSTOMERS_SQL = """
+    SELECT c.customer_id, c.name, c.email
+    FROM customers c
+    WHERE c.deleted_at IS NULL AND c.marketing_opt_out IS FALSE
+    ORDER BY c.customer_id
+"""
+
+
+def _credentials() -> dict[str, Any]:
+    secret = _sm.get_secret_value(SecretId=DB_SECRET)
+    return json.loads(secret["SecretString"])
+
+
+def export_customers() -> list[dict[str, str]]:
+    """Every active customer's ID, name and email."""
+    creds = _credentials()
+    with psycopg.connect(
+        host=creds["host"],
+        port=creds.get("port", 5432),
+        dbname=creds.get("dbname", "customers"),
+        user=creds["username"],
+        password=creds["password"],
+        connect_timeout=3,
+        sslmode="require",
+    ) as conn, conn.cursor() as cur:
+        cur.execute(ACTIVE_CUSTOMERS_SQL)
+        rows = [{"customer_id": r[0], "name": r[1], "email": r[2]} for r in cur.fetchall()]
+    log.info("exported %d customers", len(rows))
+    return rows
+'''
 
 
 SCENARIOS = {
@@ -69,12 +147,56 @@ resource "aws_s3_bucket_policy" "company_files_public" {
   })
 }
 """,
+        # A public bucket policy is rejected while Block Public Access is on, so the PR turns it off in place.
+        edits=[
+            Edit(
+                file="terraform/platform.tf",
+                find=PUBLIC_ACCESS_BLOCK.replace("{policy}", "true"),
+                replace=PUBLIC_ACCESS_BLOCK.replace("{policy}", "false"),
+            )
+        ],
     ),
     "compromised-action": Scenario(
         mode="finding", description="Assume demo-thirdparty/file-diff versions v1, v2 and v3 are compromised."
     ),
     "unused-grant": Scenario(mode="scan", description="Scan main for grants that service code never calls."),
-    # C1 adds code-pr after its service modules exist; all deliberately generates four fixtures until then.
+    "code-pr": Scenario(
+        mode="pr",
+        description="A typo fix that also adds a customer export reading customer-db through the DB secret.",
+        title="Fix a typo on the support page",
+        body="Fixes a typo in the refund confirmation text.",
+        edits=[
+            Edit(
+                file="services/support_portal/views.py",
+                find="We have recieved your refund request",
+                replace="We have received your refund request",
+            ),
+            Edit(
+                file="services/support_portal/handler.py",
+                find="from support_portal import views\n",
+                replace="from support_portal import export, views\n",
+            ),
+            Edit(
+                file="services/support_portal/handler.py",
+                find='REFUND_PAGE = re.compile(r"^/refunds/(?P<id>[\\w-]+)$")\n',
+                replace='REFUND_PAGE = re.compile(r"^/refunds/(?P<id>[\\w-]+)$")\n'
+                'ADMIN_EXPORT = "/admin/export"\n',
+            ),
+            Edit(
+                file="services/support_portal/handler.py",
+                find='    log.info("no route for %s %s", method, path)\n',
+                replace="    if path == ADMIN_EXPORT:\n"
+                '        return _json(200, {"customers": export.export_customers()})\n\n'
+                '    log.info("no route for %s %s", method, path)\n',
+            ),
+            Edit(
+                file="terraform/services.tf",
+                find=SUPPORT_PORTAL_ENV,
+                replace=SUPPORT_PORTAL_ENV + '      DB_SECRET       = "prod-db-credentials"\n',
+            ),
+        ],
+        new_files={"services/support_portal/export.py": CUSTOMER_EXPORT},
+    ),
 }
 
 COPY_IGNORE = shutil.ignore_patterns(
@@ -147,13 +269,29 @@ def _publish(staging: Path, target: Path) -> None:
         raise
 
 
+def apply_changes(scenario: Scenario, head: Path) -> None:
+    """Turn a copy of the world into the scenario's head: the appended addition, each exact edit, then the new
+    files. Raises IngestError when an edit's text is not found exactly once or a new file already exists."""
+    if scenario.file:
+        with (head / scenario.file).open("a", encoding="utf-8", newline="\n") as source:
+            source.write(scenario.addition)
+    for edit in scenario.edits:
+        path = head / edit.file
+        text = path.read_text(encoding="utf-8")
+        found = text.count(edit.find)
+        if found != 1:
+            raise IngestError(f"{edit.file}: the text to change appears {found} times, not once")
+        path.write_text(text.replace(edit.find, edit.replace), encoding="utf-8", newline="\n")
+    for relative, content in sorted(scenario.new_files.items()):
+        path = head / relative
+        if path.exists():
+            raise IngestError(f"{relative} already exists; a new file must be new")
+        path.write_text(content, encoding="utf-8", newline="\n")
+
+
 def generate(name: str, world_root: Path, fixture_root: Path) -> None:
     """Write one fixture's generated inputs, preserving every human-owned file."""
     if name not in SCENARIOS:
-        if name == "code-pr":
-            raise IngestError(
-                "code-pr needs C1's service code and scenario changes; F4 generates four fixtures"
-            )
         raise IngestError(f"Unknown scenario: {name}")
     scenario = SCENARIOS[name]
     staging: Path | None = None
@@ -167,9 +305,7 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
         plan_world(staging / "base", staging / "base.plan.json")
         if scenario.mode == "pr":
             shutil.copytree(staging / "base", staging / "head")
-            changed = staging / "head" / scenario.file
-            with changed.open("a", encoding="utf-8", newline="\n") as source:
-                source.write(scenario.addition)
+            apply_changes(scenario, staging / "head")
             plan_world(staging / "head", staging / "head.plan.json")
             (staging / "pr.md").write_text(
                 f"# {scenario.title}\n\n{scenario.body}\n", encoding="utf-8", newline="\n"
@@ -218,7 +354,7 @@ def generate(name: str, world_root: Path, fixture_root: Path) -> None:
 def main() -> int:
     """Return the exit status after generating the requested fixture inputs."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("scenario", choices=[*sorted(SCENARIOS), "all", "code-pr"])
+    parser.add_argument("scenario", choices=[*sorted(SCENARIOS), "all"])
     args = parser.parse_args()
     names = sorted(SCENARIOS) if args.scenario == "all" else [args.scenario]
     try:
