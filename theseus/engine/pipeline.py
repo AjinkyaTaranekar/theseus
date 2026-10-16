@@ -38,10 +38,14 @@ ACTOR_LABELS = frozenset({"User", "Workflow", "Workload", "Entry"})
 
 
 def graph_name(world: World, side: str) -> str:
-    """`fx__<scenario>__<side>` for a fixture side (`fixtures/<scenario>/<side>`), else `<world>__<side>`."""
+    """The graph's name in the store (03-graph.md, "One graph per state"): `fx__<scenario>__<side>` for a
+    fixture side, `<world>__pr<N>-<side>` for a PR laid out at `<world>/pr<N>/<side>`, else
+    `<world>__<side>`."""
     root = Path(world.root)
     if root.parent.parent.name == "fixtures":
         name = f"fx__{root.parent.name}__{side}"
+    elif re.fullmatch(r"pr\d+", root.parent.name):
+        name = f"{root.parent.parent.name}__{root.parent.name}-{side}"
     else:
         name = f"{root.name}__{side}"
     return re.sub(r"[^a-z0-9_-]", "-", name.lower())

@@ -214,11 +214,32 @@ def gh(settings: Settings, fake: FakeGitHub) -> GitHub:
     return GitHub(settings, client=client, clock=lambda: NOW)
 
 
+class SampleReview:
+    """The review step, answering with the sample result and recording each call: these tests are about
+    GitHub, so the real review (tests/e2e/test_analyze_route.py) stays out of them."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+        self.error: Exception | None = None
+
+    def __call__(self, gh: GitHub, *args: Any) -> Any:
+        self.calls.append(args)
+        if self.error is not None:
+            raise self.error
+        return routes.stub_for("sample", "pr")
+
+
 @pytest.fixture
-def client(settings: Settings, gh: GitHub) -> Iterator[TestClient]:
+def review() -> SampleReview:
+    return SampleReview()
+
+
+@pytest.fixture
+def client(settings: Settings, gh: GitHub, review: SampleReview) -> Iterator[TestClient]:
     app = create_app(connect=lambda: object())
     app.dependency_overrides[routes.get_settings] = lambda: settings
     app.dependency_overrides[routes.get_github] = lambda: gh
+    app.dependency_overrides[routes.get_review] = lambda: review
     with TestClient(app) as c:
         yield c
 
@@ -320,6 +341,34 @@ def test_the_check_run_carries_the_verdict_and_an_opened_path_fails_it(
     assert check["output"]["title"].startswith("Merge blocked: ")
     summary = check["output"]["summary"]
     assert "Merge blocked" in summary and "<details>" not in summary and MARKER not in summary
+
+
+def test_the_review_gets_the_pr_as_the_api_has_it_and_the_action_s_plans(
+    client: TestClient, review: SampleReview
+) -> None:
+    """The title and body come from the API, never from the request (07, "When Theseus reviews")."""
+    assert analyze(client, pr_title="stale", base_plan={"b": 1}, head_plan={"h": 1}).status_code == 200
+    ((repo, number, head, pr, base_plan, head_plan),) = review.calls
+    assert (repo, number, head) == (REPO, 7, HEAD)
+    assert (pr["title"], pr["body"]) == ("t", "b") and (base_plan, head_plan) == ({"b": 1}, {"h": 1})
+
+
+@pytest.mark.parametrize("missing", ["base_plan", "head_plan"])
+def test_a_review_needs_both_plans(client: TestClient, review: SampleReview, missing: str) -> None:
+    assert analyze(client, **{missing: None}).status_code == 422
+    assert review.calls == []
+
+
+def test_a_review_that_cannot_finish_posts_no_check(
+    client: TestClient, fake: FakeGitHub, review: SampleReview
+) -> None:
+    """It fails closed: no check arrives, so the merge waits for a review that finishes."""
+    from theseus.errors import IngestError
+
+    review.error = IngestError("no theseus.yaml at the head")
+    res = analyze(client)
+    assert res.status_code == 500 and "no theseus.yaml" in res.json()["detail"]
+    assert fake.checks == [] and fake.comments == []
 
 
 def test_a_stale_run_updates_its_own_check_but_not_the_comment(client: TestClient, fake: FakeGitHub) -> None:

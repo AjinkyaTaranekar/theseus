@@ -41,6 +41,15 @@ TITLE_MAX = 255
 SUMMARY_MAX = 65_000
 
 
+def _read(rel: str) -> bool:
+    """Whether a review reads this file, by its path under the world root."""
+    if rel == "theseus.yaml":
+        return True
+    folder, _, rest = rel.partition("/")
+    endings = {"terraform": (".tf", ".tf.json"), "services": (".py",), "workflows": (".yml", ".yaml")}
+    return bool(rest) and folder in endings and rel.endswith(endings[folder])
+
+
 class GitHub:
     """The one way to call GitHub. `client` and `clock` are for tests."""
 
@@ -189,6 +198,25 @@ class GitHub:
             accept="application/vnd.github.raw+json",
         )
         return res.text
+
+    def world_files(self, repo: str, sha: str) -> dict[str, str]:
+        """Every file a review reads under the world root at a commit, by path relative to the root, sorted:
+        `theseus.yaml`, `terraform/*.tf`, `services/**/*.py` and `workflows/**/*.yml`. Raises GitHubError when
+        the commit's tree is too large to list in one answer."""
+        tree = self._repo(repo, "GET", f"/git/trees/{quote(sha)}", params={"recursive": "1"}).json()
+        if tree.get("truncated"):
+            raise GitHubError(f"{repo}@{sha[:7]}: the tree is too large to list")
+        prefix = f"{self.world_root}/"
+        wanted = sorted(
+            e["path"]
+            for e in tree.get("tree") or []
+            if e.get("type") == "blob"
+            and str(e.get("path", "")).startswith(prefix)
+            and _read(e["path"][len(prefix) :])
+        )
+        files = {path[len(prefix) :]: self.read_file(repo, path, sha) for path in wanted}
+        log.info("%s@%s: read %d files under %s/", repo, sha[:7], len(files), self.world_root)
+        return files
 
     def can_write(self, repo: str, user: str) -> bool:
         """Whether the user has write, maintain or admin permission on the repo."""
