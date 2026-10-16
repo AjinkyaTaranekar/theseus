@@ -284,7 +284,9 @@ def test_the_comment_links_to_a_signed_page_with_both_graphs_from_the_store(
     path = link.removeprefix("https://theseus.example")
     page = client.get(path)
     assert page.status_code == 200 and "cytoscape/3.30.2/cytoscape.min.js" in page.text
-    assert 'integrity="sha512-' in page.text and page.headers["cache-control"] == "no-store"
+    # The full-graph library loads only when asked for, pinned and with its SRI hash.
+    assert 'integrity: "sha512-EY3U1MWdgKx0P1dqTE4inlKz2cpXtWpsR1YUyD855Hs6RL' in page.text
+    assert page.headers["cache-control"] == "no-store"
 
     route, _, query = path.partition("?")
     data = client.get(f"{route}/data?{query}").json()
