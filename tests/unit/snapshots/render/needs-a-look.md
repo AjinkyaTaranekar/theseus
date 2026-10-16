@@ -1,21 +1,21 @@
 <!-- theseus:pr-comment -->
 ## 🟡 Needs a look
 
-Theseus could not check 1 thing in this change; see **What Theseus could not check** below.
+**Theseus couldn't check 1 part of this change.** It's listed below.
 
-**Says:** rotate the KMS key.\
-**Needs:** no new access, it says\
-**Do:** read **What Theseus could not check** below before you merge.
+**The PR says:** rotate the KMS key.\
+**It asked for:** no new access\
+**Fix:** check what Theseus couldn't, below, before you merge.
 
 <details>
-<summary><b>What Theseus could not check</b> (1)</summary>
+<summary><b>What Theseus couldn't check</b> (1)</summary>
 
 - aws\_kms\_key.main: key policy conditions are not modeled
 
 </details>
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks).
 
@@ -30,8 +30,8 @@ Models: not recorded.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

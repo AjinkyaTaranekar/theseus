@@ -47,8 +47,9 @@ def test_names_and_articles() -> None:
 
 
 def test_what_an_edge_lets_its_source_do() -> None:
-    assert verb("MEMBER_OF", ["read"]) == "is a member of"
-    assert verb("CAN_ASSUME", ["read"]) == "can switch into"
+    assert verb("MEMBER_OF", ["read"]) == "is in"
+    assert verb("CAN_ASSUME", ["read"]) == "can become"
+    assert verb("UNLOCKS", []) == "opens"
     assert verb("CAN", ["read"]) == "can read"
     assert access_words(["write", "read"]) == "can read and change"
     assert verb("HAS_ENV", []) == "has env"

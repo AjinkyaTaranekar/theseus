@@ -20,16 +20,16 @@
 {% if connections %}
 {{ connections }}
 
-<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+<sub>Red arrow: added by this PR · Shaded: sensitive data</sub>
 
 {% endif %}
 {% if graph_url %}
-**[Open the graph Theseus checked →]({{ graph_url }})**
+**[See it on a graph →]({{ graph_url }})**
 
 {% endif %}
 {% if opened %}
 <details>
-<summary><b>The path, step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, with links to each line)</summary>
+<summary><b>Step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, each linked to its line)</summary>
 
 {% if risks %}
 **What's at risk**
@@ -100,7 +100,7 @@ No fix passes every check. The table shows what each one breaks.
 {% endif %}
 {% if unknowns %}
 <details>
-<summary><b>What Theseus could not check</b> ({{ unknowns_count }})</summary>
+<summary><b>What Theseus couldn't check</b> ({{ unknowns_count }})</summary>
 
 {% for u in unknowns %}
 - {{ u }}
@@ -113,7 +113,7 @@ No fix passes every check. The table shows what each one breaks.
 
 {% endif %}
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 {% if checkov %}
 {{ checkov }}
@@ -164,8 +164,8 @@ and {{ unchanged_more }} more not shown.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

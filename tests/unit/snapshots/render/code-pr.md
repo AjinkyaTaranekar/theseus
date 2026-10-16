@@ -1,12 +1,12 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-The code of **billing-api**, a service, now reads **customer-db**, a database with personal, payment or health data, and the PR does not mention it.
+**This PR would make billing-api's code read customer-db**, which holds personal, payment or health data. The PR doesn't mention it.
 
-**Says:** fix a typo on the support page.\
-**Needs:** no new access, it says · **Code now reads:** **customer-db**\
-**Why:** **billing-api**'s code reads **customer-db** at [services/billing\_api/app.py:12](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/services/billing_api/app.py#L12).\
-**Do:** ask the author why the change needs this access.
+**The PR says:** fix a typo on the support page.\
+**It asked for:** no new access · **Its code would read:** **customer-db**\
+**How:** **billing-api**'s code reads **customer-db** at [services/billing\_api/app.py:12](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/services/billing_api/app.py#L12).\
+**Fix:** ask the author why the change needs this access.
 
 <details>
 <summary><b>What's at risk</b></summary>
@@ -16,7 +16,7 @@ The code of **billing-api**, a service, now reads **customer-db**, a database wi
 </details>
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks).
 
@@ -31,8 +31,8 @@ Models: not recorded.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>
