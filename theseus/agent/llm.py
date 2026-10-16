@@ -27,8 +27,8 @@ log = logging.getLogger(__name__)
 RECORDINGS = Path("recordings/llm")
 RETRIES = 3
 TIMEOUT_S = 120
-# Worth another try: LiteLLM's names for rate limits, timeouts, overload and 5xx. Classified by name, so
-# replay never has to import LiteLLM. Crusoe answers "No capacity available" as a 503 under load.
+# Worth another try: LiteLLM's names for rate limits, timeouts, overload and 5xx. Inspect names and
+# status codes without importing LiteLLM, so replay stays offline.
 TRANSIENT = {
     "RateLimitError",
     "Timeout",
@@ -70,7 +70,14 @@ def untrusted(tag: str, text: str) -> str:
 
 def _is_transient(e: Exception) -> bool:
     name = type(e).__name__
-    return name in TRANSIENT or (name == "APIError" and "no capacity" in str(e).lower())
+    if name in TRANSIENT:
+        return True
+    if name != "APIError":
+        return False
+    status = getattr(e, "status_code", None)
+    if isinstance(status, int):
+        return status >= 500
+    return "no capacity" in str(e).lower()
 
 
 def _normalize(response: Any) -> dict[str, Any]:

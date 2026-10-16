@@ -67,6 +67,12 @@ class BadRequestError(Exception):
     pass
 
 
+class APIError(Exception):
+    def __init__(self, status_code: int | None, message: str = "provider error") -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
 def make(mode: str, tmp_path: Path, completion: FakeCompletion | None = None) -> tuple[Llm, list[float]]:
     slept: list[float] = []
     llm = Llm(settings(mode), recordings=tmp_path, completion=completion, sleep=slept.append)
@@ -200,6 +206,91 @@ def test_authentication_and_bad_requests_fail_at_once(tmp_path: Path, error: Exc
         llm.call("intent", MESSAGES, [TOOL], FORCED)
     assert len(fake.calls) == 1
     assert slept == []
+
+
+@pytest.mark.parametrize("mode", ["live", "record"], ids=["live-mode", "record-mode"])
+@pytest.mark.parametrize("status", [500, 501, 502, 503, 504, 529, 599])
+def test_api_server_errors_retry_and_recover(tmp_path: Path, mode: str, status: int) -> None:
+    fake = FakeCompletion(APIError(status))
+    llm, slept = make(mode, tmp_path, fake)
+
+    reply = llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert reply.arguments == {"answer": 42}
+    assert len(fake.calls) == 2 and fake.calls[0] == fake.calls[1]
+    assert slept == [1.0]
+    if mode == "record":
+        [path] = tmp_path.glob("*.json")
+        assert path.stem == reply.key
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        assert "provider error" not in path.read_text(encoding="utf-8")
+        assert saved["response"]["tool_calls"][0]["arguments"] == '{"answer": 42}'
+        replayer, replay_slept = make("replay", tmp_path, fake)
+        assert replayer.call("intent", MESSAGES, [TOOL], FORCED) == reply
+        assert len(fake.calls) == 2 and replay_slept == []
+    else:
+        assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["live", "record"], ids=["live-mode", "record-mode"])
+def test_api_server_errors_stop_after_three_retries(tmp_path: Path, mode: str) -> None:
+    errors = [APIError(status) for status in (500, 502, 503, 504)]
+    fake = FakeCompletion(*errors)
+    llm, slept = make(mode, tmp_path, fake)
+    key = recording_key(
+        "intent",
+        {"model": llm.settings.llm_model, "messages": MESSAGES, "tools": [TOOL], "tool_choice": FORCED},
+    )
+
+    with pytest.raises(ModelError) as exc:
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert key in str(exc.value) and "APIError" in str(exc.value)
+    assert exc.value.__cause__ is errors[-1]
+    assert len(fake.calls) == 4 and slept == [1.0, 2.0, 4.0]
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("mode", ["live", "record"], ids=["live-mode", "record-mode"])
+@pytest.mark.parametrize("status", [400, 401, 403, 404, 408, 422, 429, 499])
+@pytest.mark.parametrize("message", ["provider error", "No capacity available"])
+def test_api_client_errors_fail_immediately(tmp_path: Path, mode: str, status: int, message: str) -> None:
+    error = APIError(status, message)
+    fake = FakeCompletion(error)
+    llm, slept = make(mode, tmp_path, fake)
+
+    with pytest.raises(ModelError) as exc:
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert exc.value.__cause__ is error
+    assert len(fake.calls) == 1 and slept == []
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("missing_status", [False, True])
+def test_api_error_without_a_status_preserves_the_capacity_fallback(
+    tmp_path: Path, missing_status: bool
+) -> None:
+    error = APIError(None, "No capacity available")
+    if missing_status:
+        del error.status_code
+    fake = FakeCompletion(error)
+    llm, slept = make("live", tmp_path, fake)
+
+    assert llm.call("intent", MESSAGES, [TOOL], FORCED).arguments == {"answer": 42}
+    assert len(fake.calls) == 2 and slept == [1.0]
+
+
+def test_an_api_error_without_a_status_or_capacity_message_is_not_retried(tmp_path: Path) -> None:
+    error = APIError(None)
+    fake = FakeCompletion(error)
+    llm, slept = make("live", tmp_path, fake)
+
+    with pytest.raises(ModelError) as exc:
+        llm.call("intent", MESSAGES, [TOOL], FORCED)
+
+    assert exc.value.__cause__ is error
+    assert len(fake.calls) == 1 and slept == []
 
 
 def test_a_forced_tool_that_was_not_called_is_an_error(tmp_path: Path) -> None:
