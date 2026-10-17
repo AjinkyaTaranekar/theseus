@@ -170,6 +170,44 @@ def dashboard_key(repo: str) -> str:
     return f"dashboard:{repo}"
 
 
+def history_key(repo: str) -> str:
+    return f"history:{repo}"
+
+
+def org_key(owner: str) -> str:
+    return f"dashboard:org:{owner.lower()}"
+
+
+def org_url(settings: Settings, owner: str) -> str | None:
+    """The organisation dashboard's public link, or None without a public hostname or THESEUS_TOKEN."""
+    sig = sign(settings, org_key(owner))
+    if not settings.domain or sig is None:
+        return None
+    return f"https://{settings.domain}/org/{quote(owner)}?k={sig}"
+
+
+HISTORY_KEPT = 365  # posture runs kept per repo: a year of nightly runs
+
+
+def snapshot(report: PostureReport, sha: str, trigger: str, at: str) -> dict[str, Any]:
+    """The numbers one posture run adds to the repo's history."""
+    posture = report.posture
+    return {
+        "at": at,
+        "sha": sha,
+        "trigger": trigger,
+        "dangerous": len(report.scan.unchanged),
+        "actors_exposed": len({p.actor for p in report.scan.unchanged}),
+        "unused_grants": len(report.scan.unused_grants),
+        "single_points": len(posture.single_points),
+        "articulation": len(posture.articulation),
+        "findings": len(report.findings),
+        "monthly_usd": posture.cost.monthly_usd,
+        "nodes": report.scan.coverage.nodes,
+        "edges": report.scan.coverage.edges,
+    }
+
+
 def dashboard_url(settings: Settings, repo: str) -> str | None:
     """The dashboard's public link, or None without a public hostname or THESEUS_TOKEN."""
     sig = sign(settings, dashboard_key(repo))
@@ -199,6 +237,9 @@ def save_posture(
         "findings": sorted((f.finding or {}).get("id", "") for f in report.findings),
     }
     store.put_doc(posture_key(repo), json.dumps(doc, sort_keys=True))
+    history = (_load(store, history_key(repo)) or {}).get("runs", [])
+    history = [*history, snapshot(report, sha, trigger, updated_at)][-HISTORY_KEPT:]
+    store.put_doc(history_key(repo), json.dumps({"repo": repo, "runs": history}, sort_keys=True))
     for finding in report.findings:
         save_finding(store, repo, world_root, finding, sha=sha, updated_at=updated_at)
     log.info("%s: kept the posture of %s (%s)", repo, sha[:7], trigger)
@@ -327,9 +368,111 @@ def dashboard_data(store: ReviewStore, settings: Settings, repo: str) -> dict[st
             main_graph = {"name": name, "nodes": len(view["nodes"]), "edges": len(view["edges"])}
     return {
         "repo": repo,
+        "org": repo.split("/", 1)[0],
+        "org_url": org_url(settings, repo.split("/", 1)[0]),
+        "history": (_load(store, history_key(repo)) or {}).get("runs", []),
         "posture": posture,
         "main_graph": main_graph,
         "reviews": rows,
         "findings": findings,
         "onboarding": onboarding(posture, rows, graphs),
     }
+
+
+def _summary(store: ReviewStore, settings: Settings, repo: str) -> dict[str, Any]:
+    """One repo's row on the organisation dashboard, from its kept posture and reviews."""
+    posture = _load(store, posture_key(repo))
+    verdicts = {"blocked": 0, "look": 0, "clear": 0}
+    for doc_key in store.docs(f"review:{repo}#"):
+        doc = _load(store, doc_key)
+        if doc is not None:
+            level = (doc.get("verdict") or {}).get("level")
+            if level in verdicts:
+                verdicts[level] += 1
+    row: dict[str, Any] = {
+        "repo": repo,
+        "url": dashboard_url(settings, repo),
+        "scanned": posture is not None,
+        "reviews": verdicts,
+        "history": (_load(store, history_key(repo)) or {}).get("runs", [])[-30:],
+    }
+    if posture is not None:
+        scan = AnalysisResult.model_validate(posture["scan"])
+        body = posture["posture"]
+        row |= {
+            "sha": posture["sha"],
+            "updated_at": posture.get("updated_at") or "",
+            "trigger": posture.get("trigger") or "",
+            "graph": scan.graphs.get("main"),
+            "nodes": scan.coverage.nodes,
+            "edges": scan.coverage.edges,
+            "dangerous": len(scan.unchanged),
+            "actors_exposed": len({p.actor for p in scan.unchanged}),
+            "regulated": sum(1 for p in scan.unchanged if p.sensitivity == "regulated"),
+            "unused_grants": len(scan.unused_grants),
+            "single_points": len(body.get("single_points") or []),
+            "findings": posture.get("findings") or [],
+            "monthly_usd": (body.get("cost") or {}).get("monthly_usd", 0.0),
+            "top": [
+                {"actor": p.actor, "target": p.target, "sensitivity": p.sensitivity, "hops": len(p.steps)}
+                for p in scan.unchanged[:5]
+            ],
+        }
+    return row
+
+
+def org_data(store: ReviewStore, settings: Settings, owner: str) -> dict[str, Any]:
+    """Every repo of this owner that Theseus acts on, summarised, with org-wide totals; read from the store
+    now. Each row links to its own dashboard. Repos come from THESEUS_REPOS, sorted by name."""
+    repos = sorted(r for r in settings.repos if r.split("/", 1)[0].lower() == owner.lower())
+    rows = [_summary(store, settings, repo) for repo in repos]
+    scanned = [r for r in rows if r["scanned"]]
+    totals = {
+        "repos": len(rows),
+        "scanned": len(scanned),
+        "nodes": sum(r["nodes"] for r in scanned),
+        "edges": sum(r["edges"] for r in scanned),
+        "dangerous": sum(r["dangerous"] for r in scanned),
+        "regulated": sum(r["regulated"] for r in scanned),
+        "unused_grants": sum(r["unused_grants"] for r in scanned),
+        "single_points": sum(r["single_points"] for r in scanned),
+        "findings": sum(len(r["findings"]) for r in scanned),
+        "monthly_usd": round(sum(r["monthly_usd"] for r in scanned), 2),
+        "blocked": sum(r["reviews"]["blocked"] for r in rows),
+        "reviewed": sum(sum(r["reviews"].values()) for r in rows),
+    }
+    return {"org": owner, "repos": rows, "totals": totals}
+
+
+def review_page(
+    store: ReviewStore,
+    settings: Settings,
+    repo: str,
+    *,
+    q: str = "",
+    verdict: str = "",
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """One page of the repo's PR reviews, newest PR first, filtered by verdict level and by a search over the
+    number, title, headline and the names of what they would open; with the total that match."""
+    keys = sorted(store.docs(f"review:{repo}#"), key=lambda k: -int(k.rsplit("#", 1)[1] or 0))
+    needle = q.strip().lower()
+    rows: list[dict[str, Any]] = []
+    matched = 0
+    for doc_key in keys:
+        doc = _load(store, doc_key)
+        if doc is None or (verdict and (doc.get("verdict") or {}).get("level") != verdict):
+            continue
+        row = _review_row(settings, repo, doc)
+        if needle:
+            haystack = " ".join(
+                [str(row["number"]), row["title"], row["headline"]]
+                + [f"{o['actor']} {o['target']}" for o in row["opened"]]
+            ).lower()
+            if needle not in haystack:
+                continue
+        if offset <= matched < offset + limit:
+            rows.append(row)
+        matched += 1
+    return {"repo": repo, "total": matched, "offset": offset, "limit": limit, "reviews": rows}

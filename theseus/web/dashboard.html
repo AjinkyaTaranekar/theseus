@@ -5,194 +5,198 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
 <title>Theseus dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --bg: #fafaf9; --card: #ffffff; --text: #1c1c1a; --muted: #6b6b66; --faint: #a3a39d;
-    --line: #e3e3de; --line-strong: #cfcfca; --accent: #d1005a; --accent-bg: #fff0f6;
-    --ok: #1a7f37; --ok-bg: #e9f7ee; --warn: #9a6700; --warn-bg: #fff6d6; --chip: #f1f1ee;
-    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111110; --card: #1a1a19; --text: #ededea; --muted: #a3a39d; --faint: #6b6b66;
-      --line: #2c2c29; --line-strong: #3f3f3a; --accent: #ff4d94; --accent-bg: #33121f;
-      --ok: #3fb950; --ok-bg: #12301b; --warn: #d29922; --warn-bg: #3a2a07; --chip: #262624;
-    }
+    --bg: #000000; --panel: #0b0c0e; --panel-2: #121418; --border: #202226; --border-2: #33363c;
+    --text: #e8e9ec; --text-2: #b9bdc5; --muted: #8f949d;
+    --primary: #6e9fff; --primary-bg: rgba(87, 148, 242, .14);
+    --green: #73bf69; --yellow: #fade2a; --orange: #ff9830; --red: #f2495c; --purple: #b877d9; --blue: #5794f2;
+    --green-bg: rgba(115, 191, 105, .14); --yellow-bg: rgba(250, 222, 42, .12); --orange-bg: rgba(255, 152, 48, .14);
+    --red-bg: rgba(242, 73, 92, .15); --blue-bg: rgba(87, 148, 242, .14);
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+    --side: 224px; --top: 52px;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; color: var(--text); background: var(--bg);
-         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
-  a { color: inherit; }
-  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
-  header { border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
-  header .wrap { display: flex; align-items: center; gap: 14px; height: 56px; }
-  .brand { font-weight: 700; letter-spacing: -.01em; }
-  .where { color: var(--muted); font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-  nav { margin-left: auto; display: flex; gap: 2px; flex-wrap: wrap; }
-  nav a { font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 9px; border-radius: 6px; }
-  nav a:hover { background: var(--chip); color: var(--text); }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .skip { position: absolute; left: 8px; top: -40px; background: var(--primary); color: #000; padding: 8px 12px; border-radius: 4px; z-index: 10; font-weight: 600; }
+  .skip:focus { top: 8px; }
+  .mono { font-family: var(--mono); }
 
-  .hero { padding: 34px 0 6px; }
-  .hero h1 { font-size: 28px; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 10px; max-width: 920px; }
-  .hero h1 em { font-style: normal; color: var(--accent); }
-  .hero p { margin: 0; color: var(--muted); font-size: 15px; max-width: 860px; }
-  .hero code, td code, .mono { font-family: var(--mono); font-size: 12.5px; }
+  /* Shell */
+  .app { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100%; }
+  .side { background: var(--bg); border-right: 1px solid var(--border); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; }
+  .brand { display: flex; align-items: center; gap: 10px; height: var(--top); padding: 0 16px; border-bottom: 1px solid var(--border); font-weight: 700; letter-spacing: -.01em; color: var(--text); }
+  .brand svg { width: 22px; height: 22px; }
+  .side ul { list-style: none; margin: 0; padding: 10px 8px; display: flex; flex-direction: column; gap: 2px; }
+  .side a.nav { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: 4px; color: var(--text-2); font-weight: 500; text-decoration: none; }
+  .side a.nav svg { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  .side a.nav:hover { background: var(--panel-2); color: var(--text); }
+  .side a.nav[aria-current="page"] { background: var(--primary-bg); color: var(--text); box-shadow: inset 2px 0 0 var(--primary); }
+  .side .count { margin-left: auto; font: 500 11px/1 var(--mono); color: var(--muted); }
+  .side .count.bad { color: var(--red); }
+  .side-foot { margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+  .side-foot b { display: block; color: var(--text-2); font-weight: 500; }
+  .frame { min-width: 0; display: flex; flex-direction: column; }
+  .top { position: sticky; top: 0; z-index: 3; height: var(--top); display: flex; align-items: center; gap: 12px; padding: 0 20px; background: rgba(0, 0, 0, .92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--border); }
+  .crumbs ol { list-style: none; display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; font-weight: 500; white-space: nowrap; }
+  .crumbs li + li::before { content: "/"; color: var(--muted); margin-right: 6px; }
+  .crumbs a { color: var(--text-2); }
+  .crumbs [aria-current] { color: var(--text); }
+  .search { margin-left: auto; position: relative; width: min(360px, 40vw); }
+  .search input { width: 100%; height: 32px; background: var(--panel); color: var(--text); border: 1px solid var(--border-2); border-radius: 4px; padding: 0 10px 0 30px; font: inherit; }
+  .search input::placeholder { color: var(--muted); }
+  .search svg { position: absolute; left: 9px; top: 9px; width: 14px; height: 14px; stroke: var(--muted); fill: none; stroke-width: 2; }
+  .fresh { font: 12px/1 var(--mono); color: var(--text-2); background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 9px 10px; white-space: nowrap; }
+  .fresh .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-right: 6px; vertical-align: 1px; }
+  .btn { height: 32px; padding: 0 12px; border-radius: 4px; border: 1px solid var(--border-2); background: var(--panel-2); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; }
+  .btn:hover { border-color: var(--muted); }
+  .btn[disabled] { opacity: .45; cursor: default; }
+  main { padding: 20px 20px 40px; }
+  main:focus { outline: none; }
+  .pagehead { display: flex; align-items: flex-end; gap: 16px; margin: 0 0 16px; flex-wrap: wrap; }
+  .pagehead h1 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 0; }
+  .pagehead p { margin: 2px 0 0; color: var(--text-2); max-width: 920px; }
+  .pagehead .tools { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  select { height: 32px; background: var(--panel); color: var(--text); border: 1px solid var(--border-2); border-radius: 4px; padding: 0 8px; font: inherit; }
 
-  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin: 24px 0 8px; }
-  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
-         text-decoration: none; display: block; }
-  .kpi:hover { border-color: var(--line-strong); }
-  .kpi .n { font-size: 28px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
-  .kpi .l { font-size: 13px; color: var(--muted); margin-top: 4px; }
-  .kpi.bad .n { color: var(--accent); }
-  .kpi.good .n { color: var(--ok); }
+  /* Panels */
+  .grid { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; min-width: 0; display: flex; flex-direction: column; }
+  .panel > h2 { margin: 0; padding: 10px 12px 0; font-size: 13px; font-weight: 500; color: var(--text-2); display: flex; align-items: center; gap: 8px; }
+  .panel > h2 .hint { margin-left: auto; font: 11px/1.2 var(--mono); color: var(--muted); font-weight: 400; text-align: right; }
+  .panel .body { padding: 10px 12px 12px; min-width: 0; flex: 1; }
+  .panel .body.flush { padding: 8px 0 0; }
+  .s4 { grid-column: span 4; } .s6 { grid-column: span 6; } .s8 { grid-column: span 8; } .s12 { grid-column: span 12; } .s16 { grid-column: span 16; } .s24 { grid-column: span 24; }
+  .stat { display: flex; flex-direction: column; gap: 2px; }
+  .stat .v { font: 600 30px/1.1 var(--font); letter-spacing: -.02em; font-variant-numeric: tabular-nums; text-decoration: none; }
+  .stat .l { color: var(--muted); font-size: 12px; }
+  .stat svg { margin-top: 6px; width: 100%; height: 28px; }
+  .tone-red { color: var(--red); } .tone-orange { color: var(--orange); } .tone-yellow { color: var(--yellow); } .tone-green { color: var(--green); } .tone-blue { color: var(--blue); }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 12px; color: var(--text-2); margin-top: 6px; }
+  .legend i { display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: 3px; border-radius: 2px; }
+  .chart text { font: 10px var(--mono); fill: var(--muted); }
 
-  section { padding: 30px 0 4px; scroll-margin-top: 64px; }
-  section > h2 { font-size: 13px; font-family: var(--mono); font-weight: 600; text-transform: uppercase;
-                 letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; }
-  section > p.intro { margin: 0 0 14px; color: var(--muted); font-size: 14px; max-width: 860px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
-  table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th { text-align: left; font: 600 11.5px/1 var(--mono); color: var(--muted); text-transform: uppercase;
-       letter-spacing: .05em; padding: 12px 14px; border-bottom: 1px solid var(--line); }
-  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
-  tr:last-child td { border-bottom: 0; }
-  td.num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
-  .sub { color: var(--muted); font-size: 13px; }
-  .badge { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 4px 8px; border-radius: 999px;
-           white-space: nowrap; }
-  .badge.blocked { color: var(--accent); background: var(--accent-bg); }
-  .badge.look { color: var(--warn); background: var(--warn-bg); }
-  .badge.clear, .badge.pass { color: var(--ok); background: var(--ok-bg); }
-  .badge.fail, .badge.invalid { color: var(--accent); background: var(--accent-bg); }
-  .badge.unknown, .badge.quiet { color: var(--muted); background: var(--chip); }
-  .chip { display: inline-block; font-size: 12.5px; padding: 2px 8px; border-radius: 4px; margin: 2px 4px 2px 0;
-          background: var(--chip); white-space: nowrap; }
-  .chip.regulated { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
-  .chip.confidential { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
-  .chip.needed { background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); }
-  .open { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--accent); }
-  .open:hover { text-decoration: underline; }
+  /* Tables */
+  .tablewrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  thead th { text-align: left; font-weight: 500; color: var(--muted); padding: 0 12px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  thead th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+  thead th button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  thead th button::after { content: "↕"; opacity: .35; font-size: 11px; }
+  thead th[aria-sort="ascending"] button::after { content: "↑"; opacity: 1; color: var(--text); }
+  thead th[aria-sort="descending"] button::after { content: "↓"; opacity: 1; color: var(--text); }
+  tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
+  tbody tr:hover td { background: var(--panel-2); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--mono); }
+  .sub { color: var(--muted); font-size: 12px; }
+  .pager { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+  .pager .btn { height: 26px; padding: 0 10px; font-size: 12px; }
+  .pager span:first-child { margin-right: auto; }
+  .empty { padding: 18px 12px; color: var(--muted); }
 
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .item { padding: 14px 16px; border-bottom: 1px solid var(--line); }
-  .item:last-child { border-bottom: 0; }
-  .item h3 { margin: 0 0 3px; font-size: 15px; overflow-wrap: anywhere; }
-  .item .what { font-size: 14px; }
-  .bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 8px; overflow: hidden; }
-  .bar span { display: block; height: 100%; background: var(--accent); }
-  .finding { padding: 16px 18px; }
-  .finding h3 { margin: 0; font-size: 16px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-  .finding dl { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 12px 0 0; font-size: 14px; }
-  .finding dt { color: var(--muted); }
-  .finding dd { margin: 0; overflow-wrap: anywhere; }
+  /* Labels */
+  .badge { display: inline-flex; align-items: center; gap: 5px; font: 500 11.5px/1 var(--font); padding: 4px 7px; border-radius: 3px; white-space: nowrap; border: 1px solid transparent; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .b-red { color: var(--red); background: var(--red-bg); } .b-orange { color: var(--orange); background: var(--orange-bg); }
+  .b-yellow { color: var(--yellow); background: var(--yellow-bg); } .b-green { color: var(--green); background: var(--green-bg); }
+  .b-blue { color: var(--blue); background: var(--blue-bg); } .b-grey { color: var(--text-2); background: var(--panel-2); border-color: var(--border-2); }
+  .chip { display: inline-block; font: 12px/1.4 var(--mono); padding: 1px 6px; margin: 2px 4px 2px 0; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text-2); white-space: nowrap; }
+  .chip.regulated { border-color: rgba(242, 73, 92, .5); color: #ff8e9a; }
+  .chip.confidential { border-color: rgba(255, 152, 48, .5); color: #ffb870; }
+  .chip.needed { border-style: dashed; color: var(--muted); }
+  .bar { height: 6px; background: var(--panel-2); border-radius: 3px; overflow: hidden; min-width: 60px; }
+  .bar > span { display: block; height: 100%; border-radius: 3px; }
+  .gauge { display: grid; grid-template-columns: minmax(120px, 34%) 1fr max-content; gap: 8px 10px; align-items: center; font-size: 12.5px; }
+  .gauge .bar { height: 14px; border-radius: 2px; }
+  .gauge .bar > span { border-radius: 2px; }
   .steps { list-style: none; margin: 0; padding: 0; }
-  .steps li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .steps li { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--border); }
   .steps li:last-child { border-bottom: 0; }
-  .tick { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-          font: 700 12px/1 var(--mono); background: var(--chip); color: var(--muted); }
-  .tick.done { background: var(--ok); color: #fff; }
-  .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-  .run { padding: 14px 16px; }
-  .run h3 { margin: 0 0 6px; font-size: 15px; }
-  .run p { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
-  .run code { display: block; font-family: var(--mono); font-size: 12.5px; background: var(--chip); border-radius: 6px;
-              padding: 6px 8px; margin-top: 4px; overflow-wrap: anywhere; }
-  .empty { padding: 18px 16px; color: var(--muted); font-size: 14px; }
-  .total { display: flex; align-items: baseline; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
-  .total .n { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
-  footer { padding: 30px 0 44px; color: var(--muted); font-size: 13px; }
-  .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
-  @media (max-width: 980px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grid2 { grid-template-columns: 1fr; } }
-  @media (max-width: 720px) {
-    .wrap { padding: 0 16px; }
-    nav { display: none; }
-    .hero h1 { font-size: 22px; }
-    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .scroll { overflow-x: auto; }
-    .finding dl { grid-template-columns: 1fr; }
+  .tick { flex: none; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 700 11px/1 var(--mono); border: 1px solid var(--border-2); color: var(--muted); }
+  .tick.done { background: var(--green); border-color: var(--green); color: #000; }
+  code.cmd { display: block; font: 12px/1.5 var(--mono); background: #000; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-top: 4px; overflow-wrap: anywhere; color: var(--text-2); }
+  .message { padding: 80px 20px; color: var(--text-2); font-size: 15px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
+  @media (max-width: 1280px) { .s4 { grid-column: span 8; } .s6 { grid-column: span 12; } }
+  @media (max-width: 980px) {
+    .app { grid-template-columns: 1fr; }
+    .side { position: static; height: auto; }
+    .side ul { flex-direction: row; flex-wrap: wrap; }
+    .side-foot { display: none; }
+    .s4, .s6, .s8 { grid-column: span 12; } .s12, .s16 { grid-column: span 24; }
+    .fresh { display: none; }
   }
+  @media (max-width: 640px) { .s4, .s6, .s8 { grid-column: span 24; } main { padding: 14px 12px 32px; } .top { padding: 0 12px; } }
 </style>
 </head>
 <body>
-<header><div class="wrap">
-  <span class="brand">Theseus</span>
-  <span class="where" id="where"></span>
-  <nav aria-label="Sections">
-    <a href="#prs">Pull requests</a><a href="#findings">Findings</a><a href="#reach">Who reaches what</a>
-    <a href="#weak">Weak points</a><a href="#cost">Cost</a><a href="#onboarding">Setup</a>
+<a class="skip" href="#content">Skip to content</a>
+<div class="app">
+  <nav class="side" aria-label="Sections">
+    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z" fill="none" stroke="#6e9fff" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="#6e9fff"/></svg><span>Theseus</span></div>
+    <ul id="nav"></ul>
+    <div class="side-foot" id="sidefoot"></div>
   </nav>
-</div></header>
-
-<main class="wrap" id="main" hidden>
-  <div class="hero">
-    <h1 id="title"></h1>
-    <p id="lede"></p>
+  <div class="frame">
+    <header class="top">
+      <nav class="crumbs" aria-label="Breadcrumb"><ol id="crumbs"></ol></nav>
+      <div class="search" role="search">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+        <label class="sr-only" for="q">Search this view</label>
+        <input id="q" type="search" placeholder="Search this view" autocomplete="off">
+      </div>
+      <span class="fresh" id="fresh" hidden></span>
+      <button class="btn" id="refresh" type="button">Refresh</button>
+    </header>
+    <main id="content" tabindex="-1">
+      <div class="pagehead"><div><h1 id="h1">Loading</h1><p id="sub"></p></div><div class="tools" id="tools"></div></div>
+      <div id="view"></div>
+      <p class="sr-only" aria-live="polite" id="live"></p>
+    </main>
   </div>
-  <div class="kpis" id="kpis"></div>
-
-  <section id="prs">
-    <h2>Pull requests</h2>
-    <p class="intro">Every pull request Theseus reviewed, newest first. A blocked PR cannot merge until its review is clear.</p>
-    <div class="card scroll" id="pr-table"></div>
-  </section>
-
-  <section id="findings">
-    <h2>Security findings</h2>
-    <p class="intro">Advisories that affect a workflow on main, checked on every push to main and every night. Each one says what a compromised workflow could reach, where to cut it off, and which secrets to rotate.</p>
-    <div id="finding-list"></div>
-  </section>
-
-  <section id="reach">
-    <h2>Who reaches what on main</h2>
-    <p class="intro">The blast radius of each person, workflow and service: the sensitive data it could reach today if it were compromised. Highlighted items are access nothing requires; dashed ones a requirement in <code>theseus.yaml</code> covers.</p>
-    <div class="card scroll" id="reach-table"></div>
-  </section>
-
-  <section id="weak">
-    <h2>Weak points</h2>
-    <p class="intro" id="weak-intro"></p>
-    <div class="grid2">
-      <div class="card"><div class="item"><h3>Single points of failure</h3><div class="sub">On every route of something a service or person needs. If it breaks or is deleted, all of these stop working.</div></div><div id="spof"></div></div>
-      <div class="card"><div class="item"><h3>Articulation points</h3><div class="sub">Removing it splits the access graph in two or more pieces.</div></div><div id="art"></div></div>
-    </div>
-    <div class="grid2" style="margin-top:14px">
-      <div class="card"><div class="item"><h3>Choke points</h3><div class="sub">Roles the most routes pass through, by betweenness. Tightening one protects the most paths.</div></div><div id="choke"></div></div>
-      <div class="card"><div class="item"><h3>Grants no code uses</h3><div class="sub">Access a service holds but its code never calls. Removing it costs nothing.</div></div><div id="unused"></div></div>
-    </div>
-  </section>
-
-  <section id="cost">
-    <h2>Cost</h2>
-    <p class="intro" id="cost-intro"></p>
-    <div class="grid2">
-      <div class="card scroll" id="cost-table"></div>
-      <div class="card" id="savings"></div>
-    </div>
-  </section>
-
-  <section id="onboarding">
-    <h2>Setup</h2>
-    <p class="intro">What Theseus can see is connected for this repository, and how each part runs.</p>
-    <div class="grid2">
-      <div class="card"><ul class="steps" id="steps"></ul></div>
-      <div class="runs" id="runs"></div>
-    </div>
-  </section>
-</main>
-<footer class="wrap" id="footer"></footer>
+</div>
 
 <script>
 "use strict";
+// Plain words for what a node is, and for the data it holds.
 const KINDS = { user: "person", group: "group", role: "role", workload: "service", workflow: "CI workflow",
                 action: "GitHub Action", entry: "internet", secret: "secret", db: "database", dynamodb: "table",
                 sqs: "queue", sns: "topic", logs: "logs", kms: "key" };
 const CATEGORIES = { objectstorage: "storage", filestorage: "file share", blockstorage: "disk", database: "database",
                      secret: "secret", encryptionkey: "key", aimodel: "AI model", logstore: "logs",
                      messagequeue: "queue", messagetopic: "topic", datastream: "stream" };
-const HOLDS = { regulated: "customer data", confidential: "business data" };
-const RANK = { regulated: 0, confidential: 1 };
+const CLASS = { regulated: ["Customer data", "b-red"], confidential: ["Business data", "b-orange"],
+                internal: ["Internal", "b-blue"], public: ["Public", "b-grey"] };
+const TRIGGERS = { push: "push to main", schedule: "nightly run", workflow_dispatch: "manual run", cli: "command line" };
+const VERDICT = { blocked: ["Blocked", "b-red"], look: ["Needs a look", "b-yellow"], clear: ["Clear", "b-green"] };
+const FIX = { pass: "b-green", fail: "b-red", invalid: "b-red", unknown: "b-grey" };
+const TONES = { red: "#f2495c", orange: "#ff9830", yellow: "#fade2a", green: "#73bf69", blue: "#5794f2", purple: "#b877d9" };
+const PAGE = 25;
+const ICONS = {
+  overview: "M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+  repos: "M4 4h16v6H4zM4 14h16v6H4zM8 7h.01M8 17h.01",
+  prs: "M6 3v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM18 21V9a3 3 0 0 0-3-3h-4M13 3l-2 3 2 3",
+  findings: "M12 2l9 4v6c0 5-4 9-9 10-5-1-9-5-9-10V6zM12 8v5M12 16h.01",
+  access: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21a8 8 0 0 1 16 0",
+  weak: "M12 3l10 18H2zM12 10v4M12 17h.01",
+  cost: "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+  setup: "M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M10 16v4",
+};
 
 const $ = (id) => document.getElementById(id);
 function el(tag, text, attrs) {
@@ -201,7 +205,13 @@ function el(tag, text, attrs) {
   for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
   return node;
 }
-function add(parent, ...kids) { for (const k of kids) if (k) parent.append(k); return parent; }
+function add(parent, ...kids) { for (const k of kids) if (k !== null && k !== undefined && k !== false) parent.append(k); return parent; }
+function svg(tag, attrs) {
+  const node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, String(v));
+  return node;
+}
+function icon(name) { const s = svg("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" }); s.append(svg("path", { d: ICONS[name] })); return s; }
 function nameOf(id) {
   if (id === "entry:internet") return "anyone on the internet";
   const url = id.indexOf("://");
@@ -213,270 +223,541 @@ function nameOf(id) {
 function kindOf(id, info) {
   const cat = ((info && info.category) || "").toLowerCase();
   if (CATEGORIES[cat]) return CATEGORIES[cat];
-  const prefix = id.split(":")[0];
-  return KINDS[prefix] || (id.includes("://") ? "storage" : "node");
+  return KINDS[id.split(":")[0]] || (id.includes("://") ? "storage" : "node");
 }
 function plural(n, word, many) { return `${n} ${n === 1 ? word : (many || word + "s")}`; }
-function list(items) {
-  if (items.length <= 1) return items.join("");
-  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
-}
+function list(items) { return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`; }
 function ago(iso) {
   if (!iso) return "";
   const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
   if (s < 90) return "just now";
-  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
-  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
-  return `${Math.round(s / 86400)} days ago`;
+  if (s < 5400) return `${Math.round(s / 60)} min ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} h ago`;
+  return `${Math.round(s / 86400)} d ago`;
 }
-function usd(n) { return `$${(n || 0).toFixed(2)}`; }
-const TRIGGERS = { push: "a push to main", schedule: "the nightly run", workflow_dispatch: "a manual run", cli: "the command line" };
+function usd(n) { return `$${(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`; }
+function badge(text, tone) { return el("span", text, { class: `badge ${tone}` }); }
+function classBadge(sens) { const c = CLASS[sens]; return c ? badge(c[0], c[1]) : badge("Unclassified", "b-grey"); }
 
-function fail(text) {
-  $("main").hidden = true;
-  $("footer").replaceChildren(el("p", text, { class: "message" }));
+// The scope (an organisation or one repository), the signed key, and the view named in the hash.
+const K = new URLSearchParams(location.search).get("k") || "";
+const ORG = location.pathname.startsWith("/org/");
+const BASE = location.pathname.replace(/\/$/, "");
+let renderView = () => {};
+let TABLES = [];
+
+async function fetchJson(path) {
+  const join = path.includes("?") ? "&" : "?";
+  const res = await fetch(`${path}${join}k=${encodeURIComponent(K)}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(String(res.status));
+  return res.json();
 }
 
-async function main() {
-  const k = new URLSearchParams(location.search).get("k") || "";
+// Components -------------------------------------------------------------------------------------------
+function panel(title, span, opts) {
+  const p = el("section", null, { class: `panel ${span}`, "aria-label": title });
+  const h = add(el("h2"), document.createTextNode(title));
+  if (opts && opts.hint) h.append(el("span", opts.hint, { class: "hint" }));
+  const body = el("div", null, { class: `body${opts && opts.flush ? " flush" : ""}` });
+  add(p, h, body);
+  return [p, body];
+}
+function sparkline(values, color) {
+  const s = svg("svg", { viewBox: "0 0 100 28", preserveAspectRatio: "none", "aria-hidden": "true" });
+  if (!values || values.length < 2) { s.append(svg("line", { x1: 0, y1: 26, x2: 100, y2: 26, stroke: "#33363c", "stroke-width": 1, "vector-effect": "non-scaling-stroke" })); return s; }
+  const max = Math.max(...values, 1), min = Math.min(...values, 0);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${26 - ((v - min) / (max - min || 1)) * 22}`);
+  s.append(svg("polygon", { points: `0,28 ${pts.join(" ")} 100,28`, fill: color, opacity: 0.12 }));
+  s.append(svg("polyline", { points: pts.join(" "), fill: "none", stroke: color, "stroke-width": 1.6, "vector-effect": "non-scaling-stroke" }));
+  return s;
+}
+function statPanel(title, value, label, tone, series, href) {
+  const [p, body] = panel(title, "s4");
+  const box = el("div", null, { class: "stat" });
+  const v = el(href ? "a" : "div", String(value), { class: `v tone-${tone}` });
+  if (href) v.setAttribute("href", href);
+  add(box, v, el("div", label, { class: "l" }), sparkline(series, TONES[tone] || TONES.blue));
+  body.append(box);
+  return p;
+}
+function timeseries(runs, lines) {
+  const W = 640, H = 200, L = 34, R = 10, T = 10, B = 24;
+  const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "chart", role: "img", width: "100%", height: H });
+  const title = svg("title");
+  title.textContent = `Posture of main over ${plural(runs.length, "run")}`;
+  s.append(title);
+  const max = Math.max(1, ...runs.flatMap((r) => lines.map((l) => r[l.key] || 0)));
+  const y = (v) => T + (H - T - B) * (1 - v / max);
+  const x = (i) => L + (runs.length <= 1 ? (W - L - R) / 2 : (i / (runs.length - 1)) * (W - L - R));
+  for (let i = 0; i <= 4; i++) {
+    const v = Math.round((max * i) / 4), yy = y(v);
+    s.append(svg("line", { x1: L, x2: W - R, y1: yy, y2: yy, stroke: "#202226", "stroke-width": 1 }));
+    const t = svg("text", { x: L - 6, y: yy + 3, "text-anchor": "end" });
+    t.textContent = String(v);
+    s.append(t);
+  }
+  const ticks = runs.length > 1 ? [0, Math.floor((runs.length - 1) / 2), runs.length - 1] : [0];
+  for (const i of [...new Set(ticks)]) {
+    const anchor = runs.length === 1 ? "middle" : i === 0 ? "start" : i === runs.length - 1 ? "end" : "middle";
+    const t = svg("text", { x: x(i), y: H - 6, "text-anchor": anchor });
+    t.textContent = new Date(runs[i].at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+    s.append(t);
+  }
+  for (const l of lines) {
+    if (runs.length > 1) s.append(svg("polyline", { points: runs.map((r, i) => `${x(i)},${y(r[l.key] || 0)}`).join(" "), fill: "none", stroke: l.color, "stroke-width": 2 }));
+    if (runs.length <= 30) runs.forEach((r, i) => s.append(svg("circle", { cx: x(i), cy: y(r[l.key] || 0), r: 3, fill: l.color })));
+  }
+  const wrap = el("div");
+  wrap.append(s);
+  const legend = el("div", null, { class: "legend" });
+  const last = runs[runs.length - 1] || {};
+  for (const l of lines) {
+    const i = el("i");
+    i.style.background = l.color;
+    legend.append(add(el("span"), i, document.createTextNode(`${l.label}: ${last[l.key] || 0}`)));
+  }
+  wrap.append(legend);
+  return wrap;
+}
+function gauge(items, color) {
+  const box = el("div", null, { class: "gauge" });
+  const max = Math.max(1, ...items.map((i) => i.value));
+  for (const i of items) {
+    const bar = el("div", null, { class: "bar", role: "img", "aria-label": `${i.label}: ${i.text}` });
+    const fill = el("span");
+    fill.style.width = `${Math.max(2, (100 * i.value) / max)}%`;
+    fill.style.background = color;
+    bar.append(fill);
+    add(box, el("div", i.label, { class: "mono", title: i.title || i.label }), bar, el("div", i.text, { class: "mono" }));
+  }
+  return box;
+}
+// A table that sorts, follows the top bar's search box, and pages. Columns: {label, value, cell, num}.
+function table(caption, columns, rows, opts) {
+  const o = Object.assign({ page: PAGE, sort: null, desc: true, search: (r) => JSON.stringify(r), empty: "Nothing here." }, opts || {});
+  const wrap = el("div");
+  const state = { sort: o.sort, desc: o.desc, page: 0 };
+  function draw() {
+    wrap.replaceChildren();
+    const needle = $("q").value.trim().toLowerCase();
+    const shown = needle ? rows.filter((r) => o.search(r).toLowerCase().includes(needle)) : [...rows];
+    if (state.sort !== null) {
+      const col = columns[state.sort];
+      shown.sort((a, b) => { const x = col.value(a), y = col.value(b); const c = x < y ? -1 : x > y ? 1 : 0; return state.desc ? -c : c; });
+    }
+    const pages = Math.max(1, Math.ceil(shown.length / o.page));
+    state.page = Math.min(state.page, pages - 1);
+    const slice = shown.slice(state.page * o.page, state.page * o.page + o.page);
+    const t = el("table");
+    t.append(el("caption", caption, { class: "sr-only" }));
+    const tr = el("tr");
+    columns.forEach((c, i) => {
+      const th = el("th", null, { scope: "col", class: c.num ? "num" : "" });
+      if (c.value) {
+        const b = el("button", c.label, { type: "button" });
+        b.addEventListener("click", () => { state.desc = state.sort === i ? !state.desc : true; state.sort = i; state.page = 0; draw(); });
+        th.append(b);
+        if (state.sort === i) th.setAttribute("aria-sort", state.desc ? "descending" : "ascending");
+      } else th.textContent = c.label;
+      tr.append(th);
+    });
+    t.append(add(el("thead"), tr));
+    const tb = el("tbody");
+    for (const r of slice) {
+      const row = el("tr");
+      for (const c of columns) {
+        const td = el("td", null, { class: c.num ? "num" : "" });
+        const v = c.cell(r);
+        if (v instanceof Node) td.append(v); else td.textContent = v;
+        row.append(td);
+      }
+      tb.append(row);
+    }
+    t.append(tb);
+    const tw = el("div", null, { class: "tablewrap" });
+    tw.append(shown.length ? t : el("div", needle ? `Nothing matches "${needle}".` : o.empty, { class: "empty" }));
+    wrap.append(tw);
+    if (shown.length > o.page || needle) {
+      const from = shown.length ? state.page * o.page + 1 : 0, to = Math.min(shown.length, (state.page + 1) * o.page);
+      const prev = el("button", "Previous", { class: "btn", type: "button", "aria-label": "Previous page" });
+      const next = el("button", "Next", { class: "btn", type: "button", "aria-label": "Next page" });
+      prev.disabled = state.page === 0;
+      next.disabled = state.page >= pages - 1;
+      prev.addEventListener("click", () => { state.page--; draw(); });
+      next.addEventListener("click", () => { state.page++; draw(); });
+      const text = `${from}–${to} of ${shown.length}`;
+      wrap.append(add(el("div", null, { class: "pager" }), el("span", text), prev, next));
+      $("live").textContent = `${caption}: ${text}`;
+    }
+  }
+  wrap.redraw = () => { state.page = 0; draw(); };
+  draw();
+  TABLES.push(wrap);
+  return wrap;
+}
+function chips(ids, info, needed) {
+  const box = el("div");
+  for (const id of ids) {
+    const sens = (info(id) || {}).sensitivity;
+    const cls = needed && needed(id) ? "chip needed" : `chip ${sens === "regulated" || sens === "confidential" ? sens : ""}`;
+    box.append(el("span", nameOf(id), { class: cls, title: `${kindOf(id, info(id))}: ${id}` }));
+  }
+  return box;
+}
+
+// Shell ------------------------------------------------------------------------------------------------
+function shell(items, crumbs, fresh) {
+  const nav = $("nav");
+  nav.replaceChildren();
+  for (const it of items) {
+    const a = add(el("a", null, { class: "nav", href: `#${it.id}` }), icon(it.icon), el("span", it.label));
+    if (it.count) a.append(el("span", String(it.count), { class: `count ${it.bad ? "bad" : ""}` }));
+    nav.append(add(el("li"), a));
+  }
+  const ol = $("crumbs");
+  ol.replaceChildren();
+  crumbs.forEach((c, i) => {
+    const li = el("li");
+    if (i === crumbs.length - 1) li.append(el("span", c.label, { "aria-current": "page" }));
+    else li.append(c.href ? el("a", c.label, { href: c.href }) : el("span", c.label));
+    ol.append(li);
+  });
+  const f = $("fresh");
+  if (fresh) { f.replaceChildren(el("span", null, { class: "dot", "aria-hidden": "true" }), document.createTextNode(fresh)); f.hidden = false; }
+}
+function route(views, fallback) {
+  const id = (location.hash || "").slice(1) || fallback;
+  const view = views[id] ? id : fallback;
+  for (const a of document.querySelectorAll("a.nav")) {
+    if (a.getAttribute("href") === `#${view}`) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  }
+  TABLES = [];
+  $("tools").replaceChildren();
+  $("view").replaceChildren();
+  views[view]();
+  document.title = `${$("h1").textContent} · Theseus`;
+}
+function head(title, sub) { $("h1").textContent = title; $("sub").textContent = sub || ""; }
+function grid(...panels) { return add(el("div", null, { class: "grid" }), ...panels); }
+
+// One repository -----------------------------------------------------------------------------------------
+function repoViews(d) {
+  const posture = d.posture, scan = posture ? posture.scan : null, p = posture ? posture.posture : null;
+  const info = (id) => ((p && p.nodes) || {})[id] || ((scan && scan.nodes) || {})[id] || {};
+  const dangerous = scan ? scan.unchanged : [];
+  const risky = new Set(dangerous.map((x) => `${x.actor}|${x.target}`));
+  const runs = d.history || [];
+  const series = (key) => runs.map((r) => r[key] || 0);
+  const blocked = d.reviews.filter((r) => r.verdict.level === "blocked").length;
+  const views = {};
+
+  views.overview = () => {
+    const exposed = new Set(dangerous.map((x) => x.actor)).size;
+    head("Overview", posture
+      ? `${plural(exposed, "person or service", "people and services")} on main can reach sensitive data nothing requires.`
+      : "main hasn't been scanned yet. Run Actions, Theseus main, Run workflow.");
+    const stats = grid(
+      statPanel("Dangerous paths", dangerous.length, "to sensitive data nothing requires", dangerous.length ? "red" : "green", series("dangerous"), "#access"),
+      statPanel("Pull requests", `${blocked}/${d.reviews.length}`, "blocked from merging", blocked ? "orange" : "green", null, "#prs"),
+      statPanel("Advisories", d.findings.length, "affect a workflow on main", d.findings.length ? "red" : "green", series("findings"), "#findings"),
+      statPanel("Single points", p ? p.single_points.length : 0, "of failure on main", "yellow", series("single_points"), "#weak"),
+      statPanel("Unused grants", scan ? scan.unused_grants.length : 0, "access no code calls", scan && scan.unused_grants.length ? "orange" : "green", series("unused_grants"), "#weak"),
+      statPanel("Monthly cost", p ? usd(p.cost.monthly_usd) : "–", "estimated at list price", "blue", series("monthly_usd"), "#cost"),
+    );
+    const [ts, tsb] = panel("Posture of main over time", "s16", { hint: plural(runs.length, "run") });
+    tsb.append(runs.length ? timeseries(runs, [
+      { key: "dangerous", label: "Dangerous paths", color: TONES.red },
+      { key: "single_points", label: "Single points", color: TONES.yellow },
+      { key: "findings", label: "Advisories", color: TONES.orange },
+      { key: "unused_grants", label: "Unused grants", color: TONES.blue },
+    ]) : el("div", "The first scan of main starts the history.", { class: "empty" }));
+    const [gp, gb] = panel("Graph in FalkorDB", "s8");
+    const g = d.main_graph;
+    const kv = el("dl", null, { class: "kv" });
+    const row = (k, v) => add(kv, el("dt", k), v instanceof Node ? add(el("dd"), v) : el("dd", v));
+    if (posture) {
+      row("Graph", el("span", g ? g.name : "not loaded", { class: "mono" }));
+      if (g) row("Size", `${g.nodes.toLocaleString()} nodes, ${g.edges.toLocaleString()} edges`);
+      row("Commit", el("span", posture.sha.slice(0, 7), { class: "mono" }));
+      row("Built", `${ago(posture.updated_at)}, by ${TRIGGERS[posture.trigger] || posture.trigger}`);
+      row("Modeled", `${scan.coverage.modeled} of ${scan.coverage.resources} resources`);
+      row("Engine time", `${(scan.timings.total_ms / 1000).toFixed(1)} s`);
+    } else kv.append(el("dd", "No graph yet."));
+    gb.append(kv);
+    const [rp, rb] = panel("Top risks on main", "s24", { flush: true, hint: "paths nothing requires, most sensitive first" });
+    rb.append(table("Top risks on main", [
+      { label: "Who", value: (x) => nameOf(x.actor), cell: (x) => add(el("div"), el("div", nameOf(x.actor)), el("div", kindOf(x.actor, info(x.actor)), { class: "sub" })) },
+      { label: "Could reach", value: (x) => nameOf(x.target), cell: (x) => el("span", nameOf(x.target), { class: "mono" }) },
+      { label: "Class", value: (x) => (x.sensitivity === "regulated" ? 0 : 1), cell: (x) => classBadge(x.sensitivity) },
+      { label: "Route", value: null, cell: (x) => el("span", x.steps.length ? [x.steps[0].from, ...x.steps.map((s) => s.to)].map(nameOf).join(" → ") : "", { class: "sub mono" }) },
+      { label: "Hops", value: (x) => x.steps.length, num: true, cell: (x) => String(x.steps.length) },
+    ], dangerous, { page: 10, sort: 2, desc: false, empty: "Nothing on main reaches sensitive data it doesn't need.", search: (x) => `${x.actor} ${x.target} ${x.sensitivity}` }));
+    $("view").append(stats, grid(ts, gp), grid(rp));
+  };
+
+  views.prs = () => {
+    head("Pull requests", "Every pull request Theseus reviewed. A blocked PR can't merge until its review is clear.");
+    const filter = el("select", null, { "aria-label": "Filter by review" });
+    for (const [v, t] of [["", "All reviews"], ["blocked", "Blocked"], ["look", "Needs a look"], ["clear", "Clear"]]) filter.append(el("option", t, { value: v }));
+    $("tools").append(filter);
+    const [pp, pb] = panel("Reviews", "s24", { flush: true, hint: "searched and paged on the server" });
+    $("view").append(grid(pp));
+    const state = { offset: 0 };
+    async function load() {
+      const q = encodeURIComponent($("q").value.trim());
+      let page;
+      try { page = await fetchJson(`${BASE}/reviews?q=${q}&verdict=${filter.value}&offset=${state.offset}&limit=${PAGE}`); }
+      catch (e) { pb.replaceChildren(el("div", "The reviews could not be loaded.", { class: "empty" })); return; }
+      const t = el("table");
+      t.append(el("caption", "Pull request reviews", { class: "sr-only" }));
+      t.append(add(el("thead"), add(el("tr"), ...["PR", "Review", "Severity", "What it would open", "Fixes", "Reviewed", ""].map((h) => el("th", h, { scope: "col" })))));
+      const tb = el("tbody");
+      for (const r of page.reviews) {
+        const [vt, vc] = VERDICT[r.verdict.level] || ["Unknown", "b-grey"];
+        const what = el("td");
+        if (r.opened.length) {
+          what.append(el("div", `${list([...new Set(r.opened.map((o) => nameOf(o.actor)))])} could reach`, { class: "sub" }));
+          what.append(chips([...new Set(r.opened.map((o) => o.target))], (id) => ({ sensitivity: (r.opened.find((o) => o.target === id) || {}).sensitivity })));
+        } else what.textContent = r.headline || "Nothing new reaches sensitive data.";
+        if (r.beyond_intent) what.append(el("div", `Its code now reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
+        const fixes = el("td");
+        for (const f of r.fixes) fixes.append(el("span", `${f.id} ${f.verdict}`, { class: `badge ${FIX[f.verdict] || "b-grey"}`, title: f.title, style: "margin:0 4px 4px 0" }));
+        if (!r.fixes.length) fixes.append(el("span", "none needed", { class: "sub" }));
+        const link = el("td");
+        if (r.url) link.append(el("a", "Open review", { href: r.url, "aria-label": `Open the review of pull request ${r.number}` }));
+        tb.append(add(el("tr"),
+          add(el("td"), el("div", `#${r.number}`, { class: "mono" }), el("div", r.title, { class: "sub" })),
+          add(el("td"), badge(vt, vc)),
+          add(el("td"), el("span", r.severity === null || r.severity === undefined ? "–" : `S${r.severity}`, { class: "mono", title: "S0 is the most severe, S6 the least" })),
+          what, fixes, el("td", ago(r.updated_at), { class: "sub" }), link));
+      }
+      t.append(tb);
+      const from = page.total ? state.offset + 1 : 0, to = Math.min(page.total, state.offset + PAGE);
+      const prev = el("button", "Previous", { class: "btn", type: "button", "aria-label": "Previous page" });
+      const next = el("button", "Next", { class: "btn", type: "button", "aria-label": "Next page" });
+      prev.disabled = state.offset === 0;
+      next.disabled = to >= page.total;
+      prev.addEventListener("click", () => { state.offset = Math.max(0, state.offset - PAGE); load(); });
+      next.addEventListener("click", () => { state.offset += PAGE; load(); });
+      const wrap = el("div", null, { class: "tablewrap" });
+      wrap.append(page.reviews.length ? t : el("div", "No review matches.", { class: "empty" }));
+      pb.replaceChildren(wrap, add(el("div", null, { class: "pager" }), el("span", `${from}–${to} of ${page.total}`), prev, next));
+      $("live").textContent = `Reviews ${from} to ${to} of ${page.total}`;
+    }
+    filter.addEventListener("change", () => { state.offset = 0; load(); });
+    TABLES.push({ redraw: () => { state.offset = 0; load(); } });
+    load();
+  };
+
+  views.findings = () => {
+    head("Security findings", "Advisories that affect a workflow on main, checked on every push to main and every night: what a compromised workflow could reach, where to cut it off, and what to rotate.");
+    const [fp, fb] = panel("Findings", "s24", { flush: true });
+    fb.append(table("Security findings", [
+      { label: "Advisory", value: (f) => f.id, cell: (f) => add(el("div"), f.url ? el("a", f.id, { href: f.url, class: "mono" }) : el("span", f.id, { class: "mono" }), el("div", nameOf(f.action), { class: "sub mono" })) },
+      { label: "Urgency", value: (f) => f.urgency || 0, num: true, cell: (f) => (typeof f.urgency === "number" ? badge(f.urgency.toFixed(2), f.urgency >= 0.7 ? "b-red" : "b-yellow") : "–") },
+      { label: "Workflows", value: (f) => f.workflows.length, cell: (f) => el("div", list(f.workflows.map(nameOf))) },
+      { label: "Could reach", value: (f) => f.reaches.length, cell: (f) => chips(f.reaches, info) },
+      { label: "Cut", value: null, cell: (f) => el("div", f.cut.map((c) => `${nameOf(c.src)} → ${nameOf(c.dst)}`).join("; ") || "no single cut", { class: "mono sub" }) },
+      { label: "Fix", value: (f) => (f.fix ? f.fix.verdict : ""), cell: (f) => (f.fix ? badge(`${f.fix.id} ${f.fix.verdict}`, FIX[f.fix.verdict] || "b-grey") : "–") },
+      { label: "Rotate", value: (f) => f.rotate.length, cell: (f) => el("div", f.rotate.map(nameOf).join(", ") || "nothing") },
+      { label: "Opened", value: null, cell: (f) => (f.containment ? add(el("div"), el("a", `PR #${f.containment.pr_number}`, { href: f.containment.pr }), f.containment.issue ? add(el("div"), el("a", "Rotate issue", { href: f.containment.issue })) : null) : el("span", "–", { class: "sub" })) },
+    ], d.findings, { sort: 1, empty: "No advisory in the feed affects a workflow on main.", search: (f) => `${f.id} ${f.action} ${f.workflows.join(" ")} ${f.reaches.join(" ")}` }));
+    $("view").append(grid(fp));
+  };
+
+  views.access = () => {
+    head("Who reaches what", "The blast radius of every person, workflow and service on main: the sensitive data each could reach if compromised. Coloured names are access nothing requires; dashed ones a requirement covers.");
+    const kind = el("select", null, { "aria-label": "Filter by kind" });
+    for (const [v, t] of [["", "Everyone"], ["person", "People"], ["service", "Services"], ["CI workflow", "CI workflows"]]) kind.append(el("option", t, { value: v }));
+    $("tools").append(kind);
+    const reach = (p ? p.reach : []).map((r) => ({ ...r, kind: kindOf(r.actor, info(r.actor)), loose: r.targets.filter((t) => risky.has(`${r.actor}|${t}`)).length }));
+    const [ap, ab] = panel("Blast radius", "s24", { flush: true, hint: plural(reach.length, "actor") });
+    function draw() {
+      TABLES = [];
+      const rows = kind.value ? reach.filter((r) => r.kind === kind.value) : reach;
+      ab.replaceChildren(table("Blast radius by actor", [
+        { label: "Who", value: (r) => nameOf(r.actor), cell: (r) => add(el("div"), el("div", nameOf(r.actor)), el("div", r.kind, { class: "sub" })) },
+        { label: "Worst class", value: (r) => (r.worst === "regulated" ? 0 : 1), cell: (r) => classBadge(r.worst) },
+        { label: "Could reach", value: (r) => r.targets.length, cell: (r) => chips(r.targets, info, (id) => !risky.has(`${r.actor}|${id}`)) },
+        { label: "Not required", value: (r) => r.loose, num: true, cell: (r) => el("span", String(r.loose), { class: r.loose ? "tone-red" : "" }) },
+        { label: "Routes", value: (r) => r.paths, num: true, cell: (r) => String(r.paths) },
+      ], rows, { sort: 3, empty: "Nobody reaches sensitive data.", search: (r) => `${r.actor} ${r.kind} ${r.targets.join(" ")}` }));
+    }
+    kind.addEventListener("change", draw);
+    $("view").append(grid(ap));
+    draw();
+  };
+
+  views.weak = () => {
+    head("Weak points", p ? `Computed on main's graph from ${plural(p.dependencies, "dependency", "dependencies")}: each call a service's code makes, and each access theseus.yaml requires.` : "Waiting for the first scan of main.");
+    const actorsOf = (s) => new Set(s.breaks.map((b) => b.principal)).size;
+    const [sp, sb] = panel("Single points of failure", "s24", { flush: true, hint: "on every route of something that is needed" });
+    sb.append(table("Single points of failure", [
+      { label: "Node", value: (s) => nameOf(s.id), cell: (s) => add(el("div"), el("div", nameOf(s.id), { class: "mono" }), el("div", kindOf(s.id, info(s.id)), { class: "sub" })) },
+      { label: "Actors who depend on it", value: actorsOf, num: true, cell: (s) => String(actorsOf(s)) },
+      { label: "Dependencies", value: (s) => s.breaks.length, num: true, cell: (s) => String(s.breaks.length) },
+      { label: "If it goes", value: null, cell: (s) => { const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))]; return el("div", `${list(who)} ${who.length === 1 ? "loses" : "lose"} ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`); } },
+    ], p ? p.single_points : [], { page: 10, sort: 1, empty: "No node is the only route to anything that is needed.", search: (s) => `${s.id} ${s.breaks.map((b) => `${b.principal} ${b.resource}`).join(" ")}` }));
+    const [ap, ab] = panel("Articulation points", "s12", { flush: true, hint: "removing one splits the access graph" });
+    ab.append(table("Articulation points", [
+      { label: "Node", value: (a) => nameOf(a.id), cell: (a) => add(el("div"), el("div", nameOf(a.id), { class: "mono" }), el("div", kindOf(a.id, info(a.id)), { class: "sub" })) },
+      { label: "Cut off", value: (a) => a.cut_off, num: true, cell: (a) => plural(a.cut_off, "node") },
+      { label: "Pieces left", value: null, cell: (a) => el("span", a.pieces.join(" · "), { class: "mono sub" }) },
+    ], p ? p.articulation : [], { page: 8, sort: 1, empty: "Removing any one node leaves the graph in one piece.", search: (a) => a.id }));
+    const [cp, cb] = panel("Choke points", "s12", { hint: "roles the most routes cross" });
+    const choke = scan ? scan.choke_points : [];
+    cb.append(choke.length ? gauge(choke.map((c) => ({ label: nameOf(c.id), title: c.id, value: c.score, text: Number(c.score).toFixed(Number.isInteger(c.score) ? 0 : 1) })), TONES.yellow) : el("div", "No role carries more routes than another.", { class: "empty" }));
+    const fixU = scan ? (scan.candidates || []).find((c) => c.id === "U") : null;
+    const [up, ub] = panel("Grants no code uses", "s24", { flush: true, hint: "free to remove" });
+    ub.append(table("Grants no code uses", [
+      { label: "Service", value: (u) => nameOf(u.workload), cell: (u) => nameOf(u.workload) },
+      { label: "Can", value: (u) => u.access, cell: (u) => u.access },
+      { label: "On", value: (u) => nameOf(u.resource), cell: (u) => el("span", nameOf(u.resource), { class: "mono" }) },
+      { label: "Fix", value: null, cell: () => (fixU ? badge(`U ${fixU.verdict}`, FIX[fixU.verdict] || "b-grey") : "–") },
+    ], scan ? scan.unused_grants : [], { page: 10, empty: "Every grant to sensitive data is used by the code that holds it.", search: (u) => `${u.workload} ${u.resource}` }));
+    $("view").append(grid(sp), grid(ap, cp), grid(up));
+  };
+
+  views.cost = () => {
+    const cost = p ? p.cost : null;
+    head("Cost", cost ? cost.note : "Waiting for the first scan of main.");
+    if (!cost) return;
+    const fixed = cost.lines.filter((l) => l.monthly_usd > 0), usage = cost.lines.filter((l) => l.usage_billed);
+    const stats = grid(
+      statPanel("Monthly estimate", usd(cost.monthly_usd), "at list price", "blue", series("monthly_usd")),
+      statPanel("Fixed price", fixed.length, "resources priced from the code", "blue", null),
+      statPanel("Billed by use", usage.length, "counted at $0 without usage data", "blue", null),
+      statPanel("Could save", usd(cost.savings_usd), cost.savings.length ? `${plural(cost.savings.length, "resource")} nothing reaches` : "no left-over resources", cost.savings_usd ? "orange" : "green", null),
+    );
+    const [bp, bb] = panel("Cost by resource", "s12", { hint: "a month" });
+    bb.append(fixed.length ? gauge(fixed.slice(0, 12).map((l) => ({ label: l.address.replace(/^aws_/, ""), title: l.address, value: l.monthly_usd, text: usd(l.monthly_usd) })), TONES.blue) : el("div", "Nothing with a fixed price.", { class: "empty" }));
+    const [sp, sb] = panel("How to save", "s12");
+    const steps = el("ul", null, { class: "steps" });
+    const item = (title, text) => steps.append(add(el("li"), add(el("div"), el("div", title), el("div", text, { class: "sub" }))));
+    for (const v of cost.savings) item(`${nameOf(v.id)}: ${usd(v.monthly_usd)} a month`, v.reason);
+    if (!cost.savings.length) item("No left-over resources", "Every data store is reached by someone or called by code.");
+    if (scan && scan.unused_grants.length) item(`${plural(scan.unused_grants.length, "grant")} to remove for free`, "Access no code uses: removing it shrinks the blast radius and breaks nothing.");
+    if (fixed[0]) item(`Largest line: ${fixed[0].address}`, `${usd(fixed[0].monthly_usd)} a month for ${fixed[0].basis}. Check it is sized for its load.`);
+    sb.append(steps);
+    const [tp, tb] = panel("Every priced resource", "s24", { flush: true });
+    tb.append(table("Every priced resource", [
+      { label: "Resource", value: (l) => l.address, cell: (l) => el("span", l.address, { class: "mono" }) },
+      { label: "What it counts", value: (l) => l.basis, cell: (l) => el("span", l.basis, { class: "sub" }) },
+      { label: "Billing", value: (l) => (l.usage_billed ? 1 : 0), cell: (l) => (l.usage_billed ? badge("By use", "b-grey") : badge("Fixed", "b-blue")) },
+      { label: "Month", value: (l) => l.monthly_usd, num: true, cell: (l) => usd(l.monthly_usd) },
+    ], cost.lines, { sort: 3, search: (l) => `${l.address} ${l.basis}` }));
+    $("view").append(stats, grid(bp, sp), grid(tp));
+  };
+
+  views.setup = () => {
+    head("Setup", "What Theseus can see is connected for this repository, and how each part runs.");
+    const [sp, sb] = panel("Connection", "s12");
+    const steps = el("ul", null, { class: "steps" });
+    for (const s of d.onboarding) steps.append(add(el("li"), el("span", s.done ? "✓" : "", { class: `tick ${s.done ? "done" : ""}`, role: "img", "aria-label": s.done ? "done" : "not done" }), add(el("div"), el("div", s.step), el("div", s.detail, { class: "sub" }))));
+    sb.append(steps);
+    const [rp, rb] = panel("How it runs", "s12");
+    const runList = el("ul", null, { class: "steps" });
+    for (const [h, text, code] of [
+      ["Pull requests", "Every push to a PR that changes the infrastructure is reviewed again. To ask again:", "/theseus review"],
+      ["Apply a fix", "A person with write access approves a fix that passed:", "/theseus apply B"],
+      ["main", "On every push to main, nightly at 03:17 UTC, and from Actions, Theseus main, Run workflow.", "python -m theseus posture <world> <plan>"],
+      ["Advisories", "Each scan of main checks the advisory feed, and opens a containment PR when the fix passes.", "python -m theseus finding fixtures/compromised-action"],
+    ]) runList.append(add(el("li"), add(el("div"), el("div", h), el("div", text, { class: "sub" }), el("code", code, { class: "cmd" }))));
+    rb.append(runList);
+    $("view").append(grid(sp, rp));
+  };
+
+  shell([
+    { id: "overview", label: "Overview", icon: "overview" },
+    { id: "prs", label: "Pull requests", icon: "prs", count: blocked, bad: true },
+    { id: "findings", label: "Findings", icon: "findings", count: d.findings.length, bad: true },
+    { id: "access", label: "Who reaches what", icon: "access", count: dangerous.length, bad: true },
+    { id: "weak", label: "Weak points", icon: "weak" },
+    { id: "cost", label: "Cost", icon: "cost" },
+    { id: "setup", label: "Setup", icon: "setup" },
+  ], [{ label: d.org, href: d.org_url }, { label: d.repo.split("/")[1] }], posture ? `main@${posture.sha.slice(0, 7)} · ${ago(posture.updated_at)}` : null);
+  const g = d.main_graph;
+  $("sidefoot").replaceChildren(el("div", "Graph in FalkorDB"), el("b", g ? `${g.nodes.toLocaleString()} nodes · ${g.edges.toLocaleString()} edges` : "not built yet"));
+  return views;
+}
+
+// The whole organisation -----------------------------------------------------------------------------------
+function orgViews(d) {
+  const t = d.totals;
+  const scanned = d.repos.filter((r) => r.scanned);
+  const views = {};
+  const repoTable = (page) => table("Repositories", [
+    { label: "Repository", value: (r) => r.repo, cell: (r) => add(el("div"), r.url ? el("a", r.repo.split("/")[1], { href: r.url }) : el("span", r.repo), el("div", r.scanned ? `main@${r.sha.slice(0, 7)} · ${ago(r.updated_at)}` : "not scanned yet", { class: "sub mono" })) },
+    { label: "Dangerous paths", value: (r) => r.dangerous || 0, num: true, cell: (r) => el("span", r.scanned ? String(r.dangerous) : "–", { class: r.dangerous ? "tone-red" : "" }) },
+    { label: "Customer data", value: (r) => r.regulated || 0, num: true, cell: (r) => (r.scanned ? String(r.regulated) : "–") },
+    { label: "Blocked PRs", value: (r) => r.reviews.blocked, num: true, cell: (r) => `${r.reviews.blocked}/${r.reviews.blocked + r.reviews.look + r.reviews.clear}` },
+    { label: "Advisories", value: (r) => (r.findings || []).length, num: true, cell: (r) => (r.scanned ? String(r.findings.length) : "–") },
+    { label: "Single points", value: (r) => r.single_points || 0, num: true, cell: (r) => (r.scanned ? String(r.single_points) : "–") },
+    { label: "Nodes / edges", value: (r) => r.nodes || 0, num: true, cell: (r) => (r.scanned ? `${r.nodes.toLocaleString()} / ${r.edges.toLocaleString()}` : "–") },
+    { label: "Cost / month", value: (r) => r.monthly_usd || 0, num: true, cell: (r) => (r.scanned ? usd(r.monthly_usd) : "–") },
+    { label: "Trend", value: null, cell: (r) => { const s = sparkline((r.history || []).map((h) => h.dangerous), TONES.red); s.style.width = "90px"; s.style.height = "22px"; return s; } },
+  ], d.repos, { page, sort: 1, empty: "No repository is connected yet.", search: (r) => r.repo });
+
+  views.overview = () => {
+    head(d.org, `${plural(t.repos, "repository", "repositories")} connected, ${t.scanned} scanned. Each repository's main is its own graph in FalkorDB, rebuilt on every push and every night; this page adds them up.`);
+    const daily = (key) => {
+      const byDay = new Map();
+      for (const r of scanned) for (const h of r.history || []) { const day = h.at.slice(0, 10); byDay.set(day, (byDay.get(day) || 0) + (h[key] || 0)); }
+      return [...byDay.entries()].sort().map(([, v]) => v);
+    };
+    const stats = grid(
+      statPanel("Dangerous paths", t.dangerous, `across ${plural(t.scanned, "repository", "repositories")}`, t.dangerous ? "red" : "green", daily("dangerous"), "#repos"),
+      statPanel("Customer data", t.regulated, "paths to regulated data", t.regulated ? "red" : "green", null),
+      statPanel("Pull requests", `${t.blocked}/${t.reviewed}`, "blocked from merging", t.blocked ? "orange" : "green", null),
+      statPanel("Advisories", t.findings, "affect a workflow on main", t.findings ? "red" : "green", daily("findings")),
+      statPanel("Graph size", (t.nodes + t.edges).toLocaleString(), `${t.nodes.toLocaleString()} nodes, ${t.edges.toLocaleString()} edges in FalkorDB`, "blue", null),
+      statPanel("Monthly cost", usd(t.monthly_usd), "estimated at list price", "blue", daily("monthly_usd")),
+    );
+    const [rp, rb] = panel("Repositories", "s24", { flush: true, hint: "riskiest first; open one for its own dashboard" });
+    rb.append(repoTable(10));
+    const top = scanned.flatMap((r) => (r.top || []).map((x) => ({ ...x, repo: r.repo, url: r.url })));
+    const [tp, tb] = panel("Top risks across the organisation", "s24", { flush: true, hint: "the riskiest paths of each repository" });
+    tb.append(table("Top risks across the organisation", [
+      { label: "Repository", value: (x) => x.repo, cell: (x) => (x.url ? el("a", x.repo.split("/")[1], { href: `${x.url}#access` }) : x.repo) },
+      { label: "Who", value: (x) => nameOf(x.actor), cell: (x) => nameOf(x.actor) },
+      { label: "Could reach", value: (x) => nameOf(x.target), cell: (x) => el("span", nameOf(x.target), { class: "mono" }) },
+      { label: "Class", value: (x) => (x.sensitivity === "regulated" ? 0 : 1), cell: (x) => classBadge(x.sensitivity) },
+      { label: "Hops", value: (x) => x.hops, num: true, cell: (x) => String(x.hops) },
+    ], top, { page: 10, sort: 3, desc: false, empty: "Nothing reaches sensitive data it doesn't need.", search: (x) => `${x.repo} ${x.actor} ${x.target}` }));
+    $("view").append(stats, grid(rp), grid(tp));
+  };
+  views.repos = () => {
+    head("Repositories", "Every repository connected to Theseus. Search, sort and open one.");
+    const [rp, rb] = panel("Repositories", "s24", { flush: true });
+    rb.append(repoTable(PAGE));
+    $("view").append(grid(rp));
+  };
+  shell([
+    { id: "overview", label: "Overview", icon: "overview" },
+    { id: "repos", label: "Repositories", icon: "repos", count: t.repos },
+  ], [{ label: d.org }], `${t.scanned}/${t.repos} scanned`);
+  $("sidefoot").replaceChildren(el("div", "Graphs in FalkorDB"), el("b", `${t.nodes.toLocaleString()} nodes · ${t.edges.toLocaleString()} edges`));
+  return views;
+}
+
+// Start --------------------------------------------------------------------------------------------------
+async function load() {
   let data;
-  try {
-    const res = await fetch(`${location.pathname.replace(/\/$/, "")}/data?k=${encodeURIComponent(k)}`, { cache: "no-store" });
-    if (!res.ok) throw new Error(String(res.status));
-    data = await res.json();
-  } catch (e) {
-    fail("This link doesn't open a dashboard. It may be mistyped or out of date.");
+  try { data = await fetchJson(`${BASE}/data`); }
+  catch (e) {
+    head("Not found", "");
+    $("view").replaceChildren(el("p", "This link doesn't open a dashboard. It may be mistyped or out of date.", { class: "message" }));
     return;
   }
-  render(data);
+  const views = ORG ? orgViews(data) : repoViews(data);
+  renderView = () => route(views, "overview");
+  renderView();
 }
-
-function render(data) {
-  const posture = data.posture;
-  const scan = posture ? posture.scan : null;
-  const p = posture ? posture.posture : null;
-  const info = (id) => ((p && p.nodes) || {})[id] || ((scan && scan.nodes) || {})[id] || {};
-  const chip = (id, needed) => {
-    const sens = info(id).sensitivity;
-    const cls = needed ? "chip needed" : `chip ${sens === "regulated" || sens === "confidential" ? sens : ""}`;
-    return el("span", nameOf(id), { class: cls, title: `${kindOf(id, info(id))}: ${id}` });
-  };
-  $("where").textContent = data.repo;
-  document.title = `${data.repo}: Theseus dashboard`;
-
-  // Hero -------------------------------------------------------------------------------------------------
-  const dangerous = scan ? scan.unchanged : [];
-  const exposed = [...new Set(dangerous.map((d) => d.actor))];
-  const blocked = data.reviews.filter((r) => r.verdict.level === "blocked");
-  const title = $("title");
-  if (!posture) {
-    title.textContent = "main hasn't been scanned yet.";
-  } else if (exposed.length) {
-    add(title, document.createTextNode(`${plural(exposed.length, "person or service", "people and services")} on main can reach `),
-        el("em", "sensitive data that nothing requires"), document.createTextNode("."));
-  } else {
-    title.textContent = "Nothing on main reaches sensitive data it doesn't need.";
-  }
-  const g = data.main_graph;
-  let lede = "";
-  if (posture) {
-    lede = `Built from main at ${posture.sha.slice(0, 7)}`;
-    if (g) lede += ` as a FalkorDB graph of ${g.nodes} nodes and ${g.edges} edges`;
-    lede += `, by ${TRIGGERS[posture.trigger] || posture.trigger} ${ago(posture.updated_at)}. `;
-  }
-  lede += `${plural(data.reviews.length, "pull request")} reviewed, ${blocked.length} blocked.`;
-  $("lede").textContent = lede;
-
-  // KPIs -------------------------------------------------------------------------------------------------
-  const kpi = (n, label, href, tone) => {
-    const a = el("a", null, { class: `kpi ${tone || ""}`, href });
-    return add(a, el("div", String(n), { class: "n" }), el("div", label, { class: "l" }));
-  };
-  const spofs = p ? p.single_points.length : 0;
-  const unused = scan ? scan.unused_grants.length : 0;
-  add($("kpis"),
-    kpi(dangerous.length, "paths to sensitive data nothing requires", "#reach", dangerous.length ? "bad" : "good"),
-    kpi(`${blocked.length}/${data.reviews.length}`, "pull requests blocked", "#prs", blocked.length ? "bad" : ""),
-    kpi(data.findings.length, data.findings.length === 1 ? "advisory affects main" : "advisories affect main", "#findings", data.findings.length ? "bad" : "good"),
-    kpi(spofs, "single points of failure", "#weak"),
-    kpi(unused, "grants no code uses", "#weak", unused ? "" : "good"),
-    kpi(p ? usd(p.cost.monthly_usd) : "–", "a month, estimated", "#cost"));
-
-  // Pull requests ----------------------------------------------------------------------------------------
-  if (!data.reviews.length) {
-    $("pr-table").append(el("div", "No pull request has been reviewed yet.", { class: "empty" }));
-  } else {
-    const t = el("table");
-    const head = add(el("tr"), el("th", "PR"), el("th", "Review"), el("th", "What it would do"), el("th", "Fixes"), el("th", ""));
-    t.append(add(el("thead"), head));
-    const body = el("tbody");
-    for (const r of data.reviews) {
-      const pr = add(el("td"), el("div", `#${r.number}`, { class: "mono" }));
-      if (r.title) pr.append(el("div", r.title, { class: "sub" }));
-      const review = add(el("td"), el("span", r.verdict.heading.replace(/^\S+\s/, ""), { class: `badge ${r.verdict.level}` }));
-      if (r.severity !== null && r.severity !== undefined) review.append(el("div", `S${r.severity}`, { class: "sub mono", title: "S0 is the most severe, S6 the least" }));
-      if (r.updated_at) review.append(el("div", ago(r.updated_at), { class: "sub" }));
-      const what = el("td");
-      if (r.opened.length) {
-        const actors = [...new Set(r.opened.map((o) => nameOf(o.actor)))];
-        what.append(el("div", `Would let ${list(actors)} reach:`));
-        const chips = el("div");
-        for (const id of [...new Set(r.opened.map((o) => o.target))]) chips.append(chip(id));
-        what.append(chips);
-      } else {
-        what.append(el("div", r.headline || "Nothing new reaches sensitive data."));
-      }
-      if (r.beyond_intent) what.append(el("div", `Its code reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
-      const fixes = el("td");
-      for (const f of r.fixes) fixes.append(el("span", `${f.id} ${f.verdict}`, { class: `badge ${f.verdict}`, title: f.title, style: "margin:0 4px 4px 0" }));
-      if (!r.fixes.length) fixes.append(el("span", "none needed", { class: "sub" }));
-      const link = el("td");
-      if (r.url) link.append(el("a", "Review →", { class: "open", href: r.url }));
-      body.append(add(el("tr"), pr, review, what, fixes, link));
-    }
-    t.append(body);
-    $("pr-table").append(t);
-  }
-
-  // Findings ---------------------------------------------------------------------------------------------
-  if (!data.findings.length) {
-    $("finding-list").append(add(el("div", null, { class: "card" }), el("div", "No advisory in the feed affects a workflow on main.", { class: "empty" })));
-  }
-  for (const f of data.findings) {
-    const card = el("div", null, { class: "card finding" });
-    const h = add(el("h3"), el("span", f.id, { class: "mono" }), el("span", nameOf(f.action), { class: "sub mono" }));
-    if (typeof f.urgency === "number") h.append(el("span", `urgency ${f.urgency.toFixed(2)}`, { class: `badge ${f.urgency >= 0.7 ? "blocked" : "look"}` }));
-    card.append(h);
-    const dl = el("dl");
-    const row = (k, v) => add(dl, el("dt", k), v);
-    row("Workflows", el("dd", list(f.workflows.map(nameOf)) || "none"));
-    const reaches = el("dd");
-    for (const id of f.reaches) reaches.append(chip(id));
-    if (!f.reaches.length) reaches.textContent = "nothing sensitive";
-    row("Could reach", reaches);
-    row("Cut it off at", el("dd", f.cut.length ? f.cut.map((c) => `${nameOf(c.src)} → ${nameOf(c.dst)}`).join("; ") : "no single cut", { class: "" }));
-    row("Rotate", el("dd", f.rotate.length ? list(f.rotate.map(nameOf)) : "nothing"));
-    const fixDd = el("dd");
-    if (f.fix) fixDd.append(el("span", `${f.fix.id} ${f.fix.verdict}`, { class: `badge ${f.fix.verdict}`, style: "margin-right:8px" }), document.createTextNode(f.fix.title));
-    else fixDd.textContent = "No fix could be checked.";
-    row("Fix", fixDd);
-    if (f.containment) {
-      const links = el("dd");
-      links.append(el("a", `Containment PR #${f.containment.pr_number} →`, { class: "open", href: f.containment.pr }));
-      if (f.containment.issue) links.append(document.createTextNode("  "), el("a", "Rotate issue →", { class: "open", href: f.containment.issue }));
-      row("Opened", links);
-    }
-    card.append(dl);
-    if (f.url) card.append(add(el("div", null, { style: "margin-top:12px" }), el("a", "Open finding →", { class: "open", href: f.url })));
-    $("finding-list").append(card);
-  }
-
-  // Who reaches what -------------------------------------------------------------------------------------
-  const reach = p ? p.reach : [];
-  if (!reach.length) {
-    $("reach-table").append(el("div", posture ? "Nobody reaches sensitive data." : "Waiting for the first scan of main.", { class: "empty" }));
-  } else {
-    const t = el("table");
-    t.append(add(el("thead"), add(el("tr"), el("th", "Who"), el("th", "Could reach"), el("th", "Routes"))));
-    const body = el("tbody");
-    const risky = new Set(dangerous.map((d) => `${d.actor}|${d.target}`));
-    for (const r of reach) {
-      const who = add(el("td"), el("div", nameOf(r.actor), { style: "font-weight:600" }), el("div", kindOf(r.actor, info(r.actor)), { class: "sub" }));
-      const what = el("td");
-      for (const id of r.targets) what.append(chip(id, !risky.has(`${r.actor}|${id}`)));
-      const notNeeded = r.targets.filter((id) => risky.has(`${r.actor}|${id}`)).length;
-      if (notNeeded) what.append(el("div", `${plural(notNeeded, "of these", "of these")} nothing requires.`, { class: "sub" }));
-      body.append(add(el("tr"), who, what, el("td", String(r.paths), { class: "num" })));
-    }
-    t.append(body);
-    $("reach-table").append(t);
-  }
-
-  // Weak points ------------------------------------------------------------------------------------------
-  $("weak-intro").textContent = p
-    ? `Computed on main's graph from ${plural(p.dependencies, "dependency", "dependencies")}: each call a service's code makes and each access theseus.yaml requires.`
-    : "Waiting for the first scan of main.";
-  const items = (box, rows, empty) => {
-    if (!rows.length) { box.append(el("div", empty, { class: "empty" })); return; }
-    const max = Math.max(...rows.map((r) => r.n), 1);
-    for (const r of rows) {
-      const item = add(el("div", null, { class: "item" }), add(el("h3"), document.createTextNode(nameOf(r.id) + " "), el("span", kindOf(r.id, info(r.id)), { class: "sub" })));
-      item.append(el("div", r.what, { class: "what" }));
-      if (r.detail) item.append(el("div", r.detail, { class: "sub" }));
-      const bar = el("div", null, { class: "bar" });
-      bar.append(el("span", null, { style: `width:${Math.round((100 * r.n) / max)}%` }));
-      item.append(bar);
-      box.append(item);
-    }
-  };
-  items($("spof"), (p ? p.single_points : []).slice(0, 6).map((s) => {
-    const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))];
-    const what = [...new Set(s.breaks.map((b) => nameOf(b.resource)))];
-    const loses = who.length === 1 ? "loses" : "lose";
-    return { id: s.id, n: who.length, what: `If it goes, ${plural(s.breaks.length, "dependency", "dependencies")} break: ${list(who)} ${loses} ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
-  }), "No node is the only route to anything that is needed.");
-  items($("art"), (p ? p.articulation : []).slice(0, 6).map((a) => ({
-    id: a.id, n: a.cut_off, what: `Without it, ${plural(a.cut_off, "node")} lose every link to the rest.`, detail: `It leaves pieces of ${list(a.pieces.map(String))} nodes.`,
-  })), "Removing any one node leaves the graph in one piece.");
-  items($("choke"), (scan ? scan.choke_points : []).slice(0, 5).map((c) => ({
-    id: c.id, n: c.score, what: `On ${Number(c.score).toFixed(Number.isInteger(c.score) ? 0 : 1)} shortest routes between other nodes.`,
-  })), "No role carries more routes than another.");
-  const grants = scan ? scan.unused_grants : [];
-  const box = $("unused");
-  if (!grants.length) box.append(el("div", "Every grant to sensitive data is used by the code that holds it.", { class: "empty" }));
-  for (const u of grants) {
-    const item = add(el("div", null, { class: "item" }), el("h3", `${nameOf(u.workload)} can ${u.access} ${nameOf(u.resource)}`));
-    item.append(el("div", `Its code never ${u.access === "write" ? "writes to" : "reads"} it.`, { class: "sub" }));
-    box.append(item);
-  }
-  const fixU = scan ? (scan.candidates || []).find((c) => c.id === "U") : null;
-  if (fixU) box.append(add(el("div", null, { class: "item" }), el("span", `Fix U ${fixU.verdict}`, { class: `badge ${fixU.verdict}` }), el("span", ` ${fixU.title}`, { class: "sub" })));
-
-  // Cost -------------------------------------------------------------------------------------------------
-  const cost = p ? p.cost : null;
-  $("cost-intro").textContent = cost ? cost.note : "Waiting for the first scan of main.";
-  if (cost) {
-    const fixed = cost.lines.filter((l) => l.monthly_usd > 0);
-    const usage = cost.lines.filter((l) => l.usage_billed);
-    const top = add(el("div", null, { class: "total" }), el("span", usd(cost.monthly_usd), { class: "n" }), el("span", `a month for ${plural(fixed.length, "resource")} with a fixed price; ${usage.length} more are billed only by use.`, { class: "sub" }));
-    $("cost-table").append(top);
-    const t = el("table");
-    t.append(add(el("thead"), add(el("tr"), el("th", "Resource"), el("th", "What it counts"), el("th", "Month"))));
-    const body = el("tbody");
-    for (const l of fixed) body.append(add(el("tr"), add(el("td"), el("code", l.address)), el("td", l.basis, { class: "sub" }), el("td", usd(l.monthly_usd), { class: "num" })));
-    t.append(body);
-    $("cost-table").append(t);
-    const s = $("savings");
-    add(s, add(el("div", null, { class: "item" }), el("h3", "How to save"), el("div", "What the graph shows could go, and what it would save.", { class: "sub" })));
-    if (cost.savings.length) {
-      for (const v of cost.savings) s.append(add(el("div", null, { class: "item" }), el("h3", `${nameOf(v.id)}: ${usd(v.monthly_usd)} a month`), el("div", v.reason, { class: "sub" })));
-    } else {
-      s.append(add(el("div", null, { class: "item" }), el("h3", "No left-over resources"), el("div", "Every data store is reached by someone or called by code, so none is idle by the graph's account.", { class: "sub" })));
-    }
-    if (grants.length) s.append(add(el("div", null, { class: "item" }), el("h3", `${plural(grants.length, "grant")} to remove for free`), el("div", "Access no code uses: removing it shrinks the blast radius and breaks nothing.", { class: "sub" })));
-    const biggest = fixed[0];
-    if (biggest) s.append(add(el("div", null, { class: "item" }), el("h3", `Largest line: ${biggest.address}`), el("div", `${usd(biggest.monthly_usd)} a month for ${biggest.basis}. Check it is sized for its load.`, { class: "sub" })));
-  }
-
-  // Setup ------------------------------------------------------------------------------------------------
-  for (const step of data.onboarding) {
-    const li = add(el("li"), el("span", step.done ? "✓" : "", { class: `tick ${step.done ? "done" : ""}` }));
-    li.append(add(el("div"), el("div", step.step, { style: "font-weight:600" }), el("div", step.detail, { class: "sub" })));
-    $("steps").append(li);
-  }
-  const runs = [
-    ["Pull requests", "Every push to a PR that changes the infrastructure is reviewed again. To ask again, comment:", "/theseus review"],
-    ["Apply a fix", "A person with write access approves a fix that passed, and Theseus commits it:", "/theseus apply B"],
-    ["main", "On every push to main, every night at 03:17 UTC, and from Actions → Theseus main → Run workflow.", "python -m theseus posture <world> <plan>"],
-    ["Advisories", "Each scan of main checks the advisory feed. One finding by hand:", "python -m theseus finding fixtures/compromised-action"],
-  ];
-  for (const [h, text, code] of runs) $("runs").append(add(el("div", null, { class: "card run" }), el("h3", h), el("p", text), el("code", code)));
-
-  $("footer").textContent = "Theseus reads the graph from FalkorDB when this page loads. Costs are estimates at list price.";
-  $("main").hidden = false;
-}
-
-main();
+let timer = null;
+$("q").addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(() => TABLES.forEach((tbl) => tbl.redraw()), 200); });
+$("refresh").addEventListener("click", () => load());
+window.addEventListener("hashchange", () => { $("q").value = ""; renderView(); $("content").focus({ preventScroll: true }); });
+load();
 </script>
 </body>
 </html>

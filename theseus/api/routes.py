@@ -789,6 +789,7 @@ def posture(
         "contained": contained,
         "containment_failed": failed,
         "dashboard": url,
+        "org": reviews.org_url(settings, req.repo.split("/", 1)[0]),
     }
 
 
@@ -812,6 +813,64 @@ def dashboard_page(
     """One page for the organisation: `main`'s posture, every PR review and every finding, and onboarding."""
     _dashboard_repo(settings, gh, owner, name, k)
     return HTMLResponse(DASHBOARD.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/dashboard/{owner}/{name}/reviews")
+def dashboard_reviews(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    q: str = "",
+    verdict: str = "",
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """One page of the repo's PR reviews, filtered and searched on the server, so a repo with thousands of
+    PRs sends only the page in view."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    if verdict not in ("", "blocked", "look", "clear"):
+        raise HTTPException(422, "verdict must be blocked, look or clear")
+    if offset < 0 or not 1 <= limit <= 200:
+        raise HTTPException(422, "offset must be 0 or more and limit 1 to 200")
+    try:
+        return reviews.review_page(
+            store, settings, repo, q=q[:200], verdict=verdict, offset=offset, limit=limit
+        )
+    except GraphError as e:
+        log.error("%s: cannot read the reviews: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+
+
+def _org(settings: Settings, gh: GitHub, owner: str, k: str | None) -> str:
+    """The owner, when the link is signed for its organisation dashboard and Theseus acts on one of its
+    repos; a 404 otherwise."""
+    acts = any(r.split("/", 1)[0].lower() == owner.lower() for r in settings.repos)
+    if not acts or not reviews.signed_key(settings, reviews.org_key(owner), k):
+        raise HTTPException(404, "no such organisation")
+    return owner
+
+
+@router.get("/org/{owner}", response_class=HTMLResponse)
+def org_page(owner: str, settings: SettingsDep, gh: GitHubDep, k: str | None = None) -> HTMLResponse:
+    """The organisation's dashboard: every connected repo at a glance, each linked to its own."""
+    _org(settings, gh, owner, k)
+    return HTMLResponse(DASHBOARD.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/org/{owner}/data")
+def org_data(
+    owner: str, settings: SettingsDep, gh: GitHubDep, store: StoreDep, k: str | None = None
+) -> dict[str, Any]:
+    """Every connected repo's posture and reviews, summarised, with totals; read from FalkorDB now."""
+    _org(settings, gh, owner, k)
+    try:
+        return reviews.org_data(store, settings, owner)
+    except GraphError as e:
+        log.error("%s: cannot read the organisation: %s", owner, e)
+        raise HTTPException(502, "the graph store did not answer") from e
 
 
 @router.get("/dashboard/{owner}/{name}/data")
