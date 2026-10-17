@@ -6,6 +6,7 @@ and fails if it cannot, so the API never runs without FalkorDB however it is lau
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -29,11 +30,11 @@ from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
 from theseus.contracts.result import AnalysisResult
-from theseus.engine.pipeline import run_pr
+from theseus.engine.pipeline import run_finding, run_pr
 from theseus.errors import GraphError, IngestError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
-from theseus.importer.world import load_world_from_files
+from theseus.importer.world import load_world, load_world_from_files
 
 log = logging.getLogger(__name__)
 
@@ -75,6 +76,25 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
     return review
 
 
+def build_finder(store: GraphStore, jev: Any, settings: Settings) -> routes.Finder:
+    """Finding mode on a fixture folder (FM3 and FM4): its `base/` world and plan and its `advisory.json`,
+    with live Jev for sensitivity and urgency. The advisory's text never becomes evidence."""
+
+    def finder(fixture: Path) -> AnalysisResult:
+        base = fixture / "base"
+        try:
+            config = yaml.safe_load((base / "theseus.yaml").read_text(encoding="utf-8")) or {}
+            plan = json.loads((fixture / "base.plan.json").read_text(encoding="utf-8"))
+            advisory = json.loads((fixture / "advisory.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError) as e:
+            raise IngestError(f"cannot read the finding fixture {fixture.name}") from e
+        adapters = adapters_for(config)
+        deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+        return run_finding(load_world(base, plan, adapters), advisory, deps)
+
+    return finder
+
+
 def connect_falkordb() -> Any:
     """A FalkorDB client from the environment and .env. Raises GraphError when it cannot connect."""
     return get_client(get_settings())
@@ -107,7 +127,9 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
             load_client()
         llm = Llm(settings)
         app.state.store = FalkorStore(app.state.falkordb)
-        app.state.review = build_review(app.state.store, llm, Jev(settings, llm=llm), settings)
+        jev = Jev(settings, llm=llm)
+        app.state.review = build_review(app.state.store, llm, jev, settings)
+        app.state.finder = build_finder(app.state.store, jev, settings)
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

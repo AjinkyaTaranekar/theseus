@@ -116,6 +116,20 @@ def get_review(request: Request) -> Review:
 
 ReviewDep = Annotated[Review, Depends(get_review)]
 
+# Finding mode on a fixture folder. `api/app.py` builds the real one; tests replace it.
+Finder = Callable[[Path], AnalysisResult]
+
+
+def get_finder(request: Request) -> Finder:
+    finder = getattr(request.app.state, "finder", None)
+    if finder is None:
+        raise HTTPException(503, "the finding engine is not ready")
+    return finder
+
+
+FinderDep = Annotated[Finder, Depends(get_finder)]
+FINDING_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$")
+
 
 def get_store(request: Request) -> reviews.ReviewStore:
     """The store the graphs live in, for each review's page; `api/app.py` sets it at startup."""
@@ -335,9 +349,67 @@ def review_data(
 
 
 @router.post("/finding", response_model=AnalysisResult)
-def finding(req: FindingRequest) -> AnalysisResult:
-    """Finding mode."""
-    return stub_for(req.fixture, "finding")
+def finding(
+    req: FindingRequest,
+    response: Response,
+    settings: SettingsDep,
+    store: StoreDep,
+    finder: FinderDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> AnalysisResult:
+    """Finding mode. Without a token, `{fixture}` answers from its stub (the Try-it page). With
+    THESEUS_TOKEN, the real engine runs on the fixture with live Jev, the result is kept for its page, and
+    the page's signed link comes back in `X-Theseus-Page`. Advisories from a repo arrive with FM6."""
+    if x_theseus_token is None:
+        return stub_for(req.fixture, "finding")
+    _require_token(settings, x_theseus_token)
+    if req.fixture is None:
+        raise HTTPException(422, "a finding run needs a fixture until FM6 reads advisories from a repo")
+    expected = load_expected(req.fixture)
+    if expected.get("mode") != "finding":
+        raise HTTPException(400, f"fixture {req.fixture!r} is a {expected.get('mode')} scenario, not finding")
+    try:
+        result = finder(FIXTURES / req.fixture)
+    except TheseusError as e:
+        log.error("finding %s could not finish: %s", req.fixture, e)
+        raise HTTPException(500, f"the finding could not finish: {e}") from e
+    repo = settings.repos[0] if settings.repos else ""
+    reviews.save_finding(store, repo, f"fixtures/{req.fixture}/base", result)
+    url = reviews.finding_url(settings, (result.finding or {}).get("id", ""))
+    if url:
+        response.headers["X-Theseus-Page"] = url
+    return result
+
+
+def _signed_finding(settings: Settings, finding_id: str, k: str | None) -> str:
+    if not FINDING_ID.match(finding_id) or not reviews.signed_key(
+        settings, reviews.finding_key(finding_id), k
+    ):
+        raise HTTPException(404, "no such finding")
+    return finding_id
+
+
+@router.get("/findings/{finding_id}", response_class=HTMLResponse)
+def finding_page(finding_id: str, settings: SettingsDep, k: str | None = None) -> HTMLResponse:
+    """The same page as a review's, drawing a finding: what a compromised Action reaches."""
+    _signed_finding(settings, finding_id, k)
+    return HTMLResponse(PAGE.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/findings/{finding_id}/data")
+def finding_data(
+    finding_id: str, settings: SettingsDep, store: StoreDep, k: str | None = None
+) -> dict[str, Any]:
+    """The finding's newest result and its graph, read from the store now."""
+    _signed_finding(settings, finding_id, k)
+    try:
+        data = reviews.page_doc(store, reviews.finding_key(finding_id))
+    except GraphError as e:
+        log.error("finding %s: cannot read it: %s", finding_id, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if data is None:
+        raise HTTPException(404, "no such finding")
+    return data
 
 
 @router.post("/scan", response_model=AnalysisResult)
