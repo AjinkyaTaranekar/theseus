@@ -13,10 +13,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # A demo PR (branch demo/<scenario>-<take>) changes demo-infra/ on purpose, so the tests that pin it to
-  # main fail by design; its review is the Theseus check (docs/spec/07-github-and-deploy.md, "Demo PRs").
+  # A demo PR (branch demo/<scenario>-<take>) and a containment PR Theseus opens (theseus/contain-<id>) change
+  # demo-infra/ on purpose, so the tests that pin it to main fail by design; their review is the Theseus check
+  # (docs/spec/07-github-and-deploy.md, "Demo PRs" and "Finding and scan outputs").
   check:
-    if: ${{ !startsWith(github.head_ref, 'demo/') }}
+    if: ${{ !startsWith(github.head_ref, 'demo/') && !startsWith(github.head_ref, 'theseus/contain-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -58,7 +59,7 @@ jobs:
           python tools/check_commit_msg.py "$RUNNER_TEMP/pr-title.txt"
 
   windows:
-    if: ${{ !startsWith(github.head_ref, 'demo/') }}
+    if: ${{ !startsWith(github.head_ref, 'demo/') && !startsWith(github.head_ref, 'theseus/contain-') }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -77,7 +78,7 @@ jobs:
 
   # The falkordb-marked tests, against the version FalkorDB Cloud runs (docs/spec/07, "Where FalkorDB runs").
   falkordb:
-    if: ${{ !startsWith(github.head_ref, 'demo/') }}
+    if: ${{ !startsWith(github.head_ref, 'demo/') && !startsWith(github.head_ref, 'theseus/contain-') }}
     runs-on: ubuntu-latest
     services:
       falkordb:
@@ -109,7 +110,7 @@ jobs:
 
   # Nobody builds the image on a laptop, so CI does, before it reaches the VM.
   image:
-    if: ${{ !startsWith(github.head_ref, 'demo/') }}
+    if: ${{ !startsWith(github.head_ref, 'demo/') && !startsWith(github.head_ref, 'theseus/contain-') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5

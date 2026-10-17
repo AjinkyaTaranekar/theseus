@@ -84,6 +84,9 @@ class MemoryStore:
     def get_doc(self, key: str) -> str | None:
         return self._docs.get(key)
 
+    def docs(self, prefix: str) -> list[str]:
+        return sorted(k for k in self._docs if k.startswith(prefix))
+
     def apply_delta(self, graph: str, delta: GraphDelta) -> None:
         rows = self._rows(graph)
         gone_edges = set(delta.remove_edges)
@@ -276,6 +279,17 @@ class FalkorStore:
             return None
         found = self._query(DOCS, "MATCH (d:Doc {key: $key}) RETURN d.text", {"key": key})
         return found[0][0] if found else None
+
+    def docs(self, prefix: str) -> list[str]:
+        """The keys of the documents starting with `prefix`, sorted."""
+        if DOCS not in self.list_graphs():
+            return []
+        found = self._query(
+            DOCS,
+            "MATCH (d:Doc) WHERE d.key STARTS WITH $prefix RETURN d.key ORDER BY d.key",
+            {"prefix": prefix},
+        )
+        return [row[0] for row in found]
 
     def _add(self, graph: str, nodes: list[NodeRow], edges: list[EdgeRow]) -> None:
         by_labels: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)

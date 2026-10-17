@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,14 +25,17 @@ from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
-from theseus.api import routes
+from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
+from theseus.api import contain, routes, webhooks
 from theseus.api.github import GitHub
+from theseus.cli import analyze_fixture, load_advisories
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
-from theseus.contracts.result import AnalysisResult
-from theseus.engine.pipeline import run_finding, run_pr, run_scan
-from theseus.errors import GraphError, IngestError
+from theseus.contracts.posture import PostureReport
+from theseus.contracts.result import AnalysisResult, PatchOp
+from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
+from theseus.errors import GraphError, IngestError, PatchError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world, load_world_from_files
@@ -76,6 +80,41 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
     return review
 
 
+def build_render() -> webhooks.Render:
+    """The renderer behind `/theseus apply` (task A9): the IaC adapter, configured from the head's own
+    theseus.yaml as the review was, writes the fix's ops as verified edits on the head's files."""
+
+    def render(files: dict[str, str], ops: list[PatchOp]) -> dict[str, str]:
+        try:
+            config = yaml.safe_load(files.get("theseus.yaml") or "") or {}
+        except yaml.YAMLError as e:
+            raise PatchError("theseus.yaml at the head cannot be read") from e
+        if not isinstance(config, dict):
+            raise PatchError("theseus.yaml at the head is not a mapping")
+        return adapters_for(config).iac.render(files, ops)
+
+    return render
+
+
+def build_try(store: GraphStore, settings: Settings, recordings: Path = RECORDINGS) -> routes.Try:
+    """The engine behind `/try/{preset}` (task S4): `analyze_fixture` on the preset's fixture folder in this
+    store, with the models replayed whatever mode the server runs in, so a visit costs no LLM or Jev call. One
+    run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once. The
+    recordings are read on the first visit, so missing ones fail that visit and never the server's startup."""
+    replay = settings.model_copy(update={"theseus_mode": "replay"})
+    lock = threading.Lock()
+    models: list[tuple[ReplayedIntent, ReplayedJev]] = []
+
+    def run(preset: str) -> AnalysisResult:
+        with lock:
+            if not models:
+                models.append((ReplayedIntent(recordings), ReplayedJev(replay, recordings)))
+            llm, jev = models[0]
+            return analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
+
+    return run
+
+
 def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
     """The real scan behind `/scan` (task C3): a scan fixture's world, its plan, then `run_scan`."""
 
@@ -88,6 +127,26 @@ def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
         return run_scan(load_world(root / "base", plan, adapters), deps)
 
     return scan
+
+
+def build_posture(store: GraphStore, jev: Any, settings: Settings) -> routes.PostureRun:
+    """The posture run behind `/posture` (O1 to O3): the world root at `main`'s commit, the workflow's plan of
+    it, then `run_posture` with the advisory feed. The files are laid out as `<world>/`, so the graph is
+    `demo-infra__main` and is replaced on every run."""
+
+    def run(gh: GitHub, repo: str, sha: str, plan: dict[str, Any]) -> PostureReport:
+        files = gh.world_files(repo, sha)
+        if "theseus.yaml" not in files:
+            raise IngestError(f"no {settings.theseus_world_root}/theseus.yaml at {sha[:7]}")
+        adapters = adapters_for(yaml.safe_load(files["theseus.yaml"]) or {})
+        deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+        advisories = load_advisories(Path(settings.theseus_advisories))
+        with TemporaryDirectory(prefix="theseus-posture-") as tmp:
+            world = load_world_from_files(files, plan, adapters, Path(tmp) / settings.theseus_world_root)
+            report = run_posture(world, deps, advisories)
+        return report.model_copy(update={"scan": report.scan.model_copy(update={"repo": repo})})
+
+    return run
 
 
 def build_finder(store: GraphStore, jev: Any, settings: Settings) -> routes.Finder:
@@ -145,6 +204,14 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.review = build_review(app.state.store, llm, jev, settings)
         app.state.scan = build_scan(app.state.store, jev, settings)
         app.state.finder = build_finder(app.state.store, jev, settings)
+        app.state.posture = build_posture(app.state.store, jev, settings)
+        app.state.results = webhooks.Results()
+        app.state.render = build_render()
+        app.state.contain = lambda gh, repo, sha, result, page: contain.contain(
+            gh, app.state.render, repo, sha, result, page
+        )
+        app.state.try_preset = build_try(app.state.store, settings)
+        app.state.try_limiter = routes.RateLimit()
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

@@ -9,8 +9,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from theseus.contracts.engine import Analysis, GraphState, GraphStore
-from theseus.contracts.result import EdgeRow, Evidence, GraphRows, NodeRow, PathRecord
+from theseus.contracts.adapters import Change
+from theseus.contracts.engine import Analysis, GraphState, GraphStore, RuleFix
+from theseus.contracts.result import EdgeRow, Evidence, GraphRows, MinCut, NodeRow, PathRecord, Requirement
 from theseus.engine.analyze import analyze
 
 log = logging.getLogger(__name__)
@@ -73,3 +74,37 @@ def secrets_reached(analysis: Analysis, state: GraphState) -> list[str]:
 def rotate_list(store: GraphStore, state: GraphState, workflows: list[str]) -> list[str]:
     """Every secret any of these workflows can reach, sorted: the credentials to rotate."""
     return secrets_reached(analyze(store, state, [], workflows), state)
+
+
+def containment(
+    state: GraphState, needed: Analysis, cut: MinCut | None, requirements: list[Requirement]
+) -> RuleFix | None:
+    """Candidate K (04-engine.md section 16): for each cut `TRUSTS` edge, the role trusts only the subjects of
+    the workflows a requirement reaches through it, as `terraform-apply` already does. `needed` is the graph
+    analyzed for the requirements' principals. None when the cut has no such edge, or no workflow needs the
+    role: then nothing says which subjects to keep."""
+    if cut is None or not cut.cuttable:
+        return None
+    nodes = {n.id: n for n in state.rows.nodes}
+    edges = {(e.src, e.type, e.dst): e for e in state.rows.edges}
+    changes: list[Change] = []
+    for c in sorted(cut.cut, key=lambda c: (c.src, c.dst)):
+        if c.type != "TRUSTS":
+            continue
+        keep: set[str] = set()
+        for req in requirements:
+            for path in needed.paths.get(req.principal, []):
+                if path.target != req.resource or req.access not in path.grants or path.unknown:
+                    continue
+                for step in path.steps:
+                    if step.type == "TRUSTS" and step.dst == c.dst and step.src != c.src:
+                        keep.update(str(s) for s in nodes[step.src].props.get("subs") or [])
+        if not keep:
+            log.info("no requirement reaches %s through another workflow; K cannot pin it", c.dst)
+            continue
+        changes.append(
+            Change(kind="restrict_trust", eid=edges[(c.src, c.type, c.dst)].eid, values=sorted(keep))
+        )
+    if not changes:
+        return None
+    return RuleFix(id="K", title="Trust the role only from the workflows that need it", changes=changes)

@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Try Theseus</title>
+<meta name="description" content="Pick a Terraform pull request and watch Theseus show what it makes reachable.">
+<link rel="stylesheet" href="/web/style.css">
+</head>
+<body>
+<header>
+  <span class="brand">Theseus</span>
+  <span class="tag">Try it</span>
+</header>
+<main>
+  <section class="intro">
+    <h1>What does this pull request make reachable?</h1>
+    <p>Pick one of the demo company's pull requests. Theseus plans the Terraform at both commits, loads each
+    into a graph in FalkorDB, and traces every path to sensitive data. The engine runs for real. The
+    language model's answers are replayed from recordings, so a try costs nothing.</p>
+    <div class="presets" id="presets" role="group" aria-label="Pull requests to analyze">
+      {% for name, description in presets.items() %}
+      <button type="button" class="preset" data-preset="{{ name }}">
+        <span class="name">{{ name }}</span>
+        <span class="what">{{ description }}</span>
+      </button>
+      {% else %}
+      <p class="empty">No presets are available on this server.</p>
+      {% endfor %}
+    </div>
+  </section>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <div id="result" hidden>
+    <section class="card" id="headline-card">
+      <h2 class="visually-hidden">Verdict</h2>
+      <p id="headline" class="headline"></p>
+      <p id="meta" class="meta"></p>
+    </section>
+
+    <section class="card">
+      <h2>Paths this change opens</h2>
+      <div id="paths"></div>
+      <p id="paths-empty" class="empty" hidden>This change opens no path to sensitive data.</p>
+    </section>
+
+    <section class="card">
+      <h2>Fixes</h2>
+      <div id="fixes"></div>
+      <p id="fixes-empty" class="empty" hidden>No fix has been proposed for this change.</p>
+    </section>
+
+    <section class="card">
+      <h2>What Theseus did</h2>
+      <div id="trace"></div>
+      <p id="trace-empty" class="empty" hidden>No tool calls were recorded for this run.</p>
+    </section>
+
+    <section class="card">
+      <h2>What it covered</h2>
+      <div id="coverage"></div>
+    </section>
+  </div>
+</main>
+<footer>
+  <p>The demo company is synthetic. Answers shown here are the engine's, not a copy of a stored result.</p>
+</footer>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/10.9.3/mermaid.min.js"
+        integrity="sha512-HvxxeyPSnbU7/x0g15v3OMxTFeADyCUnCN3iCam3BDTxgFPKxa+ujRCbFuwjE8PASDwOH5LpzFfGGNWks7tuJQ=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<script src="/web/app.js"></script>
+</body>
+</html>

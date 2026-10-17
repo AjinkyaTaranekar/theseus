@@ -5,56 +5,63 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22#000%22/%3E%3Cg fill=%22none%22 stroke=%22#686d76%22 stroke-width=%221.2%22 stroke-linejoin=%22round%22%3E%3Cpolygon points=%2216,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10%22/%3E%3Cpolygon points=%2216,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5%22/%3E%3Cpath d=%22M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10%22/%3E%3C/g%3E%3Cg fill=%22#9a9fa8%22%3E%3Ccircle cx=%2216%22 cy=%224%22 r=%221.4%22/%3E%3Ccircle cx=%2226.39%22 cy=%2210%22 r=%221.4%22/%3E%3Ccircle cx=%2226.39%22 cy=%2222%22 r=%221.4%22/%3E%3Ccircle cx=%2216%22 cy=%2228%22 r=%221.4%22/%3E%3Ccircle cx=%225.61%22 cy=%2210%22 r=%221.4%22/%3E%3C/g%3E%3Cpath d=%22M5.61 22L5.61 10L16 16%22 fill=%22none%22 stroke=%22#6e9fff%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3Ccircle cx=%225.61%22 cy=%2222%22 r=%222%22 fill=%22#6e9fff%22/%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%223.2%22 fill=%22#f2495c%22/%3E%3C/svg%3E">
 <title>Theseus review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap">
 <style>
   :root {
-    --bg: #fafaf9; --dot: #e3e3df; --card: #ffffff; --text: #1c1c1a; --muted: #6b6b66; --faint: #a3a39d;
-    --line: #d9d9d4; --tile-line: #cfcfca; --accent: #d1005a; --accent-bg: #fff0f6; --accent-soft: #f7c6db;
-    --ok: #1a7f37; --ok-bg: #e9f7ee; --warn: #9a6700; --warn-bg: #fff6d6; --chip: #f1f1ee;
-    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg: #111110; --dot: #262624; --card: #1a1a19; --text: #ededea; --muted: #a3a39d; --faint: #6b6b66;
-      --line: #34342f; --tile-line: #3f3f3a; --accent: #ff4d94; --accent-bg: #33121f; --accent-soft: #6b2443;
-      --ok: #3fb950; --ok-bg: #12301b; --warn: #d29922; --warn-bg: #3a2a07; --chip: #262624;
-    }
+    --bg: #000000; --dot: #16181c; --card: #0b0c0e; --card-2: #121418; --text: #e8e9ec; --muted: #9a9fa8;
+    --faint: #5c6068; --line: #24262b; --tile-line: #33363c; --accent: #f2495c; --accent-bg: rgba(242, 73, 92, .14);
+    --accent-soft: #7a2a35; --ok: #73bf69; --ok-bg: rgba(115, 191, 105, .14); --warn: #fade2a;
+    --warn-bg: rgba(250, 222, 42, .12); --chip: #16181c; --primary: #6e9fff; --primary-bg: rgba(87, 148, 242, .16);
+    --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: "Roboto Mono", ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; color: var(--text); background: var(--bg);
-         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  body { margin: 0; color: var(--text); background: var(--bg); font: 14.5px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
   a { color: inherit; }
-  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
-  header { border-bottom: 1px solid var(--line); background: var(--card); }
-  header .wrap { display: flex; align-items: center; gap: 14px; height: 56px; }
-  .brand { font-weight: 700; letter-spacing: -.01em; }
-  .where { color: var(--muted); font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
-  .badge { margin-left: auto; font-family: var(--mono); font-size: 12px; font-weight: 600; padding: 3px 10px;
-           border-radius: 999px; white-space: nowrap; }
+  :focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
+  .skip { position: absolute; left: 8px; top: -40px; background: var(--primary); color: #000; padding: 8px 12px; border-radius: 4px; z-index: 10; font-weight: 600; }
+  .skip:focus { top: 8px; }
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 0 24px; }
+  header { position: sticky; top: 0; z-index: 5; border-bottom: 1px solid var(--line); background: rgba(0, 0, 0, .92); backdrop-filter: blur(6px); }
+  header .wrap { display: flex; align-items: center; gap: 14px; height: 52px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; }
+  .brand svg { width: 22px; height: 22px; }
+  .where { color: var(--muted); font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; padding-left: 14px; border-left: 1px solid var(--line); }
+  .badge { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font: 500 12px/1 var(--font); padding: 6px 9px;
+           border-radius: 3px; white-space: nowrap; }
+  .badge::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
   .badge.blocked { color: var(--accent); background: var(--accent-bg); }
   .badge.look { color: var(--warn); background: var(--warn-bg); }
   .badge.clear { color: var(--ok); background: var(--ok-bg); }
+  .dash { height: 32px; display: inline-flex; align-items: center; padding: 0 12px; border: 1px solid var(--tile-line); border-radius: 4px;
+          background: var(--card-2); font: 500 13px/1 var(--font); color: var(--text); text-decoration: none; white-space: nowrap; }
+  .dash:hover { border-color: var(--muted); }
 
   .hero { padding: 36px 0 8px; }
-  .hero h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 10px; max-width: 900px; }
+  .hero h1 { font-size: 26px; font-weight: 600; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 10px; max-width: 980px; }
   .hero h1 em { font-style: normal; color: var(--accent); }
   .hero p { margin: 0; color: var(--muted); font-size: 16px; max-width: 820px; }
 
-  .board { margin: 24px 0 8px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
+  .board { margin: 24px 0 8px; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
            background-color: var(--bg);
            background-image: radial-gradient(var(--dot) 1px, transparent 1px); background-size: 16px 16px; }
   .bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line);
          background: var(--card); flex-wrap: wrap; }
-  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-  .seg button { border: 0; background: transparent; color: var(--muted); font: 600 13px/1 var(--mono);
+  .seg { display: inline-flex; border: 1px solid var(--tile-line); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--muted); font: 500 13px/1 var(--font);
                 padding: 8px 12px; cursor: pointer; }
-  .seg button[aria-pressed="true"] { background: var(--text); color: var(--bg); }
+  .seg button[aria-pressed="true"] { background: var(--primary-bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--primary); }
   .bar .note { color: var(--muted); font-size: 13px; }
   .stage { position: relative; overflow-x: auto; padding: 28px 24px 24px; }
   .canvas { position: relative; margin: 0 auto; }
   .canvas > svg { position: absolute; inset: 0; overflow: visible; pointer-events: none; }
 
-  .tile { position: absolute; width: 132px; height: 92px; border: 1px solid var(--tile-line); border-radius: 6px;
+  .tile { position: absolute; width: 132px; height: 92px; border: 1px solid var(--tile-line); border-radius: 4px;
           background: var(--card); display: flex; flex-direction: column; align-items: center; justify-content: center;
           gap: 4px; padding: 6px 8px; text-align: center; transition: opacity .2s, border-color .2s; }
   .tile svg.icon { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6;
@@ -67,18 +74,17 @@
   .tile.actor { border-color: var(--text); }
   .tile.off { opacity: .38; }
   .tag { position: absolute; font: 600 11.5px/1.3 var(--mono); padding: 4px 7px; border-radius: 4px; white-space: nowrap;
-         background: var(--accent); color: #fff; }
+         background: var(--accent); color: #000; }
   .tag.quiet { background: var(--chip); color: var(--muted); }
-  .tag.ok { background: var(--ok); color: #fff; }
+  .tag.ok { background: var(--ok); color: #000; }
   .edge-label { font: 11px/1 var(--mono); fill: var(--muted); paint-order: stroke; stroke: var(--bg);
                 stroke-width: 5px; stroke-linejoin: round; }
   .edge-label.new { fill: var(--accent); font-weight: 700; }
 
   section { padding: 28px 0 8px; }
-  section h2 { font-size: 13px; font-family: var(--mono); font-weight: 600; text-transform: uppercase;
-               letter-spacing: .06em; color: var(--muted); margin: 0 0 14px; }
+  section h2 { font-size: 14px; font-weight: 600; color: var(--text); margin: 0 0 12px; }
   .ways { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
-  .way { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+  .way { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; }
   .way h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
   .way .sub { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
   .way ol { margin: 0; padding-left: 20px; }
@@ -86,9 +92,9 @@
   .way li .src { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-left: 6px; }
   .way li .src a { color: var(--muted); }
   .chip { display: inline-block; font: 600 11px/1 var(--mono); padding: 3px 6px; border-radius: 4px; margin-left: 6px;
-          background: var(--accent); color: #fff; vertical-align: 1px; }
+          background: var(--accent); color: #000; vertical-align: 1px; }
   .chip.ok { background: var(--ok); }
-  details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
+  details { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 12px 16px; }
   details summary { cursor: pointer; font-weight: 600; }
   details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
   #full { min-height: 360px; }
@@ -96,16 +102,22 @@
   .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
   @media (max-width: 720px) {
     .wrap { padding: 0 16px; }
+    header .wrap { height: auto; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; row-gap: 6px; }
+    .where { order: 3; width: 100%; border-left: 0; padding-left: 0; font-size: 12px; }
+    .bar { gap: 8px; }
+    .seg button { padding: 8px 10px; }
     .hero h1 { font-size: 24px; }
     .stage { padding: 20px 12px; }
   }
 </style>
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 <header><div class="wrap">
-  <span class="brand">Theseus</span>
+  <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="#686d76" stroke-width="1.2" stroke-linejoin="round"><polygon points="16,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10"/><polygon points="16,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5"/><path d="M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10"/></g><g fill="#9a9fa8"><circle cx="16" cy="4" r="1.4"/><circle cx="26.39" cy="10" r="1.4"/><circle cx="26.39" cy="22" r="1.4"/><circle cx="16" cy="28" r="1.4"/><circle cx="5.61" cy="10" r="1.4"/></g><path d="M5.61 22L5.61 10L16 16" fill="none" stroke="#6e9fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.61" cy="22" r="2" fill="#6e9fff"/><circle cx="16" cy="16" r="3.2" fill="#f2495c"/></svg>Theseus</span>
   <span class="where" id="where"></span>
   <span class="badge" id="badge" hidden></span>
+  <a class="dash" id="dash" hidden>Dashboard</a>
 </div></header>
 
 <main class="wrap" id="main" hidden>
@@ -277,6 +289,7 @@ function render(data) {
   badge.className = `badge ${data.verdict.level}`;
   badge.textContent = (finding ? { blocked: "At risk", look: "Needs a look", clear: "Not exposed" }
     : { blocked: "Merge blocked", look: "Needs a look", clear: "Safe to merge" })[data.verdict.level];
+  if (data.dashboard) { const dash = $("dash"); dash.href = data.dashboard; dash.hidden = false; }
   $("main").hidden = false;
 
   // The finding, in one sentence and one line under it.
@@ -482,7 +495,7 @@ function render(data) {
     const links = all.filter((e) => keep.has(e.src) && keep.has(e.dst));
     const hidden = [...linked].filter((id) => !keep.has(id)).length;
     $("note").textContent = `${nodes.length} people, roles and sensitive resources, ${links.length} access links. ` +
-      `The new ways in are pink.${hidden ? ` ${hidden} internal resources are left out.` : ""}`;
+      `The new ways in are red.${hidden ? ` ${hidden} internal resources are left out.` : ""}`;
     if (full) return;
     const go = () => {
       // Columns by lane; within a lane, order by where the links come from, so fewer lines cross.

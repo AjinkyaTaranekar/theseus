@@ -12,10 +12,10 @@ from theseus.config import get_settings
 from theseus.errors import GraphError, TheseusError
 from theseus.graph.store import MemoryStore
 
-COMMANDS = ("analyze", "finding", "scan", "serve")
+COMMANDS = ("analyze", "finding", "scan", "posture", "serve")
 
 
-def test_help_lists_the_four_commands() -> None:
+def test_help_lists_every_command() -> None:
     out = subprocess.run(
         [sys.executable, "-m", "theseus", "--help"], capture_output=True, text=True, check=True
     )
@@ -160,3 +160,38 @@ def test_scan_refuses_a_fixture_that_is_not_a_scan() -> None:
 
     with pytest.raises(TheseusError, match="'pr' fixture"):
         cli.scan_fixture(Path("fixtures/intern"), MemoryStore(), None, get_settings())
+
+
+def test_posture_refuses_to_run_without_falkordb(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unreachable(settings: object) -> None:
+        raise GraphError("cannot reach FalkorDB at example:1")
+
+    monkeypatch.setattr(cli, "get_client", unreachable)
+    assert main(["posture", "fixtures/unused-grant/base", "fixtures/unused-grant/base.plan.json"]) == 1
+    assert "cannot reach FalkorDB" in capsys.readouterr().err
+
+
+def test_posture_reads_a_world_and_raises_the_advisory_s_finding() -> None:
+    from tests.golden.conftest import RecordedJev
+
+    advisories = cli.load_advisories(Path("advisories"))
+    report = cli.posture_world(
+        Path("fixtures/unused-grant/base"),
+        Path("fixtures/unused-grant/base.plan.json"),
+        MemoryStore(),
+        RecordedJev(),
+        get_settings(),
+        advisories,
+    )
+    assert [(f.finding or {})["id"] for f in report.findings] == ["GHSA-demo-0001"]
+    assert report.posture.reach and report.posture.cost.monthly_usd > 0
+
+
+def test_a_bad_advisory_file_is_skipped_and_the_rest_are_read(tmp_path: Path) -> None:
+    (tmp_path / "a.json").write_text('{"id": "GHSA-1", "action": "o/a", "affected_versions": ["v1"]}')
+    (tmp_path / "b.json").write_text("not json")
+    (tmp_path / "c.json").write_text('{"id": "GHSA-3"}')
+    assert [a["id"] for a in cli.load_advisories(tmp_path)] == ["GHSA-1"]
+    assert cli.load_advisories(tmp_path / "missing") == []
