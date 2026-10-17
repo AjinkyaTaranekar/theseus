@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 
 from falkordb import FalkorDB
 from redis.exceptions import RedisError
@@ -58,3 +59,27 @@ def server_version(db: FalkorDB) -> str:
             ver = int(fields.get("ver", fields.get(b"ver", 0)))
             return f"{ver // 10000}.{ver // 100 % 100}.{ver % 100}"
     raise GraphError("the server has no graph module")
+
+
+@dataclass(frozen=True)
+class Memory:
+    """The server's memory in megabytes: what it holds, and the most it may hold (None for no limit)."""
+
+    used_mb: float
+    limit_mb: float | None
+
+
+def memory(db: FalkorDB) -> Memory:
+    """The server's memory in use and its limit, from `INFO memory`. Raises GraphError when it will not say.
+
+    A FalkorDB Cloud instance sets `maxmemory` with the `noeviction` policy, so a full one refuses writes
+    instead of dropping old data: this is the number to watch before a run that writes many graphs.
+    """
+    try:
+        info = db.connection.info("memory")
+    except RedisError as e:
+        raise GraphError(f"cannot read the memory of FalkorDB: {e}") from e
+    if "used_memory" not in info:
+        raise GraphError("cannot read the memory of FalkorDB: the server reports no used_memory")
+    limit = float(info.get("maxmemory") or 0)
+    return Memory(used_mb=float(info["used_memory"]) / 1e6, limit_mb=limit / 1e6 if limit > 0 else None)

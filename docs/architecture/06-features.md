@@ -344,6 +344,15 @@ five of these tools through the same registry, so what an MCP client sees is wha
 | `python -m theseus scan fixtures/unused-grant` | A scan of `main` |
 | `python -m theseus posture <world> <plan>` | The posture report of a world root and its plan |
 | `python -m theseus incident <world> <plan> "AWS Lambda is down in eu-west-1"` | An outage's blast radius on that world; `--provider` and `--service` instead of a headline |
+| `python -m theseus prune` | A dry run: the graphs of closed and merged PRs, with the memory they would free. `--yes` deletes exactly those |
 | `python -m theseus serve` | Runs the API on `http://localhost:8000`; refuses to start without FalkorDB |
 
 Every command needs FalkorDB, and exits 1 with the reason when it cannot reach it.
+
+**Pruning.** `prune` asks GitHub, for each repo in `THESEUS_REPOS`, which PRs are closed or merged, and lists the
+base, head and fix graphs of those PRs in the world root (`THESEUS_WORLD_ROOT`) with the memory they would free
+(an estimate: a graph's own size cannot be read). It lists the others by count only. `--yes` deletes exactly the
+names listed, prints each, and prints the server's memory before and after. The states are read in the same run,
+so a PR reopened since an earlier dry run keeps its graphs. A person reads the dry run first: `prune` is what
+clears graphs the webhook missed, such as those a review left after its PR had already closed. It needs the
+GitHub App's settings, as the server does (`GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY_PATH`).

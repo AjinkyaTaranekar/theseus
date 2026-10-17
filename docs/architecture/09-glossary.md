@@ -45,6 +45,7 @@ Terms used across these pages, in plain words. Code names are in `code font`.
 | **Plan** | Terraform's JSON description of every resource a commit would create, made without applying anything |
 | **Posture** | The standing picture of `main`: reach, single points of failure, articulation points, unreached data, cost |
 | **Principal** | Something that can act or be acted through: users, groups, roles, workloads, workflows, the internet entry |
+| **Prune** | `python -m theseus prune`: lists, and with `--yes` deletes, the graphs of closed and merged PRs |
 | **Record, replay, live** | The three model modes. Replay reads saved answers so tests and demos need no network |
 | **Requirement** | An access something must keep: (principal, access, resource). `R<n>` from `theseus.yaml`, `I<n>` from the PR's intent |
 | **Residual graph** | After max flow, the capacity left on each edge; walking it from the sources finds the cut |

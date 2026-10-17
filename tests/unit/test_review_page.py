@@ -65,3 +65,20 @@ def test_the_page_writes_no_data_as_html(page: Path) -> None:
     """Everything from a review reaches the page through textContent or attributes, never innerHTML."""
     html = page.read_text(encoding="utf-8")
     assert "innerHTML" not in html and "insertAdjacentHTML" not in html and "document.write" not in html
+
+
+def test_a_review_whose_graphs_were_removed_says_so_in_words_and_offers_no_graph_view() -> None:
+    """A closed PR's graphs are deleted but its review is kept. The page says that, in a notice of its own,
+    instead of drawing an empty graph, and neither the whole-graph view nor a fix's view is offered."""
+    html = _review()
+    notice = html.split('id="removed"', 1)[1].split("</p>", 1)[0]
+    assert "hidden" in html.split('id="removed"', 1)[1][:80]
+    assert "no longer in FalkorDB" in notice and "when it closes" in notice and "reopen" in notice.lower()
+    script = html.split("<script>", 1)[1]
+    assert "data.graphs_removed" in script
+    assert '$("removed").hidden = !gone' in script
+    assert '$("v-full").disabled = gone' in script and "b.disabled = gone" in script
+    assert "if (fixes.length && !gone) setTimeout(prefetchFixes, 0)" in script
+    # The two places that used to say only "isn't in the store any more" now say why.
+    assert "isn't in the store any more" not in script
+    assert script.count("removed when a PR closes") >= 2

@@ -26,7 +26,8 @@ from theseus.api import routes
 from theseus.api.app import create_app
 from theseus.api.github import API, GitHub
 from theseus.config import Settings
-from theseus.errors import GitHubError
+from theseus.contracts.result import GraphRows, NodeRow
+from theseus.errors import GitHubError, GraphError
 from theseus.graph.store import MemoryStore
 
 REPO = "demo-org/theseus"
@@ -79,6 +80,9 @@ class FakeGitHub:
         # PR 8 is open only when a test adds it; it may share PR 7's head and target another base.
         self.files_8: list[str] = []
         self.open_prs: list[dict[str, Any]] = [{"number": 7, "head": {"sha": HEAD}}]
+        # Every PR of the repo, for `pull_states`; PR 7's own state is what `GET /pulls/7` says.
+        self.all_prs: list[dict[str, Any]] = []
+        self.state = "open"
         self.permission = "write"
         self.runs: list[dict[str, Any]] = [{"id": 99, "status": "completed", "head_sha": HEAD}]
         self.head = HEAD
@@ -137,7 +141,8 @@ class FakeGitHub:
 
     def _pull(self, request: httpx.Request) -> httpx.Response:
         self._authed(request)
-        return httpx.Response(200, json={"number": 7, "title": "t", "body": "b", "head": {"sha": self.head}})
+        pr = {"number": 7, "title": "t", "body": "b", "state": self.state, "head": {"sha": self.head}}
+        return httpx.Response(200, json=pr)
 
     def _files(self, request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page", "1"))
@@ -149,9 +154,11 @@ class FakeGitHub:
         return httpx.Response(200, json=[{"filename": f} for f in self.files_8] if page == 1 else [])
 
     def _open_pulls(self, request: httpx.Request) -> httpx.Response:
-        assert request.url.params["state"] == "open"
+        state = request.url.params["state"]
+        assert state in {"open", "all"}
         page = int(request.url.params.get("page", "1"))
-        return httpx.Response(200, json=self.open_prs if page == 1 else [])
+        rows = self.open_prs if state == "open" else self.all_prs
+        return httpx.Response(200, json=rows if page == 1 else [])
 
     def _list_comments(self, request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page", "1"))
@@ -731,6 +738,113 @@ def test_other_events_are_accepted_and_ignored(client: TestClient, fake: FakeGit
         == 204
     )
     assert webhook(client, "pull_request", pull_request("closed")).status_code == 204
+    assert fake.calls == 0
+
+
+# A closed PR's graphs ---------------------------------------------------------------------------------------
+
+
+def rows(*ids: str) -> GraphRows:
+    return GraphRows(nodes=[NodeRow(id=i, labels=["Node"], name=i) for i in ids])
+
+
+def seed_graphs(store: MemoryStore) -> None:
+    """PR 7's graphs, a PR whose number starts the same, another PR's, and graphs that are no PR's."""
+    for name in (
+        "demo-infra__pr7-base",
+        "demo-infra__pr7-head",
+        "demo-infra__pr7-fix-a",
+        "demo-infra__pr7-fix-c",
+        "demo-infra__pr70-head",
+        "demo-infra__pr8-head",
+        "demo-infra__main",
+        "fx__intern__head",
+    ):
+        store.load(name, rows("a"))
+    store.put_doc("review:demo-org/theseus#7", '{"number": 7}')
+
+
+KEPT = [
+    "demo-infra__main",
+    "demo-infra__pr70-head",
+    "demo-infra__pr8-head",
+    "fx__intern__head",
+]
+
+
+@pytest.mark.parametrize("merged", [False, True])
+def test_closing_a_pr_deletes_its_graphs_and_keeps_its_review(
+    client: TestClient, fake: FakeGitHub, store: MemoryStore, merged: bool
+) -> None:
+    seed_graphs(store)
+    event = pull_request("closed")
+    event["pull_request"]["merged"] = merged
+    assert webhook(client, "pull_request", event).status_code == 204
+    assert store.list_graphs() == KEPT
+    assert store.get_doc("review:demo-org/theseus#7") == '{"number": 7}'
+    assert fake.calls == 0  # it needed nothing from GitHub: the number is in the event
+
+
+def test_closing_a_pr_that_was_never_reviewed_deletes_nothing(client: TestClient, store: MemoryStore) -> None:
+    seed_graphs(store)
+    before = store.list_graphs()
+    event = {**pull_request("closed"), "number": 9, "pull_request": {"number": 9, "head": {"sha": HEAD}}}
+    assert webhook(client, "pull_request", event).status_code == 204
+    assert store.list_graphs() == before
+
+
+@pytest.mark.parametrize("action", ["opened", "reopened", "synchronize", "edited"])
+def test_only_closing_deletes_graphs(
+    client: TestClient, fake: FakeGitHub, store: MemoryStore, action: str
+) -> None:
+    seed_graphs(store)
+    before = store.list_graphs()
+    assert webhook(client, "pull_request", pull_request(action)).status_code == 204
+    assert store.list_graphs() == before
+
+
+def test_a_closed_pr_of_a_repo_outside_theseus_repos_deletes_nothing(
+    client: TestClient, store: MemoryStore
+) -> None:
+    seed_graphs(store)
+    before = store.list_graphs()
+    event = {**pull_request("closed"), "repository": {"full_name": "someone/else"}}
+    assert webhook(client, "pull_request", event).status_code == 403
+    assert store.list_graphs() == before
+
+
+def test_a_store_that_cannot_delete_makes_the_delivery_fail_so_it_can_be_redelivered(
+    client: TestClient, store: MemoryStore, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seed_graphs(store)
+
+    def broken(graph: str) -> None:
+        raise GraphError(f"cannot delete {graph}: out of memory")
+
+    monkeypatch.setattr(store, "delete", broken)
+    assert webhook(client, "pull_request", pull_request("closed")).status_code == 502
+
+
+# The states `prune` asks for ------------------------------------------------------------------------------
+
+
+def test_a_repos_pulls_come_back_open_closed_or_merged(gh: GitHub, fake: FakeGitHub) -> None:
+    fake.all_prs = [
+        {"number": 1, "state": "closed", "merged_at": "2026-10-01T00:00:00Z"},
+        {"number": 2, "state": "closed", "merged_at": None},
+        {"number": 3, "state": "open", "merged_at": None},
+        {"number": 4, "state": "open"},
+    ]
+    assert gh.pull_states(REPO) == {1: "merged", 2: "closed", 3: "open", 4: "open"}
+
+
+def test_a_repo_with_no_pulls_has_no_states(gh: GitHub, fake: FakeGitHub) -> None:
+    assert gh.pull_states(REPO) == {}
+
+
+def test_pull_states_refuses_a_repo_outside_theseus_repos(gh: GitHub, fake: FakeGitHub) -> None:
+    with pytest.raises(GitHubError, match="not in THESEUS_REPOS"):
+        gh.pull_states("someone/else")
     assert fake.calls == 0
 
 

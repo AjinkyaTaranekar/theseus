@@ -168,6 +168,17 @@ class GitHub:
         """The PR as GitHub has it now: its current title, body and head, not the copy an event carried."""
         return self._repo(repo, "GET", f"/pulls/{number}").json()
 
+    def pull_states(self, repo: str) -> dict[int, str]:
+        """Every PR GitHub lists for the repo by number: `open`, `merged`, or `closed` without a merge.
+        A PR older than the newest 3,000 is not listed, so a caller treats a missing number as unknown."""
+        states: dict[int, str] = {}
+        for pull in self._pages(repo, "/pulls", {"state": "all"}):
+            if pull.get("state") == "open":
+                states[int(pull["number"])] = "open"
+            else:
+                states[int(pull["number"])] = "merged" if pull.get("merged_at") else "closed"
+        return states
+
     def changed_files(self, repo: str, number: int) -> list[str]:
         """Every path the PR changes, a renamed file's old path included, sorted."""
         files: set[str] = set()
