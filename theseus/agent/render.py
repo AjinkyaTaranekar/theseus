@@ -29,7 +29,7 @@ DIAGRAM_NODES = 12  # more and the card's diagram draws only the most serious pa
 NAMES_PER_ACTION = 3
 RISKS = 5
 ANNOTATIONS = 50  # GitHub takes at most 50 per request
-CAPS = {"opened": 20, "unchanged": 30, "trace": 40, "unknowns": 20}
+CAPS = {"opened": 20, "unchanged": 8, "trace": 40, "unknowns": 20}
 SENSITIVE_RANK = {"regulated": 0, "confidential": 1}
 ACTIONS = (("create", "adds"), ("update", "updates"), ("delete", "deletes"))
 MODEL_NAMES = {"llm": "LLM", "jev": "Jev"}
@@ -641,8 +641,8 @@ def coverage_line(result: AnalysisResult) -> Md:
         common = sorted(cov.skipped_types.items(), key=lambda kv: (-kv[1], kv[0]))[:3]
         such_as = _names([f"{code(t)} ({n})" for t, n in common])
         line = (
-            f"Read {cov.resources} resources, modeled {cov.modeled}; skipped {skipped} of types Theseus"
-            f" does not model, such as {such_as}."
+            f"Read {cov.resources} resources: the {cov.modeled} that grant or hold access are in the graph,"
+            f" and the other {skipped} carry no access Theseus models, such as {such_as}."
         )
     else:
         line = f"Read {cov.resources} resources and modeled all of them."

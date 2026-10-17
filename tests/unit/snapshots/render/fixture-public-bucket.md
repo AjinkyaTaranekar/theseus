@@ -68,21 +68,8 @@ Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time
 | `user:casey-contractor` | `secret:smtp-credentials` | 3 |
 | `workflow:demo-org/docs-site/preview.yml` | `db:customer-db` | 4 |
 | `workflow:demo-org/docs-site/preview.yml` | `s3://demo-company-files/invoices/` | 3 |
-| `workflow:demo-org/docs-site/preview.yml` | `secret:prod-db-credentials` | 3 |
-| `workflow:demo-org/infra/deploy.yml` | `s3://demo-company-files/invoices/` | 2 |
-| `workflow:demo-org/infra/deploy.yml` | `secret:legacy-reports-password` | 2 |
-| `workflow:demo-org/infra/deploy.yml` | `secret:payments-api-key` | 2 |
-| `workflow:demo-org/infra/deploy.yml` | `secret:smtp-credentials` | 2 |
-| `workflow:demo-org/infra/snapshot.yml` | `db:customer-db` | 3 |
-| `workflow:demo-org/infra/snapshot.yml` | `s3://demo-company-files/invoices/` | 2 |
-| `workflow:demo-org/infra/snapshot.yml` | `secret:legacy-reports-password` | 2 |
-| `workflow:demo-org/infra/snapshot.yml` | `secret:payments-api-key` | 2 |
-| `workflow:demo-org/infra/snapshot.yml` | `secret:prod-db-credentials` | 2 |
-| `workflow:demo-org/infra/snapshot.yml` | `secret:smtp-credentials` | 2 |
-| `workload:invoice-mailer` | `secret:payments-api-key` | 2 |
-| `workload:receipt-renderer` | `secret:payments-api-key` | 2 |
-| `workload:support-portal` | `db:customer-db` | 3 |
-| `workload:support-portal` | `secret:prod-db-credentials` | 2 |
+
+and 15 more: every path is on the graph page.
 
 Coverage: not recorded.
 
