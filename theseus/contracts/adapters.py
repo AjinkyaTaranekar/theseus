@@ -15,6 +15,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import Field
 
+from theseus.contracts.posture import CostLine
 from theseus.contracts.result import Contract, EdgeRow, Evidence, GraphRows, PatchOp
 
 # What crosses the boundary ------------------------------------------------------------------------
@@ -149,6 +150,10 @@ class CloudAdapter(Protocol):
 
     def ops_schema(self) -> dict[str, Any]:
         """JSON schema of this cloud's ops, for the LLM's fix tool."""
+        ...
+
+    def monthly_cost(self, resources: list[IacResource]) -> list[CostLine]:
+        """An estimated monthly cost at list price for each resource this cloud can price (issue O3)."""
         ...
 
 
