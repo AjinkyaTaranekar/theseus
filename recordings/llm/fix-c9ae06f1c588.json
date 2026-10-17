@@ -1,0 +1,1171 @@
+{
+  "model": "openai/zai-org/GLM-5.3",
+  "ms": 2022,
+  "request": {
+    "messages": [
+      {
+        "content": "You design the smallest safe fix for an infrastructure pull request that opened dangerous access paths. You get the IAM configuration as resources with addresses and statement Sids, the requirements that must keep working (including what this PR is for), the dangerous paths the PR opened, and the result of a minimum-cut search. A deterministic engine applies your ops to a copy of the configuration and checks the result. It rejects a fix that leaves a dangerous path, opens a new one, breaks a requirement, breaks a code call, or relies on a condition it cannot evaluate. When the minimum cut says no permission can be removed without breaking a requirement, design a new, narrower role that grants exactly what the requirement needs, trusted only by the principal that needs it, and remove the access that opened the paths. Prefer that over granting permissions directly to a user. Use simulate_fix to test your ops before you submit. Use exact ARNs, least privilege, and no conditions. Do not change anything the requirements depend on. Cite evidence IDs in the rationale.",
+        "role": "system"
+      },
+      {
+        "content": "Context:\n{\"data\":[{\"category\":\"Database\",\"decided_by\":\"jev\",\"id\":\"db:customer-db\",\"props\":{\"address\":\"aws_db_instance.customer\",\"arn_pattern\":\"arn:aws:rds:eu-west-1:111122223333:db:customer-db\",\"kind\":\"db\"},\"sensitivity\":\"regulated\"},{\"category\":\"Database\",\"decided_by\":\"jev\",\"id\":\"dynamodb:demo-orders\",\"props\":{\"address\":\"aws_dynamodb_table.orders\",\"arn_pattern\":\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"kind\":\"dynamodb\"},\"sensitivity\":\"confidential\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/aws/lambda/analytics-export\",\"props\":{\"address\":\"aws_cloudwatch_log_group.analytics_export\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/aws/lambda/analytics-export\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/aws/lambda/billing-api\",\"props\":{\"address\":\"aws_cloudwatch_log_group.billing_api\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/aws/lambda/billing-api\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/aws/lambda/billing-job\",\"props\":{\"address\":\"aws_cloudwatch_log_group.billing_job\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/aws/lambda/billing-job\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/aws/lambda/support-portal\",\"props\":{\"address\":\"aws_cloudwatch_log_group.support_portal\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/aws/lambda/support-portal\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/ecs/orders-api\",\"props\":{\"address\":\"aws_cloudwatch_log_group.orders_api\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/ecs/orders-api\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"LogStore\",\"decided_by\":\"human\",\"id\":\"log-group:/ecs/orders-worker\",\"props\":{\"address\":\"aws_cloudwatch_log_group.orders_worker\",\"arn_pattern\":\"arn:aws:logs:eu-west-1:111122223333:log-group:/ecs/orders-worker\",\"kind\":\"log-group\"},\"sensitivity\":\"internal\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"jev\",\"id\":\"s3://demo-app-logs/\",\"props\":{\"address\":\"aws_s3_bucket.app_logs\",\"arn_pattern\":\"arn:aws:s3:::demo-app-logs/x\",\"kind\":\"s3\"},\"sensitivity\":\"internal\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"jev\",\"id\":\"s3://demo-company-files/invoices/\",\"props\":{\"address\":\"aws_s3_bucket.company_files\",\"arn_pattern\":\"arn:aws:s3:::demo-company-files/invoices/x\",\"kind\":\"s3\"},\"sensitivity\":\"confidential\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"jev\",\"id\":\"s3://demo-company-files/public/\",\"props\":{\"address\":\"aws_s3_bucket.company_files\",\"arn_pattern\":\"arn:aws:s3:::demo-company-files/public/x\",\"kind\":\"s3\"},\"sensitivity\":\"public\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"jev\",\"id\":\"s3://demo-data-lake/curated/\",\"props\":{\"address\":\"aws_s3_bucket.data_lake\",\"arn_pattern\":\"arn:aws:s3:::demo-data-lake/curated/x\",\"kind\":\"s3\"},\"sensitivity\":\"internal\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"human\",\"id\":\"s3://demo-data-lake/raw/\",\"props\":{\"address\":\"aws_s3_bucket.data_lake\",\"arn_pattern\":\"arn:aws:s3:::demo-data-lake/raw/x\",\"kind\":\"s3\"},\"sensitivity\":\"regulated\"},{\"category\":\"ObjectStorage\",\"decided_by\":\"human\",\"id\":\"s3://demo-terraform-state/\",\"props\":{\"address\":\"aws_s3_bucket.terraform_state\",\"arn_pattern\":\"arn:aws:s3:::demo-terraform-state/x\",\"kind\":\"s3\"},\"sensitivity\":\"regulated\"},{\"category\":\"Secret\",\"decided_by\":\"jev\",\"id\":\"secret:payments-api-key\",\"props\":{\"address\":\"aws_secretsmanager_secret.payments\",\"arn_pattern\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-AbCdEf\",\"kind\":\"secret\"},\"sensitivity\":\"regulated\"},{\"category\":\"Secret\",\"decided_by\":\"jev\",\"id\":\"secret:prod-db-credentials\",\"props\":{\"address\":\"aws_secretsmanager_secret.prod_db\",\"arn_pattern\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-AbCdEf\",\"kind\":\"secret\"},\"sensitivity\":\"regulated\"},{\"category\":\"MessageTopic\",\"decided_by\":\"human\",\"id\":\"sns:invoice-created\",\"props\":{\"address\":\"aws_sns_topic.invoice_created\",\"arn_pattern\":\"arn:aws:sns:eu-west-1:111122223333:invoice-created\",\"kind\":\"sns\"},\"sensitivity\":\"internal\"},{\"category\":\"MessageQueue\",\"decided_by\":\"human\",\"id\":\"sqs:order-events\",\"props\":{\"address\":\"aws_sqs_queue.order_events\",\"arn_pattern\":\"arn:aws:sqs:eu-west-1:111122223333:order-events\",\"kind\":\"sqs\"},\"sensitivity\":\"internal\"},{\"category\":\"MessageQueue\",\"decided_by\":\"human\",\"id\":\"sqs:order-events-dlq\",\"props\":{\"address\":\"aws_sqs_queue.order_events_dlq\",\"arn_pattern\":\"arn:aws:sqs:eu-west-1:111122223333:order-events-dlq\",\"kind\":\"sqs\"},\"sensitivity\":\"internal\"}],\"evidence\":{\"E36\":{\"address\":\"aws_secretsmanager_secret.prod_db\",\"file\":\"terraform/data.tf\",\"line\":31},\"E40\":{\"address\":\"aws_iam_group_policy.support_assume\",\"file\":\"terraform/people.tf\",\"line\":56,\"part\":\"AssumeProdSupport\"},\"E42\":{\"address\":\"aws_iam_user_group_membership.priya_support\",\"file\":\"terraform/people.tf\",\"line\":83},\"E47\":{\"address\":\"aws_iam_role_policy.prod_support_read\",\"file\":\"terraform/roles.tf\",\"line\":30,\"part\":\"ReadInvoices\"},\"E48\":{\"address\":\"aws_iam_role_policy.prod_support_read\",\"file\":\"terraform/roles.tf\",\"line\":36,\"part\":\"ReadDbSecret\"}},\"graphs\":{\"base\":\"fx__intern__base\",\"head\":\"fx__intern__head\"},\"min_cut\":{\"cut\":[{\"dst\":\"group:support-engineers\",\"evidence\":\"E42\",\"src\":\"user:priya-intern\",\"type\":\"MEMBER_OF\"}],\"cuttable\":false,\"sinks\":[\"db:customer-db\",\"s3://demo-company-files/invoices/\",\"secret:prod-db-credentials\"],\"sources\":[\"user:priya-intern\"],\"value\":1000000},\"opened\":[{\"actor\":\"user:priya-intern\",\"id\":\"pdc740e629215\",\"route\":[\"user:priya-intern\",\"group:support-engineers\",\"role:prod-support\",\"secret:prod-db-credentials\",\"db:customer-db\"],\"sensitivity\":\"regulated\",\"steps\":[{\"evidence\":\"E42\",\"from\":\"user:priya-intern\",\"grants\":[],\"to\":\"group:support-engineers\",\"type\":\"MEMBER_OF\"},{\"evidence\":\"E40\",\"from\":\"group:support-engineers\",\"grants\":[],\"to\":\"role:prod-support\",\"type\":\"CAN_ASSUME\"},{\"evidence\":\"E48\",\"from\":\"role:prod-support\",\"grants\":[\"read\"],\"to\":\"secret:prod-db-credentials\",\"type\":\"CAN\"},{\"evidence\":\"E36\",\"from\":\"secret:prod-db-credentials\",\"grants\":[\"read\",\"write\"],\"to\":\"db:customer-db\",\"type\":\"UNLOCKS\"}],\"target\":\"db:customer-db\",\"unknown\":false},{\"actor\":\"user:priya-intern\",\"id\":\"p02e1e314c807\",\"route\":[\"user:priya-intern\",\"group:support-engineers\",\"role:prod-support\",\"s3://demo-company-files/invoices/\"],\"sensitivity\":\"confidential\",\"steps\":[{\"evidence\":\"E42\",\"from\":\"user:priya-intern\",\"grants\":[],\"to\":\"group:support-engineers\",\"type\":\"MEMBER_OF\"},{\"evidence\":\"E40\",\"from\":\"group:support-engineers\",\"grants\":[],\"to\":\"role:prod-support\",\"type\":\"CAN_ASSUME\"},{\"evidence\":\"E47\",\"from\":\"role:prod-support\",\"grants\":[\"read\"],\"to\":\"s3://demo-company-files/invoices/\",\"type\":\"CAN\"}],\"target\":\"s3://demo-company-files/invoices/\",\"unknown\":false},{\"actor\":\"user:priya-intern\",\"id\":\"p2d4b361116c7\",\"route\":[\"user:priya-intern\",\"group:support-engineers\",\"role:prod-support\",\"secret:prod-db-credentials\"],\"sensitivity\":\"regulated\",\"steps\":[{\"evidence\":\"E42\",\"from\":\"user:priya-intern\",\"grants\":[],\"to\":\"group:support-engineers\",\"type\":\"MEMBER_OF\"},{\"evidence\":\"E40\",\"from\":\"group:support-engineers\",\"grants\":[],\"to\":\"role:prod-support\",\"type\":\"CAN_ASSUME\"},{\"evidence\":\"E48\",\"from\":\"role:prod-support\",\"grants\":[\"read\"],\"to\":\"secret:prod-db-credentials\",\"type\":\"CAN\"}],\"target\":\"secret:prod-db-credentials\",\"unknown\":false}],\"principals\":[{\"id\":\"group:support-engineers\",\"props\":{\"address\":\"aws_iam_group.support\",\"arn\":\"arn:aws:iam::111122223333:group/support-engineers\"}},{\"id\":\"role:prod-support\",\"props\":{\"address\":\"aws_iam_role.prod_support\",\"arn\":\"arn:aws:iam::111122223333:role/prod-support\"}},{\"id\":\"user:alex-analyst\",\"props\":{\"address\":\"aws_iam_user.alex\",\"arn\":\"arn:aws:iam::111122223333:user/alex-analyst\"}},{\"id\":\"user:jordan-platform\",\"props\":{\"address\":\"aws_iam_user.jordan\",\"arn\":\"arn:aws:iam::111122223333:user/jordan-platform\"}},{\"id\":\"user:priya-intern\",\"props\":{\"address\":\"aws_iam_user.priya\",\"arn\":\"arn:aws:iam::111122223333:user/priya-intern\"}},{\"id\":\"user:sam-support\",\"props\":{\"address\":\"aws_iam_user.sam\",\"arn\":\"arn:aws:iam::111122223333:user/sam-support\"}},{\"id\":\"workflow:demo-org/infra/deploy.yml\",\"props\":{\"file\":\"workflows/demo-org/infra/deploy.yml\",\"id_token\":true,\"repo\":\"demo-org/infra\",\"subs\":[\"repo:demo-org/infra:environment:production\",\"repo:demo-org/infra:ref:refs/heads/main\"]}},{\"id\":\"workload:analytics-export\",\"props\":{\"address\":\"aws_lambda_function.analytics_export\",\"code_path\":\"services/analytics_export\",\"runtime\":\"lambda\"}},{\"id\":\"workload:billing-api\",\"props\":{\"address\":\"aws_lambda_function.billing_api\",\"code_path\":\"services/billing_api\",\"runtime\":\"lambda\"}},{\"id\":\"workload:billing-job\",\"props\":{\"address\":\"aws_lambda_function.billing_job\",\"code_path\":\"services/billing_job\",\"runtime\":\"lambda\"}},{\"id\":\"workload:orders-api\",\"props\":{\"address\":\"aws_ecs_service.orders_api\",\"code_path\":\"services/orders_api\",\"runtime\":\"ecs\"}},{\"id\":\"workload:orders-worker\",\"props\":{\"address\":\"aws_ecs_service.orders_worker\",\"code_path\":\"services/orders_worker\",\"runtime\":\"ecs\"}}],\"requirements\":[{\"access\":\"read\",\"approved\":true,\"id\":\"R1\",\"principal\":\"user:sam-support\",\"resource\":\"s3://demo-app-logs/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R10\",\"principal\":\"workload:orders-api\",\"resource\":\"dynamodb:demo-orders\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R11\",\"principal\":\"workload:orders-worker\",\"resource\":\"dynamodb:demo-orders\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R12\",\"principal\":\"workload:analytics-export\",\"resource\":\"dynamodb:demo-orders\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R13\",\"principal\":\"workload:analytics-export\",\"resource\":\"s3://demo-data-lake/raw/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R14\",\"principal\":\"workload:analytics-export\",\"resource\":\"s3://demo-data-lake/curated/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R15\",\"principal\":\"user:alex-analyst\",\"resource\":\"s3://demo-data-lake/curated/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R16\",\"principal\":\"user:jordan-platform\",\"resource\":\"s3://demo-app-logs/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R17\",\"principal\":\"workflow:demo-org/infra/deploy.yml\",\"resource\":\"s3://demo-terraform-state/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R2\",\"principal\":\"user:sam-support\",\"resource\":\"s3://demo-company-files/invoices/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R3\",\"principal\":\"user:sam-support\",\"resource\":\"db:customer-db\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R4\",\"principal\":\"workflow:demo-org/infra/deploy.yml\",\"resource\":\"db:customer-db\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R5\",\"principal\":\"workflow:demo-org/infra/deploy.yml\",\"resource\":\"s3://demo-company-files/public/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R6\",\"principal\":\"workload:billing-api\",\"resource\":\"db:customer-db\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"write\",\"approved\":true,\"id\":\"R7\",\"principal\":\"workload:billing-job\",\"resource\":\"s3://demo-company-files/invoices/\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R8\",\"principal\":\"workload:billing-job\",\"resource\":\"dynamodb:demo-orders\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"R9\",\"principal\":\"workload:billing-job\",\"resource\":\"secret:payments-api-key\",\"source\":\"config\",\"status\":\"satisfied\"},{\"access\":\"read\",\"approved\":true,\"id\":\"I1\",\"principal\":\"user:priya-intern\",\"resource\":\"s3://demo-app-logs/\",\"source\":\"intent\",\"status\":\"satisfied\"}],\"resources\":[{\"address\":\"aws_iam_group_policy.analysts_assume\",\"type\":\"aws_iam_group_policy\",\"values\":{\"group\":\"data-analysts\",\"name\":\"assume-analytics-read\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRole\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:iam::111122223333:role/analytics-read\\\",\\\"Sid\\\":\\\"AssumeAnalyticsRead\\\"}]}\"}},{\"address\":\"aws_iam_group_policy.support_assume\",\"type\":\"aws_iam_group_policy\",\"values\":{\"group\":\"support-engineers\",\"name\":\"assume-prod-support\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRole\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:iam::111122223333:role/prod-support\\\",\\\"Sid\\\":\\\"AssumeProdSupport\\\"}]}\"}},{\"address\":\"aws_iam_policy.app_logs_read\",\"type\":\"aws_iam_policy\",\"values\":{\"name\":\"app-logs-read\",\"path\":\"/\",\"policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":[\\\"s3:GetObject\\\",\\\"s3:ListBucket\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":[\\\"arn:aws:s3:::demo-app-logs/*\\\",\\\"arn:aws:s3:::demo-app-logs\\\"],\\\"Sid\\\":\\\"ReadAppLogs\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_policy.data_lake_curated_read\",\"type\":\"aws_iam_policy\",\"values\":{\"name\":\"data-lake-curated-read\",\"path\":\"/\",\"policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":\\\"s3:GetObject\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-data-lake/curated/*\\\",\\\"Sid\\\":\\\"ReadCurated\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_policy.orders_table_rw\",\"type\":\"aws_iam_policy\",\"values\":{\"name\":\"orders-table-rw\",\"path\":\"/\",\"policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":[\\\"dynamodb:GetItem\\\",\\\"dynamodb:Query\\\",\\\"dynamodb:PutItem\\\",\\\"dynamodb:UpdateItem\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":[\\\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\\\",\\\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\\\"],\\\"Sid\\\":\\\"OrdersTableReadWrite\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_role.analytics_read\",\"type\":\"aws_iam_role\",\"values\":{\"assume_role_policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRole\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"AWS\\\":\\\"arn:aws:iam::111122223333:root\\\"},\\\"Sid\\\":\\\"TrustAccountPrincipals\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"force_detach_policies\":false,\"max_session_duration\":3600,\"name\":\"analytics-read\",\"path\":\"/\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_role.github_deploy\",\"type\":\"aws_iam_role\",\"values\":{\"assume_role_policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRoleWithWebIdentity\\\",\\\"Condition\\\":{\\\"StringEquals\\\":{\\\"token.actions.githubusercontent.com:aud\\\":\\\"sts.amazonaws.com\\\"},\\\"StringLike\\\":{\\\"token.actions.githubusercontent.com:sub\\\":\\\"repo:demo-org/*\\\"}},\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Federated\\\":\\\"arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com\\\"},\\\"Sid\\\":\\\"GitHubActionsOIDC\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"force_detach_policies\":false,\"max_session_duration\":3600,\"name\":\"github-deploy\",\"path\":\"/\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_role.prod_support\",\"type\":\"aws_iam_role\",\"values\":{\"assume_role_policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRole\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"AWS\\\":\\\"arn:aws:iam::111122223333:root\\\"},\\\"Sid\\\":\\\"TrustAccountPrincipals\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"force_detach_policies\":false,\"max_session_duration\":3600,\"name\":\"prod-support\",\"path\":\"/\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_role.terraform_apply\",\"type\":\"aws_iam_role\",\"values\":{\"assume_role_policy\":\"{\\\"Statement\\\":[{\\\"Action\\\":\\\"sts:AssumeRoleWithWebIdentity\\\",\\\"Condition\\\":{\\\"StringEquals\\\":{\\\"token.actions.githubusercontent.com:aud\\\":\\\"sts.amazonaws.com\\\",\\\"token.actions.githubusercontent.com:sub\\\":\\\"repo:demo-org/infra:environment:production\\\"}},\\\"Effect\\\":\\\"Allow\\\",\\\"Principal\\\":{\\\"Federated\\\":\\\"arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com\\\"},\\\"Sid\\\":\\\"GitHubActionsOIDC\\\"}],\\\"Version\\\":\\\"2012-10-17\\\"}\",\"force_detach_policies\":false,\"max_session_duration\":3600,\"name\":\"terraform-apply\",\"path\":\"/\",\"tags_all\":{\"Environment\":\"prod\",\"Project\":\"demo-store\"}}},{\"address\":\"aws_iam_role_policy.analytics_export\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"analytics-export\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"dynamodb:Scan\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\\\",\\\"Sid\\\":\\\"ReadOrders\\\"},{\\\"Action\\\":[\\\"s3:PutObject\\\",\\\"s3:GetObject\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-data-lake/raw/*\\\",\\\"Sid\\\":\\\"RawZone\\\"},{\\\"Action\\\":\\\"s3:PutObject\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-data-lake/curated/*\\\",\\\"Sid\\\":\\\"CuratedZone\\\"}]}\",\"role\":\"analytics-export\"}},{\"address\":\"aws_iam_role_policy.billing_api\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"billing-api\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"secretsmanager:GetSecretValue\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-*\\\",\\\"Sid\\\":\\\"ReadDbSecret\\\"}]}\",\"role\":\"billing-api\"}},{\"address\":\"aws_iam_role_policy.billing_job\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"billing-job\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"s3:PutObject\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-company-files/invoices/*\\\",\\\"Sid\\\":\\\"WriteInvoices\\\"},{\\\"Action\\\":\\\"secretsmanager:GetSecretValue\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\\\",\\\"Sid\\\":\\\"ReadPaymentsKey\\\"},{\\\"Action\\\":\\\"dynamodb:Query\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":[\\\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\\\",\\\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders/index/*\\\"],\\\"Sid\\\":\\\"ReadOrders\\\"},{\\\"Action\\\":\\\"sns:Publish\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:sns:eu-west-1:111122223333:invoice-created\\\",\\\"Sid\\\":\\\"AnnounceInvoices\\\"}]}\",\"role\":\"billing-job\"}},{\"address\":\"aws_iam_role_policy.github_deploy\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"github-deploy\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"s3:PutObject\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-company-files/public/*\\\",\\\"Sid\\\":\\\"PublishSite\\\"},{\\\"Action\\\":\\\"sts:AssumeRole\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:iam::111122223333:role/prod-support\\\",\\\"Sid\\\":\\\"AssumeProdSupportForMigrations\\\"}]}\",\"role\":\"github-deploy\"}},{\"address\":\"aws_iam_role_policy.orders_api_events\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"orders-api-events\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"sqs:SendMessage\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:sqs:eu-west-1:111122223333:order-events\\\",\\\"Sid\\\":\\\"SendOrderEvents\\\"}]}\",\"role\":\"orders-api-task\"}},{\"address\":\"aws_iam_role_policy.orders_worker_events\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"orders-worker-events\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":[\\\"sqs:ReceiveMessage\\\",\\\"sqs:DeleteMessage\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:sqs:eu-west-1:111122223333:order-events\\\",\\\"Sid\\\":\\\"ConsumeOrderEvents\\\"}]}\",\"role\":\"orders-worker-task\"}},{\"address\":\"aws_iam_role_policy.prod_support_read\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"prod-support-read\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":[\\\"s3:GetObject\\\",\\\"s3:ListBucket\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":[\\\"arn:aws:s3:::demo-app-logs\\\",\\\"arn:aws:s3:::demo-app-logs/*\\\"],\\\"Sid\\\":\\\"ReadLogs\\\"},{\\\"Action\\\":\\\"s3:GetObject\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:s3:::demo-company-files/invoices/*\\\",\\\"Sid\\\":\\\"ReadInvoices\\\"},{\\\"Action\\\":\\\"secretsmanager:GetSecretValue\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-*\\\",\\\"Sid\\\":\\\"ReadDbSecret\\\"}]}\",\"role\":\"prod-support\"}},{\"address\":\"aws_iam_role_policy.support_portal\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"support-portal\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":\\\"secretsmanager:GetSecretValue\\\",\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-*\\\",\\\"Sid\\\":\\\"LegacyDbSecret\\\"}]}\",\"role\":\"support-portal\"}},{\"address\":\"aws_iam_role_policy.terraform_apply\",\"type\":\"aws_iam_role_policy\",\"values\":{\"name\":\"terraform-apply\",\"policy\":\"{\\\"Version\\\":\\\"2012-10-17\\\",\\\"Statement\\\":[{\\\"Action\\\":[\\\"s3:GetObject\\\",\\\"s3:PutObject\\\",\\\"s3:DeleteObject\\\",\\\"s3:ListBucket\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":[\\\"arn:aws:s3:::demo-terraform-state/*\\\",\\\"arn:aws:s3:::demo-terraform-state\\\"],\\\"Sid\\\":\\\"TerraformState\\\"},{\\\"Action\\\":[\\\"iam:*\\\",\\\"lambda:*\\\",\\\"ecs:*\\\",\\\"ec2:*\\\",\\\"rds:*\\\",\\\"sqs:*\\\",\\\"sns:*\\\",\\\"kms:*\\\",\\\"logs:*\\\",\\\"events:*\\\",\\\"ecr:*\\\",\\\"route53:*\\\",\\\"apigateway:*\\\",\\\"dynamodb:CreateTable\\\",\\\"dynamodb:Describe*\\\",\\\"dynamodb:UpdateTable\\\",\\\"dynamodb:TagResource\\\",\\\"s3:CreateBucket\\\",\\\"s3:GetBucket*\\\",\\\"s3:PutBucket*\\\",\\\"secretsmanager:CreateSecret\\\",\\\"secretsmanager:DescribeSecret\\\",\\\"secretsmanager:TagResource\\\"],\\\"Effect\\\":\\\"Allow\\\",\\\"Resource\\\":\\\"*\\\",\\\"Sid\\\":\\\"ApplyInfra\\\"}]}\",\"role\":\"terraform-apply\"}},{\"address\":\"aws_iam_role_policy_attachment.analytics_export_logs\",\"type\":\"aws_iam_role_policy_attachment\",\"values\":{\"policy_arn\":\"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\",\"role\":\"analytics-export\"}},{\"address\":\"aws_iam_role_policy_attachment.billing_api_logs\",\"type\":\"aws_iam_role_policy_attachment\",\"values\":{\"policy_arn\":\"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\",\"role\":\"billing-api\"}},{\"address\":\"aws_iam_role_policy_attachment.billing_job_logs\",\"type\":\"aws_iam_role_policy_attachment\",\"values\":{\"policy_arn\":\"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\",\"role\":\"billing-job\"}},{\"address\":\"aws_iam_role_policy_attachment.ecs_task_execution\",\"type\":\"aws_iam_role_policy_attachment\",\"values\":{\"policy_arn\":\"arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy\",\"role\":\"ecs-task-execution\"}},{\"address\":\"aws_iam_role_policy_attachment.support_portal_logs\",\"type\":\"aws_iam_role_policy_attachment\",\"values\":{\"policy_arn\":\"arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole\",\"role\":\"support-portal\"}},{\"address\":\"aws_iam_user_group_membership.alex_analysts\",\"type\":\"aws_iam_user_group_membership\",\"values\":{\"groups\":[\"data-analysts\"],\"user\":\"alex-analyst\"}},{\"address\":\"aws_iam_user_group_membership.jordan_platform\",\"type\":\"aws_iam_user_group_membership\",\"values\":{\"groups\":[\"platform-engineers\"],\"user\":\"jordan-platform\"}},{\"address\":\"aws_iam_user_group_membership.priya_support\",\"type\":\"aws_iam_user_group_membership\",\"values\":{\"groups\":[\"support-engineers\"],\"user\":\"priya-intern\"}},{\"address\":\"aws_iam_user_group_membership.sam_support\",\"type\":\"aws_iam_user_group_membership\",\"values\":{\"groups\":[\"support-engineers\"],\"user\":\"sam-support\"}}]}\n\nCall the tools one at a time, at most 8 calls in all, then call submit_fix. Pass graph names from graphs. Evidence IDs such as E3 are listed in evidence; tool results use the same IDs.",
+        "role": "user"
+      },
+      {
+        "content": "I'll analyze the situation: the PR added `priya-intern` to the `support-engineers` group (E42), which lets her assume `prod-support` (E40) and reach the regulated DB credentials secret (E48), the customer DB, and confidential invoices (E47). The min-cut says the membership edge is the only separator, but it's not cuttable because requirement I1 (priya reads app-logs) depends on it \u2014 she currently gets that via `prod-support`'s ReadLogs statement. So per the min-cut guidance, I'll create a narrow role granting exactly the app-logs read, trusted only by priya, plus the assume grant, and remove her group membership.",
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "function": {
+              "arguments": "{\"candidate_id\":\"B\",\"graph\":\"fx__intern__head\",\"ops\":[{\"args\":{\"name\":\"priya-logs-read\",\"statements\":[{\"actions\":[\"s3:GetObject\",\"s3:ListBucket\"],\"effect\":\"Allow\",\"resources\":[\"arn:aws:s3:::demo-app-logs\",\"arn:aws:s3:::demo-app-logs/*\"],\"sid\":\"ReadLogs\"}],\"trust_principals\":[\"user:priya-intern\"]},\"op\":\"add_role\",\"provider\":\"aws\"},{\"args\":{\"principal\":\"user:priya-intern\",\"statements\":[{\"actions\":[\"sts:AssumeRole\"],\"effect\":\"Allow\",\"resources\":[\"arn:aws:iam::111122223333:role/priya-logs-read\"],\"sid\":\"AssumePriyaLogsRead\"}]},\"op\":\"add_policy\",\"provider\":\"aws\"},{\"args\":{\"group\":\"support-engineers\",\"user\":\"priya-intern\"},\"op\":\"remove_membership\",\"provider\":\"aws\"}]}",
+              "name": "simulate_fix"
+            },
+            "id": "call_1",
+            "type": "function"
+          }
+        ]
+      },
+      {
+        "content": "{\"calls_broken\":[],\"id\":\"B\",\"needs_closer_look\":false,\"new_paths\":[],\"ops\":[{\"args\":{\"name\":\"priya-logs-read\",\"statements\":[{\"actions\":[\"s3:GetObject\",\"s3:ListBucket\"],\"effect\":\"Allow\",\"resources\":[\"arn:aws:s3:::demo-app-logs\",\"arn:aws:s3:::demo-app-logs/*\"],\"sid\":\"ReadLogs\"}],\"trust_principals\":[\"user:priya-intern\"]},\"op\":\"add_role\",\"provider\":\"aws\"},{\"args\":{\"principal\":\"user:priya-intern\",\"statements\":[{\"actions\":[\"sts:AssumeRole\"],\"effect\":\"Allow\",\"resources\":[\"arn:aws:iam::111122223333:role/priya-logs-read\"],\"sid\":\"AssumePriyaLogsRead\"}]},\"op\":\"add_policy\",\"provider\":\"aws\"},{\"args\":{\"group\":\"support-engineers\",\"user\":\"priya-intern\"},\"op\":\"remove_membership\",\"provider\":\"aws\"}],\"paths_left\":[],\"proposed_by\":\"agent\",\"ranking_facts\":{\"adds_broad_wildcard\":true,\"permissions_removed\":0,\"unknown_steps\":0},\"reason\":\"Requested dangerous paths are closed; no new dangerous path or loss of required access.\",\"recommended\":false,\"requirements_broken\":[],\"source\":\"llm\",\"title\":\"Candidate B\",\"unknown\":[],\"verdict\":\"pass\"}",
+        "role": "tool",
+        "tool_call_id": "call_1"
+      }
+    ],
+    "model": "openai/zai-org/GLM-5.3",
+    "tool_choice": "auto",
+    "tools": [
+      {
+        "function": {
+          "description": "The path the engine reports from an actor to a target, one step per edge, each step with the evidence (file, line, the piece of the resource) that makes it exist. Found false when there is no path.",
+          "name": "explain_path",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "actor": {
+                "description": "Node ID the path starts at.",
+                "title": "Actor",
+                "type": "string"
+              },
+              "graph": {
+                "description": "Name of a loaded graph.",
+                "title": "Graph",
+                "type": "string"
+              },
+              "target": {
+                "description": "Node ID the path ends at.",
+                "title": "Target",
+                "type": "string"
+              }
+            },
+            "required": [
+              "graph",
+              "actor",
+              "target"
+            ],
+            "title": "_ExplainPath",
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "The shortest valid route from one node to another (a certain route before an unknown one), or null.",
+          "name": "shortest_route",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "graph": {
+                "description": "Name of a loaded graph.",
+                "title": "Graph",
+                "type": "string"
+              },
+              "source": {
+                "description": "Node ID the route starts at.",
+                "title": "Source",
+                "type": "string"
+              },
+              "target": {
+                "description": "Node ID the route ends at.",
+                "title": "Target",
+                "type": "string"
+              }
+            },
+            "required": [
+              "graph",
+              "source",
+              "target"
+            ],
+            "title": "_ShortestRoute",
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "The fewest edges to remove so the sources reach none of their dangerous targets without losing an access a requirement needs: its size (value), whether it can be cut, and the edges with evidence.",
+          "name": "min_cut",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "graph": {
+                "description": "Name of a loaded graph.",
+                "title": "Graph",
+                "type": "string"
+              },
+              "sinks": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Targets to cut off. Default: every dangerous target of the sources.",
+                "title": "Sinks"
+              },
+              "sources": {
+                "description": "Node IDs to start from.",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1,
+                "title": "Sources",
+                "type": "array"
+              }
+            },
+            "required": [
+              "graph",
+              "sources"
+            ],
+            "title": "_MinCut",
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Each requirement (an access the infrastructure must keep granting) and whether it is satisfied, missing or unknown in this graph.",
+          "name": "check_requirements",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "graph": {
+                "description": "Name of a loaded graph.",
+                "title": "Graph",
+                "type": "string"
+              }
+            },
+            "required": [
+              "graph"
+            ],
+            "title": "_Graph",
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Try a fix on a copy of the head graph: apply the patch operations, re-analyze, and return the candidate with its verdict (pass, fail, unknown or invalid), the paths left, and what it would break. The only tool that writes, and it only adds the copy.",
+          "name": "simulate_fix",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "graph": {
+                "description": "Name of a loaded graph.",
+                "title": "Graph",
+                "type": "string"
+              },
+              "ops": {
+                "description": "The patch operations, from the cloud's op catalog.",
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "group": {
+                              "description": "The group's name alone, such as developers; not a node ID or an ARN.",
+                              "title": "Group",
+                              "type": "string"
+                            },
+                            "user": {
+                              "description": "The user's name alone, such as jane; not a node ID or an ARN.",
+                              "title": "User",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "group"
+                          ],
+                          "title": "AddMembership",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_membership"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Adds an inline policy to a principal (`user:`, `group:` or `role:` ID).",
+                          "properties": {
+                            "principal": {
+                              "description": "The principal's node ID: user:<name>, group:<name> or role:<name>.",
+                              "title": "Principal",
+                              "type": "string"
+                            },
+                            "statements": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "actions": {
+                                    "description": "IAM actions, such as s3:GetObject.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Actions",
+                                    "type": "array"
+                                  },
+                                  "condition": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "description": "One IAM condition: an operator, a key and a value or list of values.",
+                                        "properties": {
+                                          "key": {
+                                            "title": "Key",
+                                            "type": "string"
+                                          },
+                                          "op": {
+                                            "title": "Op",
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "items": {
+                                                  "type": "string"
+                                                },
+                                                "type": "array"
+                                              }
+                                            ],
+                                            "title": "Value"
+                                          }
+                                        },
+                                        "required": [
+                                          "op",
+                                          "key",
+                                          "value"
+                                        ],
+                                        "title": "Condition",
+                                        "type": "object"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "effect": {
+                                    "enum": [
+                                      "Allow",
+                                      "Deny"
+                                    ],
+                                    "title": "Effect",
+                                    "type": "string"
+                                  },
+                                  "resources": {
+                                    "description": "Exact ARNs.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Resources",
+                                    "type": "array"
+                                  },
+                                  "sid": {
+                                    "description": "A Sid for the statement, unique in its policy.",
+                                    "title": "Sid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "sid",
+                                  "effect",
+                                  "actions",
+                                  "resources"
+                                ],
+                                "title": "Statement",
+                                "type": "object"
+                              },
+                              "title": "Statements",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "principal",
+                            "statements"
+                          ],
+                          "title": "AddPolicy",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_policy"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Adds a role trusted only by these principals, with an inline policy.",
+                          "properties": {
+                            "name": {
+                              "description": "The new role's name, unused by any other role.",
+                              "title": "Name",
+                              "type": "string"
+                            },
+                            "statements": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "actions": {
+                                    "description": "IAM actions, such as s3:GetObject.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Actions",
+                                    "type": "array"
+                                  },
+                                  "condition": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "description": "One IAM condition: an operator, a key and a value or list of values.",
+                                        "properties": {
+                                          "key": {
+                                            "title": "Key",
+                                            "type": "string"
+                                          },
+                                          "op": {
+                                            "title": "Op",
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "items": {
+                                                  "type": "string"
+                                                },
+                                                "type": "array"
+                                              }
+                                            ],
+                                            "title": "Value"
+                                          }
+                                        },
+                                        "required": [
+                                          "op",
+                                          "key",
+                                          "value"
+                                        ],
+                                        "title": "Condition",
+                                        "type": "object"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "effect": {
+                                    "enum": [
+                                      "Allow",
+                                      "Deny"
+                                    ],
+                                    "title": "Effect",
+                                    "type": "string"
+                                  },
+                                  "resources": {
+                                    "description": "Exact ARNs.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Resources",
+                                    "type": "array"
+                                  },
+                                  "sid": {
+                                    "description": "A Sid for the statement, unique in its policy.",
+                                    "title": "Sid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "sid",
+                                  "effect",
+                                  "actions",
+                                  "resources"
+                                ],
+                                "title": "Statement",
+                                "type": "object"
+                              },
+                              "title": "Statements",
+                              "type": "array"
+                            },
+                            "trust_principals": {
+                              "description": "Node IDs of the principals the role trusts: user:<name> or role:<name>, not ARNs.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Trust Principals",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "trust_principals",
+                            "statements"
+                          ],
+                          "title": "AddRole",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_role"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "group": {
+                              "description": "The group's name alone, such as developers; not a node ID or an ARN.",
+                              "title": "Group",
+                              "type": "string"
+                            },
+                            "user": {
+                              "description": "The user's name alone, such as jane; not a node ID or an ARN.",
+                              "title": "User",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "group"
+                          ],
+                          "title": "RemoveMembership",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "remove_membership"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Removes the statement with that Sid from an inline policy or an aws_iam_policy.",
+                          "properties": {
+                            "policy_address": {
+                              "description": "The policy resource's address, such as aws_iam_role_policy.app_read.",
+                              "title": "Policy Address",
+                              "type": "string"
+                            },
+                            "sid": {
+                              "description": "The statement's Sid.",
+                              "title": "Sid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "policy_address",
+                            "sid"
+                          ],
+                          "title": "RemoveStatement",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "remove_statement"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Replaces the role's OIDC `sub` condition with StringLike on these patterns.",
+                          "properties": {
+                            "patterns": {
+                              "description": "OIDC sub patterns, such as repo:org/app:ref:refs/heads/main.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Patterns",
+                              "type": "array"
+                            },
+                            "role": {
+                              "description": "The role's name alone, such as deploy.",
+                              "title": "Role",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "role",
+                            "patterns"
+                          ],
+                          "title": "SetOidcSub",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "set_oidc_sub"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "policy_address": {
+                              "description": "The policy resource's address, such as aws_iam_role_policy.app_read.",
+                              "title": "Policy Address",
+                              "type": "string"
+                            },
+                            "resources": {
+                              "description": "Exact ARNs.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Resources",
+                              "type": "array"
+                            },
+                            "sid": {
+                              "description": "The statement's Sid.",
+                              "title": "Sid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "policy_address",
+                            "sid",
+                            "resources"
+                          ],
+                          "title": "SetStatementResources",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "set_statement_resources"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "title": "Ops",
+                "type": "array"
+              }
+            },
+            "required": [
+              "graph",
+              "ops"
+            ],
+            "title": "_SimulateFix",
+            "type": "object"
+          }
+        },
+        "type": "function"
+      },
+      {
+        "function": {
+          "description": "Submit your fix: the patch operations, and why they work.",
+          "name": "submit_fix",
+          "parameters": {
+            "additionalProperties": false,
+            "properties": {
+              "ops": {
+                "items": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "group": {
+                              "description": "The group's name alone, such as developers; not a node ID or an ARN.",
+                              "title": "Group",
+                              "type": "string"
+                            },
+                            "user": {
+                              "description": "The user's name alone, such as jane; not a node ID or an ARN.",
+                              "title": "User",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "group"
+                          ],
+                          "title": "AddMembership",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_membership"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Adds an inline policy to a principal (`user:`, `group:` or `role:` ID).",
+                          "properties": {
+                            "principal": {
+                              "description": "The principal's node ID: user:<name>, group:<name> or role:<name>.",
+                              "title": "Principal",
+                              "type": "string"
+                            },
+                            "statements": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "actions": {
+                                    "description": "IAM actions, such as s3:GetObject.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Actions",
+                                    "type": "array"
+                                  },
+                                  "condition": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "description": "One IAM condition: an operator, a key and a value or list of values.",
+                                        "properties": {
+                                          "key": {
+                                            "title": "Key",
+                                            "type": "string"
+                                          },
+                                          "op": {
+                                            "title": "Op",
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "items": {
+                                                  "type": "string"
+                                                },
+                                                "type": "array"
+                                              }
+                                            ],
+                                            "title": "Value"
+                                          }
+                                        },
+                                        "required": [
+                                          "op",
+                                          "key",
+                                          "value"
+                                        ],
+                                        "title": "Condition",
+                                        "type": "object"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "effect": {
+                                    "enum": [
+                                      "Allow",
+                                      "Deny"
+                                    ],
+                                    "title": "Effect",
+                                    "type": "string"
+                                  },
+                                  "resources": {
+                                    "description": "Exact ARNs.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Resources",
+                                    "type": "array"
+                                  },
+                                  "sid": {
+                                    "description": "A Sid for the statement, unique in its policy.",
+                                    "title": "Sid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "sid",
+                                  "effect",
+                                  "actions",
+                                  "resources"
+                                ],
+                                "title": "Statement",
+                                "type": "object"
+                              },
+                              "title": "Statements",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "principal",
+                            "statements"
+                          ],
+                          "title": "AddPolicy",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_policy"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Adds a role trusted only by these principals, with an inline policy.",
+                          "properties": {
+                            "name": {
+                              "description": "The new role's name, unused by any other role.",
+                              "title": "Name",
+                              "type": "string"
+                            },
+                            "statements": {
+                              "items": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "actions": {
+                                    "description": "IAM actions, such as s3:GetObject.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Actions",
+                                    "type": "array"
+                                  },
+                                  "condition": {
+                                    "anyOf": [
+                                      {
+                                        "additionalProperties": false,
+                                        "description": "One IAM condition: an operator, a key and a value or list of values.",
+                                        "properties": {
+                                          "key": {
+                                            "title": "Key",
+                                            "type": "string"
+                                          },
+                                          "op": {
+                                            "title": "Op",
+                                            "type": "string"
+                                          },
+                                          "value": {
+                                            "anyOf": [
+                                              {
+                                                "type": "string"
+                                              },
+                                              {
+                                                "items": {
+                                                  "type": "string"
+                                                },
+                                                "type": "array"
+                                              }
+                                            ],
+                                            "title": "Value"
+                                          }
+                                        },
+                                        "required": [
+                                          "op",
+                                          "key",
+                                          "value"
+                                        ],
+                                        "title": "Condition",
+                                        "type": "object"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ],
+                                    "default": null
+                                  },
+                                  "effect": {
+                                    "enum": [
+                                      "Allow",
+                                      "Deny"
+                                    ],
+                                    "title": "Effect",
+                                    "type": "string"
+                                  },
+                                  "resources": {
+                                    "description": "Exact ARNs.",
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "title": "Resources",
+                                    "type": "array"
+                                  },
+                                  "sid": {
+                                    "description": "A Sid for the statement, unique in its policy.",
+                                    "title": "Sid",
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "sid",
+                                  "effect",
+                                  "actions",
+                                  "resources"
+                                ],
+                                "title": "Statement",
+                                "type": "object"
+                              },
+                              "title": "Statements",
+                              "type": "array"
+                            },
+                            "trust_principals": {
+                              "description": "Node IDs of the principals the role trusts: user:<name> or role:<name>, not ARNs.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Trust Principals",
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "trust_principals",
+                            "statements"
+                          ],
+                          "title": "AddRole",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "add_role"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "group": {
+                              "description": "The group's name alone, such as developers; not a node ID or an ARN.",
+                              "title": "Group",
+                              "type": "string"
+                            },
+                            "user": {
+                              "description": "The user's name alone, such as jane; not a node ID or an ARN.",
+                              "title": "User",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "user",
+                            "group"
+                          ],
+                          "title": "RemoveMembership",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "remove_membership"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Removes the statement with that Sid from an inline policy or an aws_iam_policy.",
+                          "properties": {
+                            "policy_address": {
+                              "description": "The policy resource's address, such as aws_iam_role_policy.app_read.",
+                              "title": "Policy Address",
+                              "type": "string"
+                            },
+                            "sid": {
+                              "description": "The statement's Sid.",
+                              "title": "Sid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "policy_address",
+                            "sid"
+                          ],
+                          "title": "RemoveStatement",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "remove_statement"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "description": "Replaces the role's OIDC `sub` condition with StringLike on these patterns.",
+                          "properties": {
+                            "patterns": {
+                              "description": "OIDC sub patterns, such as repo:org/app:ref:refs/heads/main.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Patterns",
+                              "type": "array"
+                            },
+                            "role": {
+                              "description": "The role's name alone, such as deploy.",
+                              "title": "Role",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "role",
+                            "patterns"
+                          ],
+                          "title": "SetOidcSub",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "set_oidc_sub"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "policy_address": {
+                              "description": "The policy resource's address, such as aws_iam_role_policy.app_read.",
+                              "title": "Policy Address",
+                              "type": "string"
+                            },
+                            "resources": {
+                              "description": "Exact ARNs.",
+                              "items": {
+                                "type": "string"
+                              },
+                              "title": "Resources",
+                              "type": "array"
+                            },
+                            "sid": {
+                              "description": "The statement's Sid.",
+                              "title": "Sid",
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "policy_address",
+                            "sid",
+                            "resources"
+                          ],
+                          "title": "SetStatementResources",
+                          "type": "object"
+                        },
+                        "op": {
+                          "const": "set_statement_resources"
+                        },
+                        "provider": {
+                          "const": "aws"
+                        }
+                      },
+                      "required": [
+                        "provider",
+                        "op",
+                        "args"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "minItems": 1,
+                "type": "array"
+              },
+              "rationale": {
+                "description": "At most 3 sentences, citing evidence IDs such as E3.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "rationale",
+              "ops"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "function"
+      }
+    ]
+  },
+  "response": {
+    "content": "The simulation passes: all three dangerous paths are closed, requirement I1 (priya reads app-logs) is preserved through the new narrow role, no new paths open, and nothing breaks. Submitting the fix.",
+    "finish_reason": "tool_calls",
+    "tool_calls": [
+      {
+        "arguments": "{\"ops\": [{\"args\": {\"name\": \"priya-logs-read\", \"statements\": [{\"actions\": [\"s3:GetObject\", \"s3:ListBucket\"], \"effect\": \"Allow\", \"resources\": [\"arn:aws:s3:::demo-app-logs\", \"arn:aws:s3:::demo-app-logs/*\"], \"sid\": \"ReadLogs\"}], \"trust_principals\": [\"user:priya-intern\"]}, \"op\": \"add_role\", \"provider\": \"aws\"}, {\"args\": {\"principal\": \"user:priya-intern\", \"statements\": [{\"actions\": [\"sts:AssumeRole\"], \"effect\": \"Allow\", \"resources\": [\"arn:aws:iam::111122223333:role/priya-logs-read\"], \"sid\": \"AssumePriyaLogsRead\"}]}, \"op\": \"add_policy\", \"provider\": \"aws\"}, {\"args\": {\"group\": \"support-engineers\", \"user\": \"priya-intern\"}, \"op\": \"remove_membership\", \"provider\": \"aws\"}], \"rationale\": \"The PR's membership edge (E42) put priya-intern into support-engineers, letting her assume prod-support (E40) and reach the regulated DB secret (E48), the customer DB, and confidential invoices (E47); the min-cut found that edge uncuttable only because requirement I1 (priya reads app-logs) rides on it. I removed the membership and instead added a narrow role priya-logs-read, trusted only by user:priya-intern, granting exactly s3:GetObject/s3:ListBucket on arn:aws:s3:::demo-app-logs and its objects, plus an inline assume-policy for her. Simulation confirms all three dangerous paths are closed, I1 stays satisfied, and no new paths or broken requirements result.\"}",
+        "name": "submit_fix"
+      }
+    ],
+    "usage": {
+      "completion_tokens": 465,
+      "prompt_tokens": 11765
+    }
+  }
+}
