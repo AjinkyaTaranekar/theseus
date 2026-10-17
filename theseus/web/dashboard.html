@@ -537,7 +537,7 @@ function repoViews(d) {
       statPanel("Dangerous paths", dangerous.length, "to sensitive data nothing requires", dangerous.length ? "red" : "green", series("dangerous"), "#access"),
       statPanel("Pull requests", `${blocked}/${d.reviews.length}`, "blocked from merging", blocked ? "orange" : "green", null, "#prs"),
       statPanel("Advisories", d.findings.length, "affect a workflow on main", d.findings.length ? "red" : "green", series("findings"), "#findings"),
-      statPanel("Single points", p ? p.single_points.length : 0, "of failure on main", "yellow", series("single_points"), "#weak"),
+      statPanel("Single points", p ? p.single_points.filter((s) => new Set(s.breaks.map((b) => b.principal)).size > 1).length : 0, "shared by several services", "yellow", null, "#weak"),
       statPanel("Unused grants", scan ? scan.unused_grants.length : 0, "access no code calls", scan && scan.unused_grants.length ? "orange" : "green", series("unused_grants"), "#weak"),
       statPanel("Monthly cost", p ? usd(p.cost.monthly_usd) : "–", "estimated at list price", "blue", series("monthly_usd"), "#cost"),
     );
@@ -684,13 +684,22 @@ function repoViews(d) {
   views.weak = () => {
     head("Weak points", p ? `Computed on main's graph from ${plural(p.dependencies, "dependency", "dependencies")}: each call a service's code makes, and each access theseus.yaml requires.` : "Waiting for the first scan of main.");
     const actorsOf = (s) => new Set(s.breaks.map((b) => b.principal)).size;
-    const [sp, sb] = panel("Single points of failure", "s24", { flush: true, hint: "on every route of something that is needed" });
+    // A node only one actor depends on is usually that service's own role: worth knowing, not a shared risk.
+    const shared = (p ? p.single_points : []).filter((s) => actorsOf(s) > 1);
+    const own = (p ? p.single_points : []).filter((s) => actorsOf(s) <= 1);
+    const [sp, sb] = panel("Shared single points of failure", "s24", { flush: true, hint: "one node that several people or services all depend on" });
     sb.append(table("Single points of failure", [
       { label: "Node", value: (s) => nameOf(s.id), cell: (s) => add(el("div"), el("div", nameOf(s.id), { class: "mono" }), el("div", kindOf(s.id, info(s.id)), { class: "sub" })) },
       { label: "Actors who depend on it", value: actorsOf, num: true, cell: (s) => String(actorsOf(s)) },
       { label: "Dependencies", value: (s) => s.breaks.length, num: true, cell: (s) => String(s.breaks.length) },
       { label: "If it goes", value: null, cell: (s) => { const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))]; return el("div", `${list(who)} ${who.length === 1 ? "loses" : "lose"} ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`); } },
-    ], p ? p.single_points : [], { page: 10, sort: 1, empty: "No node is the only route to anything that is needed.", search: (s) => `${s.id} ${s.breaks.map((b) => `${b.principal} ${b.resource}`).join(" ")}` }));
+    ], shared, { page: 10, sort: 1, empty: "No node is shared by several people or services as their only route.", search: (s) => `${s.id} ${s.breaks.map((b) => `${b.principal} ${b.resource}`).join(" ")}` }));
+    if (own.length) {
+      const more = el("details", null, { style: "padding:10px 12px" });
+      more.append(el("summary", `${plural(own.length, "more node")} only one service depends on, such as its own role`, { class: "sub", style: "cursor:pointer" }));
+      more.append(add(el("div", null, { style: "margin-top:8px" }), ...own.map((s) => el("div", `${nameOf(s.id)}: if it goes, ${nameOf(s.breaks[0].principal)} loses ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`, { class: "sub" }))));
+      sb.append(more);
+    }
     const [ap, ab] = panel("Articulation points", "s12", { flush: true, hint: "removing one splits the access graph" });
     ab.append(table("Articulation points", [
       { label: "Node", value: (a) => nameOf(a.id), cell: (a) => add(el("div"), el("div", nameOf(a.id), { class: "mono" }), el("div", kindOf(a.id, info(a.id)), { class: "sub" })) },
