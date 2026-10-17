@@ -21,6 +21,7 @@ from theseus.agent.render import verdict
 from theseus.config import Settings
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
+from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
 
 log = logging.getLogger(__name__)
@@ -150,7 +151,25 @@ def page_doc(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
             graphs[side] = {"name": name, **store.view(name)}
         except GraphError as e:  # deleted since: the page shows what is left
             log.warning("%s: graph %s is gone: %s", doc_key, name, e)
-    return {**doc, "graphs": graphs}
+    return {**doc, "graphs": graphs, "fixes": fix_graphs(store, doc)}
+
+
+def fix_graphs(store: ReviewStore, doc: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each candidate fix with the graph copy the engine verified it on, as the store holds it now: `{id,
+    verdict, title, recommended, ops, reason, name, nodes, edges}`, in the result's order. A candidate whose
+    copy is gone is left out."""
+    head = (doc["result"].get("graphs") or {}).get("head")
+    if not head:
+        return []
+    present = set(store.list_graphs())
+    out = []
+    for c in doc["result"].get("candidates") or []:
+        name = candidate_graph(head, c["id"])
+        if name not in present:
+            continue
+        keep = ("id", "verdict", "title", "recommended", "ops", "reason")
+        out.append({**{k: c.get(k) for k in keep}, "name": name, **store.view(name)})
+    return out
 
 
 def page_data(store: ReviewStore, repo: str, number: int) -> dict[str, Any] | None:

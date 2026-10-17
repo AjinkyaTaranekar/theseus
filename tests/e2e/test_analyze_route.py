@@ -311,6 +311,12 @@ def test_the_comment_links_to_a_signed_page_with_both_graphs_from_the_store(
     assert data["graphs"]["base"]["name"] == "demo-infra__pr7-base"
     membership = next(e for e in head["edges"] if (e["src"], e["type"]) == ("user:priya-intern", "MEMBER_OF"))
     assert membership["evidence"][0]["address"] == "aws_iam_user_group_membership.priya_support"
+    # Each fix comes with the graph copy the engine verified it on, read from the store now.
+    fixes = {f["id"]: f for f in data["fixes"]}
+    assert set(fixes) == {c["id"] for c in result["candidates"]} and fixes
+    for f in fixes.values():
+        assert f["name"] == f"demo-infra__pr7-fix-{f['id'].lower()}"
+        assert {k: f[k] for k in ("nodes", "edges")} == store.view(f["name"])
 
 
 @pytest.mark.parametrize("query", ["", "?k=", "?k=0123456789abcdef0123456789abcdef"])

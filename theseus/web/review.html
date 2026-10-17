@@ -98,6 +98,11 @@
   details summary { cursor: pointer; font-weight: 600; }
   details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
   #full { min-height: 360px; }
+  #fixgraph { min-height: 360px; }
+  .fixops { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+  .fixops ul { margin: 6px 0 0; padding-left: 18px; color: var(--text); }
+  .fixops li { margin: 3px 0; overflow-wrap: anywhere; }
+  .fixops code { font-family: var(--mono); font-size: 12.5px; }
   footer { padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
   .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
   @media (max-width: 720px) {
@@ -137,6 +142,8 @@
     </div>
     <div class="stage" id="stage"><div class="canvas" id="canvas"></div></div>
     <div id="full" hidden></div>
+    <div id="fixgraph" hidden></div>
+    <div class="fixops" id="fixops" hidden></div>
   </div>
 
   <section id="todo-section" hidden>
@@ -223,6 +230,8 @@ function kindOf(id, info) {
   const cat = ((info && info.category) || "").toLowerCase().replace(/_/g, "");
   return CATEGORIES[cat] || "data";
 }
+function plural(n, word) { return `${n} ${n === 1 ? word : word + "s"}`; }
+function add(parent, ...kids) { for (const k of kids) if (k) parent.append(k); return parent; }
 function short(id) {
   // A storage location reads best as its folder; the full name is in the tooltip.
   const full = nameOf(id), folder = full.endsWith("/");
@@ -375,10 +384,15 @@ function render(data) {
   const cols = Math.max(1, ...[...place.values()].map((v) => v.col + 1));
 
   function drawBoard(mode) {
-    $("stage").hidden = mode === "full";
+    const fix = mode.startsWith("fix:") ? mode.slice(4) : null;
+    $("stage").hidden = mode === "full" || !!fix;
     $("full").hidden = mode !== "full";
+    $("fixgraph").hidden = !fix;
+    $("fixops").hidden = !fix;
     for (const id of ["before", "after", "full"]) $(`v-${id}`).setAttribute("aria-pressed", String(mode === id));
+    for (const b of document.querySelectorAll("button[data-fix]")) b.setAttribute("aria-pressed", String(b.dataset.fix === fix));
     if (mode === "full") { drawFull(); return; }
+    if (fix) { drawFix(fix); return; }
     const canvas = $("canvas");
     canvas.replaceChildren();
     if (!opened.length) {
@@ -568,6 +582,117 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     $("v-before").before($("v-after"));
     $("v-before").hidden = !cut.length;
   }
+  // Each fix, drawn on the graph copy the engine verified it on, against the PR's head: what it cuts (red,
+  // dashed), what it adds (green), and the route that still gives the actor what the PR asked for (blue).
+  const fixes = finding ? [] : data.fixes || [];
+  for (const fx of fixes) {
+    const mark = fx.verdict === "pass" ? "✓" : fx.verdict === "fail" ? "✗" : "?";
+    const b = el("button", `Fix ${fx.id} ${mark}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
+                                                    title: `${fx.title}: ${fx.verdict}${fx.recommended ? ", recommended" : ""}` });
+    b.addEventListener("click", () => drawBoard(`fix:${fx.id}`));
+    $("v-full").before(b);
+  }
+  const ekey = (e) => `${e.src}|${e.type}|${e.dst}`;
+  function routeIn(g, from, to) {
+    // The shortest access route in this graph, as edges; null when there is none.
+    const out = new Map();
+    for (const e of g.edges) if (ACCESS_TYPES.has(e.type)) { if (!out.has(e.src)) out.set(e.src, []); out.get(e.src).push(e); }
+    const back = new Map([[from, null]]);
+    const queue = [from];
+    while (queue.length) {
+      const at = queue.shift();
+      if (at === to) break;
+      for (const e of out.get(at) || []) if (!back.has(e.dst)) { back.set(e.dst, e); queue.push(e.dst); }
+    }
+    if (!back.has(to)) return null;
+    const route = [];
+    for (let at = to; back.get(at); at = back.get(at).src) route.unshift(back.get(at));
+    return route;
+  }
+  let fixCy = null;
+  function drawFix(id) {
+    const fx = fixes.find((f) => f.id === id);
+    const head = data.graphs.head;
+    if (!fx || !head) { $("note").textContent = "This fix's graph isn't in the store any more."; return; }
+    const headEdges = new Map(head.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
+    const fixEdges = new Map(fx.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
+    const added = [...fixEdges.values()].filter((e) => !headEdges.has(ekey(e)));
+    const openedKeys = new Set(opened.flatMap((p) => p.steps.map((s) => `${s.from}|${s.type}|${s.to}`)));
+    const onRoute = new Set(opened.flatMap(routeOf));
+    const removed = [...headEdges.values()].filter((e) => !fixEdges.has(ekey(e)) && (onRoute.has(e.src) || onRoute.has(e.dst)));
+    const asked = ((r.intent && r.intent.grants) || []).map((g) => routeIn(fx, g.principal, g.resource)).filter(Boolean);
+    const keptKeys = new Set(asked.flat().map(ekey));
+    const still = opened.filter((p) => routeIn(fx, p.actor, p.target));
+    const show = [...opened.flatMap((p) => p.steps.map((s) => ({ src: s.from, type: s.type, dst: s.to }))), ...added, ...removed, ...asked.flat()];
+    const links = new Map();
+    for (const e of show) links.set(ekey(e), e);
+    const ids = new Set([...links.values()].flatMap((e) => [e.src, e.dst]));
+    const nodeOf = new Map([...head.nodes, ...fx.nodes].map((n) => [n.id, n]));
+    const kind = (nid) => kindOf(nid, info(nid).category ? info(nid) : nodeOf.get(nid) || {});
+    const cols = LANES.map(() => []);
+    for (const nid of ids) cols[lane(nid)].push(nid);
+    const pos = new Map();
+    cols.forEach((list, c) => list.sort().forEach((nid, i) => pos.set(nid, { x: c * 230, y: i * 76 })));
+    const tallest = Math.max(1, ...cols.map((l) => l.length));
+    cols.forEach((list) => { const shift = ((tallest - list.length) * 76) / 2; list.forEach((nid) => { pos.get(nid).y += shift; }); });
+    const box = $("fixgraph");
+    const graphW = (LANES.length - 1) * 230 + 160 + 60, graphH = (tallest - 1) * 76 + 42 + 70 + 60;
+    const scale = Math.min(1, box.clientWidth / graphW);
+    box.style.height = `${Math.ceil(graphH * scale) + 20}px`;
+    const state = (e) => (!fixEdges.has(ekey(e)) ? "cut" : !headEdges.has(ekey(e)) ? "added" : keptKeys.has(ekey(e)) ? "kept" : "same");
+    const reachable = new Set(still.map((p) => p.target));
+    const go = () => {
+      if (fixCy) fixCy.destroy();
+      const style = getComputedStyle(document.documentElement);
+      const c = (name) => style.getPropertyValue(name).trim();
+      fixCy = cytoscape({
+        container: box,
+        elements: [
+          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label, lane: 1 }, position: { x: i * 230, y: -70 } })),
+          ...[...ids].map((nid) => ({ data: { id: nid, label: `${kind(nid)}\n${short(nid)}`, isnew: nodeOf.has(nid) && !head.nodes.some((n) => n.id === nid) ? 1 : 0,
+                                             exposed: opened.some((p) => p.target === nid) ? (reachable.has(nid) ? 2 : 1) : 0 }, position: pos.get(nid) })),
+          ...[...links.values()].map((e, i) => ({ data: { id: `f${i}`, source: e.src, target: e.dst, state: state(e) } })),
+        ],
+        style: [
+          { selector: "node", style: { shape: "round-rectangle", width: 160, height: 44, "background-color": c("--card"), "border-width": 1,
+              "border-color": c("--tile-line"), label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "font-size": 11,
+              color: c("--muted"), "text-max-width": 150, "font-family": "Inter, system-ui, sans-serif" } },
+          { selector: "node[exposed = 1]", style: { "border-color": c("--faint"), "border-style": "dashed", color: c("--faint") } },
+          { selector: "node[exposed = 2]", style: { "border-color": c("--accent"), "border-width": 2.5, color: c("--text") } },
+          { selector: "node[isnew = 1]", style: { "border-color": c("--ok"), "border-width": 2.5, color: c("--text") } },
+          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 11, "font-weight": 600,
+              color: c("--muted"), "text-transform": "uppercase", width: 160, height: 22 } },
+          { selector: "edge", style: { width: 1.2, "line-color": c("--tile-line"), "target-arrow-color": c("--tile-line"),
+              "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.8 } },
+          { selector: "edge[state = 'cut']", style: { "line-color": c("--accent"), "target-arrow-color": c("--accent"), "line-style": "dashed", width: 2.2 } },
+          { selector: "edge[state = 'added']", style: { "line-color": c("--ok"), "target-arrow-color": c("--ok"), width: 2.6 } },
+          { selector: "edge[state = 'kept']", style: { "line-color": c("--primary"), "target-arrow-color": c("--primary"), width: 2.6 } },
+        ],
+        layout: { name: "preset", padding: 30, fit: true },
+        userZoomingEnabled: false, userPanningEnabled: false, boxSelectionEnabled: false, autoungrabify: true,
+      });
+    };
+    const verdict = fx.verdict === "pass" ? "passes" : fx.verdict === "fail" ? "fails" : `is ${fx.verdict}`;
+    const keeps = asked.length ? ` ${nameOf(r.intent.grants[0].principal)} still ${access([r.intent.grants[0].access])} ${short(r.intent.grants[0].resource)}, the access the PR asked for (blue).` : "";
+    $("note").textContent = `Fix ${fx.id} ${verdict}: it cuts ${plural(removed.length, "link")} (red, dashed) and adds ${plural(added.length, "link")} (green). ` +
+      (still.length ? `${plural(still.length, "way")} in ${still.length === 1 ? "is" : "are"} still open.` : `None of the ${plural(opened.length, "way")} in remains.`) + keeps;
+    const ops = $("fixops");
+    const list = el("ul");
+    for (const op of fx.ops || []) {
+      const args = op.args || {};
+      const who = args.name || args.role || args.principal || args.user || args.policy_address || "";
+      list.append(add(el("li"), el("code", op.op.replace(/_/g, " ")), document.createTextNode(who ? ` ${who}` : ""),
+        document.createTextNode(args.group ? ` from ${args.group}` : args.trust_principals ? `, trusted only by ${args.trust_principals.map(nameOf).join(", ")}` : "")));
+    }
+    ops.replaceChildren(el("div", `What fix ${fx.id} changes, ${fx.verdict === "pass" ? "checked on a copy of the graph" : `and why it doesn't pass: ${fx.reason || fx.verdict}`}:`), list);
+    if (fx.verdict === "pass") ops.append(el("div", `Reply /theseus apply ${fx.id} on the PR to commit it.`, { style: "margin-top:8px" }));
+    if (typeof cytoscape !== "undefined") { go(); return; }
+    const s = el("script", null, { src: CYTOSCAPE.src, integrity: CYTOSCAPE.integrity, crossorigin: "anonymous", referrerpolicy: "no-referrer" });
+    s.onload = go;
+    s.onerror = () => { $("note").textContent = "The graph library didn't load. Try again in a moment."; };
+    document.head.append(s);
+  }
+
   $("v-before").addEventListener("click", () => drawBoard("before"));
   $("v-after").addEventListener("click", () => drawBoard("after"));
   $("v-full").addEventListener("click", () => drawBoard("full"));
