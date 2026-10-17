@@ -473,6 +473,9 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
         ],
         "beyond_intent": len(result.use_beyond_intent),
         "closed": [{"actor": p.actor, "target": p.target} for p in result.closed],
+        # Where the change lands, for every PR, sensitive data or not (engine/impact.py).
+        "impact": result.impact.headline if result.impact else None,
+        "most_affected": result.impact.most_affected if result.impact else [],
         # The fix that passes, the one a reviewer would commit; the others are named on the PR.
         "fixes": [
             {"id": c.id, "verdict": c.verdict, "title": c.title}

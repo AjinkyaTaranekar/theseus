@@ -24,6 +24,7 @@ from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import (
     AnalysisResult,
     Candidate,
+    ChangeImpact,
     Coverage,
     Evidence,
     GraphRows,
@@ -35,9 +36,10 @@ from theseus.contracts.result import (
     Timings,
 )
 from theseus.contracts.schema import RESOURCE
-from theseus.engine.analyze import analyze, diff, step_evidence
+from theseus.engine.analyze import analyze, diff, evidence_id, primary_evidence, step_evidence
 from theseus.engine.candidates import rank, rule_candidates
 from theseus.engine.finding import action_id, containment, match_advisory, secrets_reached, with_finding
+from theseus.engine.impact import change_impact
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.engine.posture import posture
@@ -230,6 +232,11 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     if fix is not None:
         head_evidence.update(fix.evidence)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
+    impact, impact_evidence, impact_nodes = _impact(
+        base, head, base_state, head_state, before, after, requirements, deps
+    )
+    head_evidence.update(impact_evidence)
+    head_nodes.update(impact_nodes)
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms = base_jev + head_jev + risk_ms
     return AnalysisResult(
@@ -256,7 +263,53 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         ),
         coverage=coverage(head, head_state.rows, deps),
         nodes=dict(sorted({**base_nodes, **head_nodes}.items())),
+        impact=impact,
     )
+
+
+def _impact(
+    base: World,
+    head: World,
+    base_state: GraphState,
+    head_state: GraphState,
+    before: Analysis,
+    after: Analysis,
+    requirements: list[Requirement],
+    deps: Deps,
+) -> tuple[ChangeImpact, dict[str, Evidence], dict[str, NodeInfo]]:
+    """The change's impact (engine/impact.py), the evidence of every link it adds or removes, and plain names
+    for every node it names."""
+    keys: dict[tuple[str, str, str], str] = {}
+    evidence: dict[str, Evidence] = {}
+    for state in (base_state, head_state):
+        nodes = {n.id: n for n in state.rows.nodes}
+        for e in state.rows.edges:
+            if e.evidence:
+                ev = primary_evidence(e, nodes)
+                keys[(e.src, e.type, e.dst)] = evidence_id(ev)
+                evidence[evidence_id(ev)] = ev
+    impact = change_impact(
+        base_state,
+        head_state,
+        before,
+        after,
+        requirements,
+        changes(base, head),
+        deps.adapters.cloud.monthly_cost(base.resources),
+        deps.adapters.cloud.monthly_cost(head.resources),
+        keys,
+    )
+    used = {e.evidence for e in impact.edges if e.evidence}
+    named = {t.id for t in impact.touched} | {
+        n for t in impact.touched for n in (*t.reached_by, *t.dependents)
+    }
+    named |= {n for a in impact.access for n in (a.actor, a.target)}
+    named |= {n for r in impact.relies for n in (r.principal, r.resource, *r.via)}
+    rows = {n.id: n for state in (base_state, head_state) for n in state.rows.nodes}
+    info = {
+        n: NodeInfo(category=rows[n].category, sensitivity=rows[n].sensitivity) for n in named if n in rows
+    }
+    return impact, {k: evidence[k] for k in used if k in evidence}, info
 
 
 def agent_fix(
