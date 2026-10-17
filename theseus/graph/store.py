@@ -246,6 +246,13 @@ class FalkorStore:
 
     def __init__(self, db: FalkorDB) -> None:
         self.db = db
+        # Once the documents graph exists it stays; each check of it was a round trip to FalkorDB.
+        self._docs_exist = False
+
+    def _has_docs(self) -> bool:
+        if not self._docs_exist:
+            self._docs_exist = DOCS in self.list_graphs()
+        return self._docs_exist
 
     def _query(self, graph: str, cypher: str, params: dict[str, Any] | None = None) -> list[list[Any]]:
         try:
@@ -260,6 +267,8 @@ class FalkorStore:
             raise GraphError(f"cannot list graphs: {e}") from e
 
     def delete(self, graph: str) -> None:
+        if graph == DOCS:
+            self._docs_exist = False
         if graph not in self.list_graphs():
             return
         try:
@@ -276,16 +285,17 @@ class FalkorStore:
 
     def put_doc(self, key: str, text: str) -> None:
         self._query(DOCS, "MERGE (d:Doc {key: $key}) SET d.text = $text", {"key": key, "text": text})
+        self._docs_exist = True
 
     def get_doc(self, key: str) -> str | None:
-        if DOCS not in self.list_graphs():
+        if not self._has_docs():
             return None
         found = self._query(DOCS, "MATCH (d:Doc {key: $key}) RETURN d.text", {"key": key})
         return found[0][0] if found else None
 
     def docs(self, prefix: str) -> list[str]:
         """The keys of the documents starting with `prefix`, sorted."""
-        if DOCS not in self.list_graphs():
+        if not self._has_docs():
             return []
         found = self._query(
             DOCS,
@@ -296,7 +306,7 @@ class FalkorStore:
 
     def read_docs(self, prefix: str) -> dict[str, str]:
         """Every document whose key starts with `prefix`, by key, in one query."""
-        if DOCS not in self.list_graphs():
+        if not self._has_docs():
             return {}
         found = self._query(
             DOCS,
