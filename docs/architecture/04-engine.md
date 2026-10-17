@@ -90,6 +90,23 @@ dangerous paths by (actor, target) (`diff` in `theseus/engine/analyze.py`):
 - `closed`: in the base, not the head. The PR takes this access away.
 - `unchanged`: in both. Already on `main`; listed, but not this PR's doing.
 
+**Where the change lands** (`change_impact` in `theseus/engine/impact.py`, `AnalysisResult.impact`). Dangerous
+paths only cover sensitive data nothing requires. An SRE asks a wider question about every change: what does it
+touch, and what breaks if it goes wrong? So every PR result also carries its impact, whatever the data's class:
+
+| Field | What it holds |
+| --- | --- |
+| `touched` | Nodes whose IaC address the change adds, updates or deletes, and both ends of every link it adds or removes. Each has who reaches it (`reached_by`), how many dependencies run through it (`relied_on`) and the services that call it (`dependents`, REQUESTS, transitively) |
+| `edges` | Links added or removed, by (src, type, dst), each with its evidence |
+| `access` | Every (actor, target) a valid path joins in one state and not the other: `gained` or `lost`, any class |
+| `relies` | Dependencies (code calls and `theseus.yaml` requirements) whose routes run through what changed (`kept`), or that gain or lose their last route (`gained`, `lost`). A code call and a requirement for the same access count once |
+| `most_affected` | The touched nodes most relied on, then most called, then most reached |
+| `monthly_usd_before`, `monthly_usd_after` | The world's cost at list price before and after |
+
+It reads only the rows and the paths the engine already traced, so it adds no query. The comment shows its
+headline on the card (**Impact:**) and a "Where this change lands" section with a small diagram and the tables;
+the dashboard's PR list shows the headline, so a clear PR still says where it lands.
+
 ## 5. What the PR says against what it does
 
 **Intent.** `read_intent` sends the PR's title and body to the LLM, which returns `{purpose, stated,

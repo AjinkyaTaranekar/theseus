@@ -1101,9 +1101,9 @@ function repoViews(d) {
         } else if ((r.closed || []).length) {
           what.append(el("div", `Closes ${plural(r.closed.length, "dangerous path")}: ${list([...new Set(r.closed.map((o) => nameOf(o.actor)))])} can no longer reach`, { class: "sub tone-green" }));
           what.append(chips([...new Set(r.closed.map((o) => o.target))], () => ({})));
-        } else if (r.impact && (r.impact.headline || (r.impact.most_affected || []).length)) {
-          what.append(el("div", r.impact.headline || "What this change touches:", { class: "sub" }));
-          if ((r.impact.most_affected || []).length) what.append(chips(r.impact.most_affected.slice(0, 5), () => ({})));
+        } else if (r.impact || (r.most_affected || []).length) {
+          what.append(el("div", r.impact || "Where this change lands:", { class: "sub" }));
+          if ((r.most_affected || []).length) what.append(chips(r.most_affected.slice(0, 5), () => ({})));
         } else what.textContent = r.headline || "Nothing new reaches sensitive data.";
         if (r.beyond_intent) what.append(el("div", `Its code now reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
         const fixes = el("td");

@@ -563,7 +563,10 @@ function render(data) {
   const drawn = opened.length ? opened : codeRoutes.length ? codeRoutes : touchRoutes;
   const codeMode = !opened.length && codeRoutes.length > 0;
   const touchMode = !opened.length && !codeMode && touchRoutes.length > 0;
-  const impact = r.impact && !opened.length && !codeMode && r.mode !== "finding" ? r.impact : null;
+  // Where the change lands, for every PR, whatever the data's class (engine/impact.py). The board draws it
+  // when nothing opens; the section below shows it for every PR.
+  const impact = r.impact && r.mode !== "finding" && ((r.impact.touched || []).length || (r.impact.access || []).length) ? r.impact : null;
+  const impactBoard = impact && !opened.length && !codeMode;
   const finding = r.mode === "finding";
   const advisory = r.finding || {};
   const actionId = advisory.action || "";
@@ -690,7 +693,7 @@ function render(data) {
     if (fix) { drawFix(fix); return; }
     const canvas = $("canvas");
     canvas.replaceChildren();
-    if (impact && (impact.touched || []).length) {
+    if (impactBoard && (impact.touched || []).length) {
       canvas.style.width = "auto"; canvas.style.height = "auto"; canvas.style.zoom = "";
       canvas.append(impactGraph(mode === "before"));
       $("note").textContent = mode === "before"
@@ -1104,6 +1107,10 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       edges.set(`${e.src}|${e.dst}`, { src: e.src, dst: e.dst, label: before ? word : `${e.action === "added" ? "+" : "−"} ${word}`, href, file: ev && ev.file, line: ev && ev.line, tone: before ? "" : e.action === "added" ? "cool" : "hot" });
     }
     const lostBy = new Set((impact.relies || []).filter((x) => x.state === "lost").map((x) => x.principal));
+    for (const t of impact.touched || []) for (const who of (t.reached_by || []).slice(0, 5)) {
+      put(who, "blue");
+      if (!edges.has(`${who}|${t.id}`)) edges.set(`${who}|${t.id}`, { src: who, dst: t.id, label: "reaches it", tone: "" });
+    }
     for (const t of impact.touched || []) for (const dep of (t.dependents || []).slice(0, 6)) {
       put(dep, lostBy.has(dep) ? "orange" : "");
       if (!edges.has(`${dep}|${t.id}`)) edges.set(`${dep}|${t.id}`, { src: dep, dst: t.id, label: "relies on", tone: lostBy.has(dep) && !before ? "warm" : "" });
@@ -1118,7 +1125,9 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     const gained = access.filter((a) => a.change === "gained").length, lost = access.filter((a) => a.change === "lost").length;
     const depsLost = relies.filter((x) => x.state === "lost").length, depsKept = relies.filter((x) => x.state === "kept").length;
     fact((impact.touched || []).length, "touched", "Nodes this change adds, updates or removes.");
-    fact((impact.dependents || []).length, "rely on them", "People and services with a route or a need through what it touches.");
+    const reachers = new Set((impact.touched || []).flatMap((t) => t.reached_by || []));
+    fact(reachers.size, "can reach them", "People, workflows and services with a valid path through what this change touches: who feels it.");
+    fact((impact.dependents || []).length, "rely on them", "Services that call what it touches, or need a route through it.");
     fact(`+${gained} / −${lost}`, "access gained / lost", "Who can reach what after the change, for every data class, not only sensitive data.", gained ? "up" : "");
     fact(`${depsLost} lost · ${depsKept} kept`, "dependencies", "Code calls and theseus.yaml requirements whose routes it changes.", depsLost ? "up" : "");
     const before = impact.monthly_usd_before, after = impact.monthly_usd_after;
@@ -1144,6 +1153,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       t.append(tb);
       box.append(el("h2", "Dependencies through what it changes", { style: "margin-top:18px" }), add(el("div", null, { class: "tablescroll" }), t));
     }
+    if (!impactBoard && (impact.touched || []).length) box.prepend(impactGraph(false));
     $("impact-section").hidden = false;
   }
   function access_words(grants) { return grants && grants.length ? grants.join(" and ") : "reach"; }

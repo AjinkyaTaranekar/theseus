@@ -62,7 +62,8 @@ def dependencies(state: GraphState, requirements: list[Requirement]) -> list[Dep
     return [Dependency(principal=p, access=a, resource=r, source=s) for p, a, r, s in sorted(found)]  # type: ignore[arg-type]
 
 
-def _routes(paths: list[PathRecord], dep: Dependency) -> list[PathRecord]:
+def routes_for(paths: list[PathRecord], dep: Dependency) -> list[PathRecord]:
+    """The valid paths that serve `dep`: to its resource, with its access."""
     return [p for p in paths if p.target == dep.resource and dep.access in p.grants and not p.unknown]
 
 
@@ -74,7 +75,7 @@ def single_points(
     route has nothing to lose."""
     breaks: dict[str, list[Dependency]] = defaultdict(list)
     for dep in deps:
-        routes = _routes(paths.get(dep.principal, []), dep)
+        routes = routes_for(paths.get(dep.principal, []), dep)
         if not routes:
             log.info("%s has no route to %s %s; nothing to lose", dep.principal, dep.access, dep.resource)
             continue
@@ -266,7 +267,7 @@ def posture(
     }
     routes = [
         DependencyRoutes(
-            dependency=d, routes=sorted(p.route for p in _routes(analysis.paths.get(d.principal, []), d))
+            dependency=d, routes=sorted(p.route for p in routes_for(analysis.paths.get(d.principal, []), d))
         )
         for d in deps
     ]

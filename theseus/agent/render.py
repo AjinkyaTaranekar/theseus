@@ -386,9 +386,132 @@ def card_lines(
         says_line(result),
         needs_and_grants(result),
         why_line(result, repo, head_sha, world_root),
+        lands_line(result),
         do_line(result, level, suggested),
     ]
     return [line for line in lines if line]
+
+
+def lands_line(result: AnalysisResult) -> Md | None:
+    """Where the change lands, for every PR: the engine's impact headline."""
+    if result.impact is None or not result.impact.headline:
+        return None
+    return Md(f"**Impact:** {escape(result.impact.headline)}")
+
+
+IMPACT_ROWS = 8
+CHANGE_WORDS = {"added": "added", "updated": "changed", "removed": "removed"}
+
+
+def impact_diagram(result: AnalysisResult) -> Md | None:
+    """The links the change adds (green) or removes (red, dashed), and who reaches the node it lands on most,
+    as one small `flowchart LR`. None when the change moves no link."""
+    impact = result.impact
+    if impact is None or not impact.edges:
+        return None
+    ids: dict[str, str] = {}
+
+    def nid(node: str) -> str:
+        return ids.setdefault(node, f"m{len(ids) + 1}")
+
+    links: list[tuple[str, str, str, str]] = []
+    for e in impact.edges[:IMPACT_ROWS]:
+        verb = words.verb(e.type, [])
+        links.append((nid(e.src), f"{verb} · {e.action}", nid(e.dst), e.action))
+    top = impact.touched[0] if impact.touched else None
+    if top is not None:
+        for actor in top.reached_by[:3]:
+            if actor not in ids:
+                links.append((nid(actor), "reaches", nid(top.id), "reaches"))
+    lines = ["```mermaid", "flowchart LR"]
+    for node, n in ids.items():
+        kind = words.kind(node, result.nodes.get(node))
+        lines.append(f'  {n}["{_label(words.name(node))}<br/>{_label(kind)}"]')
+    styles: dict[str, list[int]] = {"added": [], "removed": [], "reaches": []}
+    for i, (src, label, dst, how) in enumerate(links):
+        arrow = "-.->" if how != "added" else "-->"
+        lines.append(f'  {src} {arrow}|"{_label(label)}"| {dst}')
+        styles[how].append(i)
+    if styles["added"]:
+        lines.append(f"  linkStyle {','.join(map(str, styles['added']))} stroke:#1a7f37,stroke-width:3px")
+    if styles["removed"]:
+        lines.append(f"  linkStyle {','.join(map(str, styles['removed']))} stroke:#cf222e,stroke-width:3px")
+    if top is not None:
+        lines.append("  classDef lands fill:#fff8c5,stroke:#9a6700,color:#1f2328")
+        lines.append(f"  class {ids[top.id]} lands")
+    lines.append("```")
+    return Md("\n".join(lines))
+
+
+def impact_context(
+    result: AnalysisResult, repo: str, head_sha: str, world_root: str
+) -> dict[str, Any] | None:
+    """The rows of "Where this change lands", capped, or None without an impact."""
+    impact = result.impact
+    if impact is None or not (impact.touched or impact.access):
+        return None
+
+    def names(nodes: list[str], cap: int = 3) -> str:
+        shown = [escape(words.name(n)) for n in nodes[:cap]]
+        return _names(shown, max(0, len(nodes) - cap)) if shown else "–"
+
+    touched = [
+        {
+            "node": Md(f"{_bold(t.id)} ({escape(words.kind(t.id, result.nodes.get(t.id)))})"),
+            "change": CHANGE_WORDS[t.action],
+            "reached_by": Md(names(t.reached_by)),
+            "relied_on": Md(str(t.relied_on)),
+            "dependents": Md(names(t.dependents)),
+        }
+        for t in impact.touched[:IMPACT_ROWS]
+    ]
+    access = [
+        {
+            "who": Md(_bold(a.actor)),
+            "change": "gains" if a.change == "gained" else "loses",
+            "what": Md(f"{words.access_words(a.grants).removeprefix('can ')} {_bold(a.target)}"),
+            "class": escape(words.class_words(a.sensitivity) if a.sensitivity else "unclassified"),
+        }
+        for a in impact.access[:IMPACT_ROWS]
+    ]
+    state_words = {"lost": "**breaks**: no route left", "gained": "gains a route", "kept": "kept"}
+    relies = [
+        {
+            "who": Md(_bold(r.principal)),
+            "needs": Md(f"{r.access} {_bold(r.resource)}"),
+            "source": "code call" if r.source == "code" else "theseus.yaml",
+            "state": Md(state_words[r.state]),
+        }
+        for r in impact.relies[:IMPACT_ROWS]
+    ]
+    moved = []
+    for e in impact.edges[:IMPACT_ROWS]:
+        ev = result.evidence.get(e.evidence or "")
+        where = ""
+        if ev is not None and ev.file != "unknown" and ev.line:
+            where = f" ([{escape(ev.file)}:{ev.line}]({_blob(repo, head_sha, world_root, ev.file, ev.line)}))"
+        verb = words.verb(e.type, [])
+        moved.append(
+            Md(f"{CHANGE_WORDS[e.action].capitalize()}: {_bold(e.src)} {escape(verb)} {_bold(e.dst)}{where}")
+        )
+    delta = round(impact.monthly_usd_after - impact.monthly_usd_before, 2)
+    cost = (
+        f"${impact.monthly_usd_before:,.2f} → ${impact.monthly_usd_after:,.2f} a month at list price"
+        if delta
+        else f"${impact.monthly_usd_after:,.2f} a month at list price, unchanged"
+    )
+    return {
+        "diagram": impact_diagram(result),
+        "moved": moved,
+        "moved_more": max(0, len(impact.edges) - IMPACT_ROWS),
+        "touched": touched,
+        "touched_more": max(0, len(impact.touched) - IMPACT_ROWS),
+        "access": access,
+        "access_more": max(0, len(impact.access) - IMPACT_ROWS),
+        "relies": relies,
+        "relies_more": max(0, len(impact.relies) - IMPACT_ROWS),
+        "cost": Md(escape(cost)),
+    }
 
 
 def at_risk(result: AnalysisResult) -> tuple[list[Md], int]:
@@ -769,6 +892,7 @@ def _context(
         "unknowns_count": len(result.unknowns),
         "unknowns_more": max(0, len(result.unknowns) - caps["unknowns"]),
         "change_line": change_line(result) if pr else None,
+        "impact": impact_context(result, repo, head_sha, world_root) if pr else None,
         "trace": [
             {"n": Md(str(n)), "tool": code(t.tool), "summary": t.summary, "ms": Md(str(t.ms))}
             for n, t in enumerate(result.tool_trace[: caps["trace"]], start=1)
