@@ -315,6 +315,61 @@ class GitHub:
         log.info("%s: committed %s on %s (%d files)", repo, commit[:7], branch, len(files))
         return commit
 
+    def default_branch(self, repo: str) -> str:
+        """The repo's default branch, such as `main`."""
+        return str(self._repo(repo, "GET", "").json()["default_branch"])
+
+    def branch_head(self, repo: str, branch: str) -> str | None:
+        """The commit the branch points at, or None when there is no such branch."""
+        self._require(repo)
+        for ref in self._repo(repo, "GET", f"/git/matching-refs/heads/{quote(branch, safe='/')}").json():
+            if ref.get("ref") == f"refs/heads/{branch}":
+                return str(ref["object"]["sha"])
+        return None
+
+    def create_branch(self, repo: str, branch: str, sha: str) -> None:
+        """Creates the branch at `sha`. Raises GitHubError if it already exists."""
+        self._require(repo)
+        self._repo(repo, "POST", "/git/refs", json={"ref": f"refs/heads/{branch}", "sha": sha})
+        log.info("%s: created branch %s at %s", repo, branch, sha[:7])
+
+    def open_pull_from(self, repo: str, branch: str) -> dict[str, Any] | None:
+        """The open PR whose head is this branch of the repo, or None."""
+        self._require(repo)
+        owner = repo.split("/", 1)[0]
+        found = self._repo(
+            repo, "GET", "/pulls", params={"state": "open", "head": f"{owner}:{branch}"}
+        ).json()
+        return found[0] if found else None
+
+    def open_pull(
+        self, repo: str, branch: str, base: str, title: str, body: str, labels: list[str]
+    ) -> dict[str, Any]:
+        """Opens a PR from the branch into `base` with these labels, and returns it."""
+        self._require(repo)
+        pr = self._repo(
+            repo, "POST", "/pulls", json={"title": title, "head": branch, "base": base, "body": body}
+        ).json()
+        if labels:
+            self._repo(repo, "POST", f"/issues/{pr['number']}/labels", json={"labels": labels})
+        log.info("%s: opened #%s from %s", repo, pr["number"], branch)
+        return pr
+
+    def open_issue_titled(
+        self, repo: str, title: str, body: str, labels: list[str]
+    ) -> tuple[dict[str, Any], bool]:
+        """The open issue with this exact title, or a new one with these labels; and whether it is new. Pull
+        requests, which the issues API also lists, never count."""
+        self._require(repo)
+        for issue in self._pages(repo, "/issues", {"state": "open", "labels": ",".join(labels)}):
+            if issue.get("title") == title and "pull_request" not in issue:
+                return issue, False
+        created = self._repo(
+            repo, "POST", "/issues", json={"title": title, "body": body, "labels": labels}
+        ).json()
+        log.info("%s: opened issue #%s, %s", repo, created["number"], title)
+        return created, True
+
     def reply(self, repo: str, number: int, body: str) -> int:
         """Posts a new comment on the PR, as the answer to a command, and returns its ID."""
         self._require(repo)

@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" width="72" alt="Theseus logo: a web of nodes with one path traced to a red node at its centre">
+
 # Theseus
 
 Theseus reviews Terraform pull requests as a graph in FalkorDB. It shows which sensitive data a change makes

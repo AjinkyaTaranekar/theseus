@@ -192,6 +192,20 @@ def get_posture(request: Request) -> PostureRun:
 
 
 PostureDep = Annotated[PostureRun, Depends(get_posture)]
+
+# A finding's containment (FM6): (gh, repo, main's commit, the finding, its page) to where its PR and rotate
+# issue are, or None when nothing passes. `api/app.py` builds it with the IaC renderer; tests replace it.
+Containment = Callable[[GitHub, str, str, AnalysisResult, str | None], Any]
+
+
+def get_containment(request: Request) -> Containment:
+    contain = getattr(request.app.state, "contain", None)
+    if contain is None:
+        raise HTTPException(503, "containment is not ready")
+    return contain
+
+
+ContainmentDep = Annotated[Containment, Depends(get_containment)]
 SHA = re.compile(r"^[0-9a-f]{40}$")
 # What started a posture run: the workflow's event, or a person at the command line.
 TRIGGERS = frozenset({"push", "schedule", "workflow_dispatch", "cli"})
@@ -718,6 +732,7 @@ def posture(
     gh: GitHubDep,
     run: PostureDep,
     store: StoreDep,
+    contain: ContainmentDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
     """The posture of `main` (O1 to O3), sent by the Theseus main workflow on a push to `main`, nightly and on
@@ -745,6 +760,20 @@ def posture(
     except GraphError as e:
         log.error("%s: cannot keep the posture: %s", req.repo, e)
         raise HTTPException(502, "the graph store did not answer") from e
+    contained, failed = [], []
+    for finding in report.findings:
+        finding_id = str((finding.finding or {}).get("id", ""))
+        try:
+            done = contain(gh, req.repo, req.sha, finding, reviews.finding_url(settings, finding_id))
+        except TheseusError as e:  # one finding's PR failing leaves the posture and the others in place
+            log.error("%s: containment of %s failed: %s", req.repo, finding_id, e)
+            failed.append({"finding": finding_id, "error": str(e)})
+            continue
+        if done is not None:
+            reviews.mark_contained(store, finding_id, done.pr, done.pr_number, done.issue)
+            contained.append(
+                {"finding": finding_id, "pr": done.pr, "issue": done.issue, "opened": done.opened}
+            )
     url = reviews.dashboard_url(settings, req.repo)
     if url:
         response.headers["X-Theseus-Page"] = url
@@ -757,7 +786,10 @@ def posture(
         "single_points": len(report.posture.single_points),
         "monthly_usd": report.posture.cost.monthly_usd,
         "findings": sorted((f.finding or {}).get("id", "") for f in report.findings),
+        "contained": contained,
+        "containment_failed": failed,
         "dashboard": url,
+        "org": reviews.org_url(settings, req.repo.split("/", 1)[0]),
     }
 
 
@@ -781,6 +813,81 @@ def dashboard_page(
     """One page for the organisation: `main`'s posture, every PR review and every finding, and onboarding."""
     _dashboard_repo(settings, gh, owner, name, k)
     return HTMLResponse(DASHBOARD.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/dashboard/{owner}/{name}/reviews")
+def dashboard_reviews(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    q: str = "",
+    verdict: str = "",
+    offset: int = 0,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """One page of the repo's PR reviews, filtered and searched on the server, so a repo with thousands of
+    PRs sends only the page in view."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    if verdict not in ("", "blocked", "look", "clear"):
+        raise HTTPException(422, "verdict must be blocked, look or clear")
+    if offset < 0 or not 1 <= limit <= 200:
+        raise HTTPException(422, "offset must be 0 or more and limit 1 to 200")
+    try:
+        return reviews.review_page(
+            store, settings, repo, q=q[:200], verdict=verdict, offset=offset, limit=limit
+        )
+    except GraphError as e:
+        log.error("%s: cannot read the reviews: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+
+
+@router.get("/dashboard/{owner}/{name}/graph")
+def dashboard_graph(
+    owner: str, name: str, settings: SettingsDep, gh: GitHubDep, store: StoreDep, k: str | None = None
+) -> dict[str, Any]:
+    """`main`'s whole graph, read from FalkorDB now, for the dashboard's Graph view. Loaded only when that
+    view opens, so the other views stay light however large the graph is."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    try:
+        graph = reviews.main_graph(store, repo)
+    except GraphError as e:
+        log.error("%s: cannot read main's graph: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if graph is None:
+        raise HTTPException(404, "main has no graph yet")
+    return graph
+
+
+def _org(settings: Settings, gh: GitHub, owner: str, k: str | None) -> str:
+    """The owner, when the link is signed for its organisation dashboard and Theseus acts on one of its
+    repos; a 404 otherwise."""
+    acts = any(r.split("/", 1)[0].lower() == owner.lower() for r in settings.repos)
+    if not acts or not reviews.signed_key(settings, reviews.org_key(owner), k):
+        raise HTTPException(404, "no such organisation")
+    return owner
+
+
+@router.get("/org/{owner}", response_class=HTMLResponse)
+def org_page(owner: str, settings: SettingsDep, gh: GitHubDep, k: str | None = None) -> HTMLResponse:
+    """The organisation's dashboard: every connected repo at a glance, each linked to its own."""
+    _org(settings, gh, owner, k)
+    return HTMLResponse(DASHBOARD.read_text(encoding="utf-8"), headers={"Cache-Control": "no-store"})
+
+
+@router.get("/org/{owner}/data")
+def org_data(
+    owner: str, settings: SettingsDep, gh: GitHubDep, store: StoreDep, k: str | None = None
+) -> dict[str, Any]:
+    """Every connected repo's posture and reviews, summarised, with totals; read from FalkorDB now."""
+    _org(settings, gh, owner, k)
+    try:
+        return reviews.org_data(store, settings, owner)
+    except GraphError as e:
+        log.error("%s: cannot read the organisation: %s", owner, e)
+        raise HTTPException(502, "the graph store did not answer") from e
 
 
 @router.get("/dashboard/{owner}/{name}/data")

@@ -15,10 +15,13 @@ from fastapi.testclient import TestClient
 from tests.golden.conftest import deps_for, world
 from theseus.api import reviews, routes
 from theseus.api.app import create_app
+from theseus.api.contain import Contained
 from theseus.api.github import GitHub
 from theseus.config import Settings
 from theseus.contracts.posture import PostureReport
+from theseus.contracts.result import AnalysisResult
 from theseus.engine.pipeline import run_posture
+from theseus.errors import GitHubError
 from theseus.graph.store import MemoryStore
 
 TOKEN = "theseus-token-not-real"
@@ -52,8 +55,28 @@ def client(settings: Settings, store: MemoryStore) -> Iterator[TestClient]:
     app.dependency_overrides[routes.get_store] = lambda: store
     app.dependency_overrides[routes.get_github] = lambda: GitHub(settings)
     app.dependency_overrides[routes.get_posture] = lambda: posture
+    contained: list[str] = []
+
+    def contain(
+        gh: GitHub, repo: str, sha: str, finding: AnalysisResult, page: str | None
+    ) -> Contained | None:
+        finding_id = (finding.finding or {})["id"]
+        contained.append(finding_id)
+        if finding_id == "GHSA-broken":
+            raise GitHubError("POST /repos/demo-org/theseus/pulls: 422 Validation Failed")
+        pr = f"https://github.com/{REPO}/pull/201"
+        return Contained(
+            finding=finding_id,
+            pr=pr,
+            pr_number=201,
+            issue=f"https://github.com/{REPO}/issues/301",
+            opened=True,
+        )
+
+    app.dependency_overrides[routes.get_containment] = lambda: contain
     with TestClient(app) as c:
         c.asked = asked  # type: ignore[attr-defined]
+        c.contained = contained  # type: ignore[attr-defined]
         yield c
 
 
@@ -180,3 +203,119 @@ def test_a_finding_s_urgency_is_shown_as_jev_s_probability(
     store.put_doc(key, json.dumps(doc))
     [finding] = dashboard(client, settings).json()["findings"]
     assert finding["urgency"] == 0.93
+
+
+def test_a_finding_s_containment_pr_and_rotate_issue_show_on_the_dashboard(
+    client: TestClient, settings: Settings
+) -> None:
+    body = send(client).json()
+    assert client.contained == ["GHSA-demo-0001"]  # type: ignore[attr-defined]
+    assert body["contained"] == [
+        {
+            "finding": "GHSA-demo-0001",
+            "pr": f"https://github.com/{REPO}/pull/201",
+            "issue": f"https://github.com/{REPO}/issues/301",
+            "opened": True,
+        }
+    ]
+    [finding] = dashboard(client, settings).json()["findings"]
+    assert finding["containment"]["pr_number"] == 201 and finding["fix"] == {
+        "id": "K",
+        "verdict": "pass",
+        "title": "Trust the role only from the workflows that need it",
+    }
+
+
+def test_a_containment_that_fails_leaves_the_posture_kept_and_says_why(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    broken = {**ADVISORY, "id": "GHSA-broken"}
+    routes_posture = client.app.dependency_overrides[routes.get_posture]()  # type: ignore[attr-defined]
+
+    def both(gh: GitHub, repo: str, sha: str, plan: dict[str, Any]) -> PostureReport:
+        report = routes_posture(gh, repo, sha, plan)
+        extra = report.findings[0].model_copy(
+            update={"finding": {**report.findings[0].finding, "id": broken["id"]}}
+        )
+        return report.model_copy(update={"findings": [*report.findings, extra]})
+
+    client.app.dependency_overrides[routes.get_posture] = lambda: both  # type: ignore[attr-defined]
+    body = send(client).json()
+    assert [f["finding"] for f in body["contained"]] == ["GHSA-demo-0001"]
+    assert body["containment_failed"][0]["finding"] == "GHSA-broken"
+    assert store.get_doc(reviews.posture_key(REPO)) is not None
+
+
+def keep_review(store: MemoryStore, number: int, level: str, title: str) -> None:
+    """A kept PR review, shaped as /analyze keeps it, from the posture's finding result."""
+    review = json.loads(store.get_doc(reviews.finding_key("GHSA-demo-0001")) or "{}")["result"]
+    review = {**review, "mode": "pr", "finding": None, "repo": REPO, "pr_number": number}
+    verdict = {"level": level, "conclusion": "failure", "heading": "x", "title": "x"}
+    doc = {
+        "repo": REPO,
+        "number": number,
+        "title": title,
+        "head_sha": "a" * 40,
+        "updated_at": "",
+        "verdict": verdict,
+    }
+    store.put_doc(reviews.key(REPO, number), json.dumps({**doc, "result": review}))
+
+
+def test_each_posture_run_adds_to_the_history(client: TestClient, settings: Settings) -> None:
+    for trigger in ("push", "schedule"):
+        assert send(client, trigger=trigger).status_code == 200
+    runs = dashboard(client, settings).json()["history"]
+    assert [r["trigger"] for r in runs] == ["push", "schedule"]
+    assert runs[-1]["dangerous"] > 0 and runs[-1]["findings"] == 1 and runs[-1]["monthly_usd"] > 0
+
+
+def test_reviews_are_paged_filtered_and_searched_on_the_server(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    assert send(client).status_code == 200
+    for n in range(1, 31):
+        keep_review(store, n, "blocked" if n % 3 == 0 else "clear", f"Change {n}")
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    page = client.get(f"/dashboard/{REPO}/reviews?k={k}&limit=10&offset=10").json()
+    assert page["total"] == 30 and [r["number"] for r in page["reviews"]] == list(range(20, 10, -1))
+    blocked = client.get(f"/dashboard/{REPO}/reviews?k={k}&verdict=blocked").json()
+    assert blocked["total"] == 10 and all(r["number"] % 3 == 0 for r in blocked["reviews"])
+    found = client.get(f"/dashboard/{REPO}/reviews?k={k}&q=change 27").json()
+    assert [r["number"] for r in found["reviews"]] == [27]
+    assert client.get(f"/dashboard/{REPO}/reviews?k={k}&verdict=maybe").status_code == 422
+    assert client.get(f"/dashboard/{REPO}/reviews?k={k}&limit=0").status_code == 422
+    assert client.get(f"/dashboard/{REPO}/reviews?k=wrong").status_code == 404
+
+
+def test_the_organisation_adds_up_its_repositories(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    assert send(client).status_code == 200
+    keep_review(store, 85, "blocked", "Add Priya")
+    k = reviews.sign(settings, reviews.org_key("demo-org"))
+    data = client.get(f"/org/demo-org/data?k={k}").json()
+    [row] = data["repos"]
+    assert (
+        row["repo"] == REPO and row["scanned"] and row["url"].startswith("https://theseus.example/dashboard/")
+    )
+    assert data["totals"]["repos"] == 1 and data["totals"]["blocked"] == 1
+    assert data["totals"]["dangerous"] == row["dangerous"] > 0 and row["top"]
+    assert client.get(f"/org/demo-org?k={k}").status_code == 200
+    assert client.get("/org/demo-org/data?k=wrong").status_code == 404
+    other = reviews.sign(settings, reviews.org_key("someone"))
+    assert client.get(f"/org/someone/data?k={other}").status_code == 404
+    repo = dashboard(client, settings).json()
+    assert repo["org"] == "demo-org" and repo["org_url"].startswith("https://theseus.example/org/demo-org?k=")
+
+
+def test_the_graph_view_reads_main_s_whole_graph_from_the_store(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    assert client.get(f"/dashboard/{REPO}/graph?k={k}").status_code == 404  # before the first scan
+    assert send(client).status_code == 200
+    graph = client.get(f"/dashboard/{REPO}/graph?k={k}").json()
+    assert graph == {"name": graph["name"], **store.view(graph["name"])} and graph["nodes"] and graph["edges"]
+    assert {"FLOW"}.isdisjoint({e["type"] for e in graph["edges"]})
+    assert client.get(f"/dashboard/{REPO}/graph?k=wrong").status_code == 404

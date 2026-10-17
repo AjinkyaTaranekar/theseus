@@ -15,12 +15,14 @@ PAGES = [Path("theseus/web/review.html"), Path("theseus/web/dashboard.html")]
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="needs Node to parse the page's script")
 @pytest.mark.parametrize("page", PAGES, ids=lambda p: p.name)
-def test_the_page_script_parses(page: Path) -> None:
+def test_the_page_script_parses(page: Path, tmp_path: Path) -> None:
     html = page.read_text(encoding="utf-8")
-    script = html.split("<script>", 1)[1].split("</script>", 1)[0]
-    check = "new Function(require('fs').readFileSync(0, 'utf8'))"
+    script = tmp_path / "page.js"
+    script.write_text(html.split("<script>", 1)[1].split("</script>", 1)[0], encoding="utf-8")
+    # From a file, not stdin: a Windows runner's pipe once held Node past the timeout.
+    check = "new Function(require('fs').readFileSync(process.argv[1], 'utf8'))"
     run = subprocess.run(
-        ["node", "-e", check], input=script, capture_output=True, text=True, encoding="utf-8", timeout=30
+        ["node", "-e", check, str(script)], capture_output=True, text=True, encoding="utf-8", timeout=90
     )
     assert run.returncode == 0, run.stderr
 

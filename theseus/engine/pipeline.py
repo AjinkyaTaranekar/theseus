@@ -37,7 +37,7 @@ from theseus.contracts.result import (
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
 from theseus.engine.candidates import rank, rule_candidates
-from theseus.engine.finding import action_id, match_advisory, secrets_reached, with_finding
+from theseus.engine.finding import action_id, containment, match_advisory, secrets_reached, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.engine.posture import posture
@@ -312,6 +312,7 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
                 nodes[node_id] = NodeInfo(
                     category=by_id[node_id].category, sensitivity=by_id[node_id].sensitivity
                 )
+    candidates = contain(state, cut, requirements, workflows, deps)
     urgency, urgency_ms = finding_urgency(advisory, workflows, found.dangerous, state, deps)
     jev_ms += urgency_ms
     total_ms = int((time.perf_counter() - start) * 1000)
@@ -324,6 +325,7 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
         requirements=found.requirements,
         unknowns=sorted(set(state.rows.unknowns)),
         min_cut=cut,
+        candidates=candidates,
         rotate=secrets_reached(found, state),
         staging_to_prod=staging_to_prod(found, state),
         choke_points=choke_points(deps.store, state),
@@ -339,6 +341,28 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
         coverage=coverage(world, state.rows, deps),
         nodes=dict(sorted(nodes.items())),
     )
+
+
+def contain(
+    state: GraphState,
+    cut: MinCut | None,
+    requirements: list[Requirement],
+    workflows: list[str],
+    deps: Deps,
+) -> list[Candidate]:
+    """Candidate K, verified on a graph copy like any candidate: the compromised workflows must reach nothing
+    sensitive and every requirement must still hold. Empty when there is no K to write."""
+    nodes = {n.id for n in state.rows.nodes}
+    needed = analyze(deps.store, state, requirements, sorted({r.principal for r in requirements} & nodes))
+    fix = containment(state, needed, cut, requirements)
+    try:
+        draft = draft_for(fix, state, deps) if fix is not None else None
+    except PatchError as e:
+        log.warning("candidate K cannot be written as patch ops: %s", e)
+        draft = None
+    if draft is None:
+        return []
+    return [simulate(deps.store, state, draft, workflows, requirements, deps.adapters)]
 
 
 def run_scan(world: World, deps: Deps) -> AnalysisResult:
