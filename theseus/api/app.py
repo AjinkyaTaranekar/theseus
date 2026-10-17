@@ -24,14 +24,14 @@ from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
-from theseus.api import routes
+from theseus.api import routes, webhooks
 from theseus.api.github import GitHub
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
-from theseus.contracts.result import AnalysisResult
+from theseus.contracts.result import AnalysisResult, PatchOp
 from theseus.engine.pipeline import run_finding, run_pr, run_scan
-from theseus.errors import GraphError, IngestError
+from theseus.errors import GraphError, IngestError, PatchError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world, load_world_from_files
@@ -74,6 +74,22 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
         return result.model_copy(update={"repo": repo, "pr_number": number})
 
     return review
+
+
+def build_render() -> webhooks.Render:
+    """The renderer behind `/theseus apply` (task A9): the IaC adapter, configured from the head's own
+    theseus.yaml as the review was, writes the fix's ops as verified edits on the head's files."""
+
+    def render(files: dict[str, str], ops: list[PatchOp]) -> dict[str, str]:
+        try:
+            config = yaml.safe_load(files.get("theseus.yaml") or "") or {}
+        except yaml.YAMLError as e:
+            raise PatchError("theseus.yaml at the head cannot be read") from e
+        if not isinstance(config, dict):
+            raise PatchError("theseus.yaml at the head is not a mapping")
+        return adapters_for(config).iac.render(files, ops)
+
+    return render
 
 
 def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
@@ -145,6 +161,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.review = build_review(app.state.store, llm, jev, settings)
         app.state.scan = build_scan(app.state.store, jev, settings)
         app.state.finder = build_finder(app.state.store, jev, settings)
+        app.state.results = webhooks.Results()
+        app.state.render = build_render()
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)
