@@ -12,7 +12,8 @@ Data**.
 | --- | --- |
 | **Try it live** | <https://guest-box.tail27b7c5.ts.net>: pick a preset and the real engine runs on FalkorDB ([`/health`](https://guest-box.tail27b7c5.ts.net/health)) |
 | **Demo video** | _Link added at submission_ |
-| **A real review** | [Demo PR #85](https://github.com/AjinkyaTaranekar/theseus/pull/85): an intern joins a support group "to read prod logs"; Theseus comments *"This PR would let priya-intern read and change customer-db"* |
+| **A real review** | [Demo PR #125](https://github.com/AjinkyaTaranekar/theseus/pull/125): an intern joins a support group "to read prod logs"; Theseus comments *"This PR would let priya-intern read and change customer-db"*, and `/theseus apply` commits the fix that turns the check green |
+| **More demo PRs** | [#137](https://github.com/AjinkyaTaranekar/theseus/pull/137) makes a bucket public; [#124](https://github.com/AjinkyaTaranekar/theseus/pull/124) is a typo fix whose code reads the customer database; [#129](https://github.com/AjinkyaTaranekar/theseus/pull/129) tries to steer the review; [#126](https://github.com/AjinkyaTaranekar/theseus/pull/126) offboards a contractor and closes 6 paths; [#128](https://github.com/AjinkyaTaranekar/theseus/pull/128) is safe |
 | **A containment PR** | [PR #111](https://github.com/AjinkyaTaranekar/theseus/pull/111), opened by Theseus for a compromised GitHub Action, and [issue #112](https://github.com/AjinkyaTaranekar/theseus/issues/112), the secret to rotate |
 
 ![Theseus flags where what the PR says, what Terraform allows and what the code does disagree](docs/images/three-sources.png)
@@ -32,13 +33,17 @@ Data**.
    access a requirement in `theseus.yaml` needs.
 5. **Fix.** Rule fixes and one fix the LLM designs with MCP tools are each applied to a `GRAPH.COPY` of the head
    and re-analyzed. Each gets a verdict: `pass`, `fail`, `unknown` or `invalid`.
-6. **Act.** One PR comment and a required check. A reviewer comments `/theseus apply B`, and the GitHub App
-   commits the Terraform for a fix that passed.
+6. **Act.** One PR comment, a required check, labels, and the passing fix as GitHub suggestions on the PR's
+   own lines. A reviewer commits a suggestion, or comments `/theseus apply`, and the GitHub App commits the
+   Terraform for the fix that passed; Theseus then reviews the new head.
 
-The same graph serves three more modes: **finding** (an advisory such as a compromised Action becomes a
-containment PR and a rotate list), **scan** (dangerous paths already on `main`, and grants no code calls) and
-**posture** (a dashboard of who reaches what, single points of failure and articulation points;
-[setup](docs/onboarding.md)).
+The same graph serves four more modes: **finding** (an advisory such as a compromised Action becomes a
+containment PR and a rotate list), **scan** (dangerous paths already on `main`, and grants no code calls),
+**posture** (a dashboard of who reaches what, single points of failure, articulation points and the cost with
+what could be saved; [setup](docs/onboarding.md)) and **incidents** (pick or paste an outage, such as "AWS
+Lambda is down in eu-west-1", or let the nightly check of AWS Health and GitHub's status page find one, and see
+what goes down, who loses access and which dependencies break). How it is built:
+[docs/architecture/](docs/architecture/).
 
 ![How Theseus works: three inputs, one graph per state, one human decision](docs/images/end-to-end-flow.png)
 
@@ -192,13 +197,6 @@ the `FALKORDB_*` settings.
 .venv/bin/pytest -q                 # offline: unit, golden, contract, replay, e2e
 .venv/bin/pytest -q -m falkordb     # the same answers from FalkorDB as from the in-memory store
 ```
-
-> **Known gap.** In replay mode on a fresh clone, the CLI (`python -m theseus analyze fixtures/intern`, and
-> `finding`, `scan`, `posture` and `incident`) stops with `no recording sensitivity-...`: it looks up Jev's
-> recording by a hash of the whole request, and the demo world gained resources after that recording was made.
-> The Try-it page and the tests look recordings up by content and are not affected.
-> [PR #132](https://github.com/AjinkyaTaranekar/theseus/pull/132) makes the CLI do the same; until it merges, run
-> the CLI with `THESEUS_MODE=live` and the Jev and LLM keys in `.env`.
 
 To review your own pull requests, install the GitHub App and add `theseus.yaml` and the workflows:
 [docs/onboarding.md](docs/onboarding.md). Every setting is in [`.env.example`](.env.example).
