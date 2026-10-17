@@ -13,6 +13,11 @@ import hashlib
 import hmac
 import json
 import logging
+import threading
+import time
+from collections import OrderedDict
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Protocol
 from urllib.parse import quote
 
@@ -30,6 +35,8 @@ from theseus.errors import GraphError
 log = logging.getLogger(__name__)
 
 SIGNATURE_CHARS = 32
+CACHE_TTL = 30.0  # seconds a page read is reused; another process that re-saves shows up within this long
+CACHE_SIZE = 64
 
 
 class ReviewStore(Protocol):
@@ -41,6 +48,54 @@ class ReviewStore(Protocol):
     def docs(self, prefix: str) -> list[str]: ...
     def read_docs(self, prefix: str) -> dict[str, str]: ...
     def list_graphs(self) -> list[str]: ...
+
+
+class ReadCache:
+    """A small process-local cache of the page's store reads: entries expire after `ttl` seconds, at most
+    `size` are kept (the oldest is dropped first), and an entry is served only to the store that made it."""
+
+    def __init__(
+        self,
+        clock: Callable[[], float] = time.monotonic,
+        ttl: float = CACHE_TTL,
+        size: int = CACHE_SIZE,
+    ) -> None:
+        self.clock = clock
+        self.ttl = ttl
+        self.size = size
+        self._entries: OrderedDict[tuple[str, str], tuple[float, object, Any]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def __len__(self) -> int:
+        return len(self._entries)
+
+    def get(self, store: object, doc_key: str, part: str = "") -> Any | None:
+        """The value kept for this document (and fix, when `part` names one), or None if none is fresh."""
+        with self._lock:
+            entry = self._entries.get((doc_key, part))
+            if entry is None:
+                return None
+            expires, owner, value = entry
+            if owner is not store or self.clock() >= expires:
+                del self._entries[(doc_key, part)]
+                return None
+            return value
+
+    def put(self, store: object, doc_key: str, part: str, value: Any) -> None:
+        with self._lock:
+            self._entries.pop((doc_key, part), None)
+            self._entries[(doc_key, part)] = (self.clock() + self.ttl, store, value)
+            while len(self._entries) > self.size:
+                self._entries.popitem(last=False)
+
+    def clear(self, doc_key: str) -> None:
+        """Forgets everything kept for this document, its fixes included."""
+        with self._lock:
+            for entry_key in [k for k in self._entries if k[0] == doc_key]:
+                del self._entries[entry_key]
+
+
+_cache = ReadCache()
 
 
 def key(repo: str, number: int) -> str:
@@ -106,6 +161,7 @@ def save(
         "result": result.model_dump(mode="json", by_alias=True),
     }
     store.put_doc(key(repo, number), json.dumps(doc, sort_keys=True))
+    _cache.clear(key(repo, number))
     log.info("%s#%d: kept the review of %s for its page", repo, number, head_sha[:7])
 
 
@@ -139,30 +195,51 @@ def save_finding(
         "result": result.model_dump(mode="json", by_alias=True),
     }
     store.put_doc(finding_key(finding_id), json.dumps(doc, sort_keys=True))
+    _cache.clear(finding_key(finding_id))
     log.info("finding %s: kept for its page", finding_id)
 
 
 def page_doc(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
-    """A page's newest result and its graphs as the store holds them now, or None if there is none. A
-    graph the store no longer holds is left out."""
+    """A page's newest result and its graphs as the store holds them now (up to CACHE_TTL seconds ago), or
+    None if there is none. The graphs are read at the same time, in the result's order; a graph the store no
+    longer holds is left out."""
+    cached = _cache.get(store, doc_key)
+    if cached is not None:
+        log.info("%s: page served from the cache", doc_key)
+        return cached  # type: ignore[no-any-return]
+    started = time.perf_counter()
     text = store.get_doc(doc_key)
     if text is None:
         return None
     doc: dict[str, Any] = json.loads(text)
-    graphs: dict[str, Any] = {}
-    for side, name in (doc["result"].get("graphs") or {}).items():
+    named = list((doc["result"].get("graphs") or {}).items())
+
+    def read(name: str) -> dict[str, Any] | None:
         try:
-            graphs[side] = {"name": name, **store.view(name)}
+            return {"name": name, **store.view(name)}
         except GraphError as e:  # deleted since: the page shows what is left
             log.warning("%s: graph %s is gone: %s", doc_key, name, e)
-    return {**doc, "graphs": graphs}
+            return None
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        views = list(pool.map(read, [name for _, name in named]))
+    graphs = {side: view for (side, _), view in zip(named, views, strict=True) if view is not None}
+    page = {**doc, "graphs": graphs}
+    _cache.put(store, doc_key, "", page)
+    log.info("%s: read the page in %d ms", doc_key, (time.perf_counter() - started) * 1000)
+    return page
 
 
 def fix_graph(store: ReviewStore, doc_key: str, candidate_id: str) -> dict[str, Any] | None:
-    """One candidate fix with the graph copy the engine verified it on, read from the store now and trimmed to
-    what the page draws: `{id, verdict, title, recommended, reason, ops, name, nodes, edges}`, the nodes as
-    `{id, category, sensitivity}` and the edges as `{src, type, dst}` for access links only. None when the
-    review, the candidate or its copy is gone."""
+    """One candidate fix with the graph copy the engine verified it on, read from the store now (or up to
+    CACHE_TTL seconds ago) and trimmed to what the page draws: `{id, verdict, title, recommended, reason, ops,
+    name, nodes, edges}`, the nodes as `{id, category, sensitivity}` and the edges as `{src, type, dst}` for
+    access links only. None when the review, the candidate or its copy is gone."""
+    cached = _cache.get(store, doc_key, candidate_id)
+    if cached is not None:
+        log.info("%s: fix %s served from the cache", doc_key, candidate_id)
+        return cached  # type: ignore[no-any-return]
+    started = time.perf_counter()
     doc = _load(store, doc_key)
     head = ((doc or {}).get("result") or {}).get("graphs", {}).get("head")
     candidate = (
@@ -173,11 +250,15 @@ def fix_graph(store: ReviewStore, doc_key: str, candidate_id: str) -> dict[str, 
     if not head or candidate is None:
         return None
     name = candidate_graph(head, candidate_id)
-    if name not in store.list_graphs():
+    try:
+        view = store.view(name)
+    except GraphError as e:
+        if name in store.list_graphs():  # the graph is there, so the read itself failed
+            raise
+        log.warning("%s: fix %s's graph %s is gone: %s", doc_key, candidate_id, name, e)
         return None
-    view = store.view(name)
     keep = ("id", "verdict", "title", "recommended", "reason", "ops")
-    return {
+    fix = {
         **{k: candidate.get(k) for k in keep},
         "name": name,
         "nodes": [{k: n.get(k) for k in ("id", "category", "sensitivity")} for n in view["nodes"]],
@@ -185,6 +266,9 @@ def fix_graph(store: ReviewStore, doc_key: str, candidate_id: str) -> dict[str, 
             {k: e[k] for k in ("src", "type", "dst")} for e in view["edges"] if e["type"] in PATH_TYPES
         ],
     }
+    _cache.put(store, doc_key, candidate_id, fix)
+    log.info("%s: read fix %s in %d ms", doc_key, candidate_id, (time.perf_counter() - started) * 1000)
+    return fix
 
 
 def page_data(store: ReviewStore, repo: str, number: int) -> dict[str, Any] | None:
@@ -348,6 +432,7 @@ def mark_contained(store: ReviewStore, finding_id: str, pr: str, pr_number: int,
         return
     doc["containment"] = {"pr": pr, "pr_number": pr_number, "issue": issue}
     store.put_doc(finding_key(finding_id), json.dumps(doc, sort_keys=True))
+    _cache.clear(finding_key(finding_id))
 
 
 def _load_all(store: ReviewStore, prefix: str) -> list[dict[str, Any]]:
