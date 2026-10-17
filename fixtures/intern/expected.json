@@ -1,6 +1,17 @@
 {
-  "scenario": "intern",
-  "mode": "pr",
+  "candidates": {
+    "A": "fail",
+    "B": "pass",
+    "C": "unknown",
+    "D": "fail"
+  },
+  "changes": [
+    [
+      "create",
+      "aws_iam_user_group_membership.priya_support"
+    ]
+  ],
+  "closed": [],
   "intent": {
     "grants": [
       [
@@ -11,164 +22,64 @@
     ],
     "suspicious": false
   },
-  "changes": [
-    [
-      "create",
-      "aws_iam_user_group_membership.priya_support"
-    ]
-  ],
+  "min_cut": {
+    "cuttable": false,
+    "value_at_least": 1000000
+  },
+  "mode": "pr",
   "opened": [
     {
       "actor": "user:priya-intern",
-      "target": "db:customer-db",
-      "route": [
-        "user:priya-intern",
-        "group:support-engineers",
-        "role:prod-support",
-        "secret:prod-db-credentials",
-        "db:customer-db"
-      ],
       "cites": [
         "terraform/people.tf:83",
         "terraform/people.tf:56",
         "terraform/roles.tf:36",
         "terraform/data.tf:31"
-      ]
+      ],
+      "route": [
+        "user:priya-intern",
+        "group:support-engineers",
+        "role:prod-support",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "target": "db:customer-db"
     },
     {
       "actor": "user:priya-intern",
-      "target": "s3://demo-company-files/invoices/",
+      "cites": [
+        "terraform/people.tf:83",
+        "terraform/people.tf:56",
+        "terraform/roles.tf:30"
+      ],
       "route": [
         "user:priya-intern",
         "group:support-engineers",
         "role:prod-support",
         "s3://demo-company-files/invoices/"
       ],
-      "cites": [
-        "terraform/people.tf:83",
-        "terraform/people.tf:56",
-        "terraform/roles.tf:30"
-      ]
+      "target": "s3://demo-company-files/invoices/"
     },
     {
       "actor": "user:priya-intern",
-      "target": "secret:prod-db-credentials",
+      "cites": [
+        "terraform/people.tf:83",
+        "terraform/people.tf:56",
+        "terraform/roles.tf:36"
+      ],
       "route": [
         "user:priya-intern",
         "group:support-engineers",
         "role:prod-support",
         "secret:prod-db-credentials"
       ],
-      "cites": [
-        "terraform/people.tf:83",
-        "terraform/people.tf:56",
-        "terraform/roles.tf:36"
-      ]
+      "target": "secret:prod-db-credentials"
     }
   ],
-  "closed": [],
-  "unchanged": [
-    {
-      "actor": "workflow:demo-org/docs-site/preview.yml",
-      "target": "db:customer-db",
-      "route": [
-        "workflow:demo-org/docs-site/preview.yml",
-        "role:github-deploy",
-        "role:prod-support",
-        "secret:prod-db-credentials",
-        "db:customer-db"
-      ],
-      "cites": [
-        "terraform/ci.tf:13",
-        "terraform/ci.tf:42",
-        "terraform/roles.tf:36",
-        "terraform/data.tf:31"
-      ]
-    },
-    {
-      "actor": "workflow:demo-org/docs-site/preview.yml",
-      "target": "s3://demo-company-files/invoices/",
-      "route": [
-        "workflow:demo-org/docs-site/preview.yml",
-        "role:github-deploy",
-        "role:prod-support",
-        "s3://demo-company-files/invoices/"
-      ],
-      "cites": [
-        "terraform/ci.tf:13",
-        "terraform/ci.tf:42",
-        "terraform/roles.tf:30"
-      ]
-    },
-    {
-      "actor": "workflow:demo-org/docs-site/preview.yml",
-      "target": "secret:prod-db-credentials",
-      "route": [
-        "workflow:demo-org/docs-site/preview.yml",
-        "role:github-deploy",
-        "role:prod-support",
-        "secret:prod-db-credentials"
-      ],
-      "cites": [
-        "terraform/ci.tf:13",
-        "terraform/ci.tf:42",
-        "terraform/roles.tf:36"
-      ]
-    },
-    {
-      "actor": "workflow:demo-org/infra/deploy.yml",
-      "target": "s3://demo-company-files/invoices/",
-      "route": [
-        "workflow:demo-org/infra/deploy.yml",
-        "role:github-deploy",
-        "role:prod-support",
-        "s3://demo-company-files/invoices/"
-      ],
-      "cites": [
-        "terraform/ci.tf:13",
-        "terraform/ci.tf:42",
-        "terraform/roles.tf:30"
-      ]
-    },
-    {
-      "actor": "workload:support-portal",
-      "target": "db:customer-db",
-      "route": [
-        "workload:support-portal",
-        "role:support-portal",
-        "secret:prod-db-credentials",
-        "db:customer-db"
-      ],
-      "cites": [
-        "terraform/services.tf:188",
-        "terraform/services.tf:180",
-        "terraform/data.tf:31"
-      ]
-    },
-    {
-      "actor": "workload:support-portal",
-      "target": "secret:prod-db-credentials",
-      "route": [
-        "workload:support-portal",
-        "role:support-portal",
-        "secret:prod-db-credentials"
-      ],
-      "cites": [
-        "terraform/services.tf:188",
-        "terraform/services.tf:180"
-      ]
-    }
-  ],
+  "recommended": "B",
   "requirements": {
+    "I1": "satisfied",
     "R1": "satisfied",
-    "R2": "satisfied",
-    "R3": "satisfied",
-    "R4": "satisfied",
-    "R5": "satisfied",
-    "R6": "satisfied",
-    "R7": "satisfied",
-    "R8": "satisfied",
-    "R9": "satisfied",
     "R10": "satisfied",
     "R11": "satisfied",
     "R12": "satisfied",
@@ -177,20 +88,348 @@
     "R15": "satisfied",
     "R16": "satisfied",
     "R17": "satisfied",
-    "I1": "satisfied"
+    "R18": "satisfied",
+    "R19": "satisfied",
+    "R2": "satisfied",
+    "R20": "satisfied",
+    "R21": "satisfied",
+    "R3": "satisfied",
+    "R4": "satisfied",
+    "R5": "satisfied",
+    "R6": "satisfied",
+    "R7": "satisfied",
+    "R8": "satisfied",
+    "R9": "satisfied"
   },
-  "min_cut": {
-    "cuttable": false,
-    "value_at_least": 1000000
-  },
-  "candidates": {
-    "A": "fail",
-    "B": "pass",
-    "C": "unknown",
-    "D": "fail"
-  },
-  "recommended": "B",
   "rotate": [],
+  "scenario": "intern",
+  "unchanged": [
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:54",
+        "terraform/data.tf:31"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "target": "db:customer-db"
+    },
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:60"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "s3://demo-company-files/invoices/"
+      ],
+      "target": "s3://demo-company-files/invoices/"
+    },
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:54"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "secret:legacy-reports-password"
+      ],
+      "target": "secret:legacy-reports-password"
+    },
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:54"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "secret:payments-api-key"
+      ],
+      "target": "secret:payments-api-key"
+    },
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:54"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "secret:prod-db-credentials"
+      ],
+      "target": "secret:prod-db-credentials"
+    },
+    {
+      "actor": "user:casey-contractor",
+      "cites": [
+        "terraform/legacy.tf:13",
+        "terraform/legacy.tf:24",
+        "terraform/legacy.tf:54"
+      ],
+      "route": [
+        "user:casey-contractor",
+        "group:contractors",
+        "role:platform-admin",
+        "secret:smtp-credentials"
+      ],
+      "target": "secret:smtp-credentials"
+    },
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:36",
+        "terraform/data.tf:31"
+      ],
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "target": "db:customer-db"
+    },
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:30"
+      ],
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "s3://demo-company-files/invoices/"
+      ],
+      "target": "s3://demo-company-files/invoices/"
+    },
+    {
+      "actor": "workflow:demo-org/docs-site/preview.yml",
+      "cites": [
+        "terraform/ci.tf:13",
+        "terraform/ci.tf:42",
+        "terraform/roles.tf:36"
+      ],
+      "route": [
+        "workflow:demo-org/docs-site/preview.yml",
+        "role:github-deploy",
+        "role:prod-support",
+        "secret:prod-db-credentials"
+      ],
+      "target": "secret:prod-db-credentials"
+    },
+    {
+      "actor": "workflow:demo-org/infra/deploy.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:103"
+      ],
+      "route": [
+        "workflow:demo-org/infra/deploy.yml",
+        "role:backup-runner",
+        "s3://demo-company-files/invoices/"
+      ],
+      "target": "s3://demo-company-files/invoices/"
+    },
+    {
+      "actor": "workflow:demo-org/infra/deploy.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/deploy.yml",
+        "role:backup-runner",
+        "secret:legacy-reports-password"
+      ],
+      "target": "secret:legacy-reports-password"
+    },
+    {
+      "actor": "workflow:demo-org/infra/deploy.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/deploy.yml",
+        "role:backup-runner",
+        "secret:payments-api-key"
+      ],
+      "target": "secret:payments-api-key"
+    },
+    {
+      "actor": "workflow:demo-org/infra/deploy.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/deploy.yml",
+        "role:backup-runner",
+        "secret:smtp-credentials"
+      ],
+      "target": "secret:smtp-credentials"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97",
+        "terraform/data.tf:31"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "target": "db:customer-db"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:103"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "s3://demo-company-files/invoices/"
+      ],
+      "target": "s3://demo-company-files/invoices/"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "secret:legacy-reports-password"
+      ],
+      "target": "secret:legacy-reports-password"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "secret:payments-api-key"
+      ],
+      "target": "secret:payments-api-key"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "secret:prod-db-credentials"
+      ],
+      "target": "secret:prod-db-credentials"
+    },
+    {
+      "actor": "workflow:demo-org/infra/snapshot.yml",
+      "cites": [
+        "terraform/legacy.tf:75",
+        "terraform/legacy.tf:97"
+      ],
+      "route": [
+        "workflow:demo-org/infra/snapshot.yml",
+        "role:backup-runner",
+        "secret:smtp-credentials"
+      ],
+      "target": "secret:smtp-credentials"
+    },
+    {
+      "actor": "workload:invoice-mailer",
+      "cites": [
+        "terraform/legacy.tf:159",
+        "terraform/legacy.tf:144"
+      ],
+      "route": [
+        "workload:invoice-mailer",
+        "role:shared-lambda",
+        "secret:payments-api-key"
+      ],
+      "target": "secret:payments-api-key"
+    },
+    {
+      "actor": "workload:receipt-renderer",
+      "cites": [
+        "terraform/legacy.tf:191",
+        "terraform/legacy.tf:144"
+      ],
+      "route": [
+        "workload:receipt-renderer",
+        "role:shared-lambda",
+        "secret:payments-api-key"
+      ],
+      "target": "secret:payments-api-key"
+    },
+    {
+      "actor": "workload:support-portal",
+      "cites": [
+        "terraform/services.tf:188",
+        "terraform/services.tf:180",
+        "terraform/data.tf:31"
+      ],
+      "route": [
+        "workload:support-portal",
+        "role:support-portal",
+        "secret:prod-db-credentials",
+        "db:customer-db"
+      ],
+      "target": "db:customer-db"
+    },
+    {
+      "actor": "workload:support-portal",
+      "cites": [
+        "terraform/services.tf:188",
+        "terraform/services.tf:180"
+      ],
+      "route": [
+        "workload:support-portal",
+        "role:support-portal",
+        "secret:prod-db-credentials"
+      ],
+      "target": "secret:prod-db-credentials"
+    }
+  ],
   "unused_grants": [],
   "use_beyond_intent": []
 }

@@ -46,7 +46,6 @@ flowchart LR
     pay[(payments-api-key)]
     db[(customer-db)]
     ord[(demo-orders)]
-    migration[(orders-migration-db, unreached)]
   end
   sam --> sup[support-engineers] --> ps[prod-support]
   priya -. intern PR .-> sup
@@ -88,36 +87,9 @@ Initialization downloads the provider; planning uses literal mock credentials, s
 
 `intern` adds only Priya's membership; `public-bucket` adds only `PublicRead`. Finding and scan modes (`compromised-action`, `unused-grant`) contain a base world only. The advisory and third-party Action are fictional inputs. Workflows under `workflows/` are archived inputs; GitHub does not execute them here.
 
-All six service implementations, the platform/network infrastructure and `code-pr` are included. Human-owned
-`expected.json` files pin the reviewed outcomes and evidence lines. The generator never reads or writes them.
-
-## What to demonstrate
-
-The baseline contains 123 Terraform resources, of which 71 are modeled. It keeps the six existing dangerous
-access paths, 17 satisfied requirements and the unused support-portal secret grant. Each PR scenario starts
-from that same baseline, so changes can be compared independently.
-
-| Example | What Theseus checks | Expected result |
-| --- | --- | --- |
-| `intern` | Priya joins support to read logs | Three new sensitive targets; fix B closes them while preserving log access; A and D fail, C is UNKNOWN |
-| `public-bucket` | Marketing publishes a pricing PDF | Internet access also reaches invoices; scope the policy to `public/*` |
-| `compromised-action` | A fictional third-party Action is assumed compromised | Preview reaches production data; pin the OIDC trust and identify the secret to rotate |
-| `unused-grant` | Support-portal holds an old database-secret permission | Remove `LegacyDbSecret`; required access and parsed code calls keep working |
-| `code-pr` | A purported typo fix adds a customer export | New secret and database calls are flagged despite no IAM change |
-| Forgotten migration database | Main's posture and cost view | `orders-migration-db` is unreached, with an estimated $58.95 monthly cleanup opportunity |
-
-The migration database is a temporary cutover copy in its own `terraform/migration.tf`, so no existing
-evidence line moves. No modeled actor reaches it and no parsed code calls it. Its sensitivity is explicitly
-`regulated`, so adding it needs no new model classification. Its cost comes from its declared instance class
-and storage, using the adapter's price table; the whole world's estimate becomes $116.24 per month.
-
-**A cleanup candidate still needs a person's review.** The graph cannot establish that manual consumers,
-backups or recovery plans do not exist. These figures are estimates, not bills: usage charges count as zero,
-and the table uses us-east-1 prices even though this fictional world is configured in eu-west-1.
-
-The dashboard's single points describe nodes every modeled access route for a dependency crosses. The shared
-database secret and support role illustrate that dependency; they do not demonstrate instance, zone or region
-failover. A single point is information for review, not automatically a defect or a reason to grant more access.
+C1 adds service implementations and platform/network infrastructure, then adds `code-pr` to the generator.
+The merged IAM catalog models queues, topics and log groups; their labels and requirements must be settled
+before F5 freezes the C1 outcomes. Until then, the six service folders are empty packages and unused-grant has infrastructure inputs only. The code-based conclusion belongs to C1/C2/C3. F5 is human work: write and review `expected.json` after reviewing the final source lines. The generator never reads or writes that file.
 
 ## Operational settings and review handoff
 
@@ -127,24 +99,24 @@ nightly batch logs and rerun the jobs; a separate DLQ and send grant are deferre
 graph. Request-driven functions return failures synchronously. These settings represent the fictional existing
 account; the literal IDs are not outputs from a new deployment.
 
-The existing resources enable active Lambda tracing, database deletion protection, IAM database
+The existing resources enable active Lambda tracing, database deletion protection, Multi-AZ, IAM database
 authentication, automatic minor upgrades, snapshot tag copying, Performance Insights and Postgres log exports.
-The production database uses Multi-AZ; the temporary migration database deliberately uses single-AZ.
 Containers use read-only root filesystems and the cluster enables Container Insights. Each Checkov exception
 explains an accepted operational tradeoff inside its resource; IAM statements, trust conditions, resource names,
 workload environments and code-path tags retain the access graph defined in spec 02.
 
 C1 (#22, PR #64) supplies the network, `demo-postgres16` query-logging parameter group, and bucket versioning,
 SSE-S3 encryption, lifecycle rules, notifications and public-access blocks. Its public-bucket scenario disables
-the two policy-blocking flags before adding `PublicRead`. The baseline's Checkov acceptance target is zero
-failures; intentional scenario defects are separate from that baseline.
+the two policy-blocking flags before adding `PublicRead`. Checkov's acceptance target is zero failures with C1
+combined, so those missing bucket settings remain visible on this branch rather than receiving exceptions.
 
 The compromised-action advisory describes a fictional incident and fictional affected/patched versions. Its
 text reads as an advisory; `scenario.yaml` and this README retain the synthetic disclaimer. Nothing describes
 an actual compromise of an Action or an actual company's infrastructure.
 
-Keep existing Terraform and workflow source lines stable, and regenerate fixtures after changing this world.
-The regression tests compare existing answer-key citations without editing the answer keys.
+These changes move Terraform and workflow source lines. Regenerate every fixture before F5 writes its cites;
+humans must review any existing answer-key citations against the regenerated sources. The separate
+`theseus_code_path` tag/mapping decision in #63 still needs both humans' agreement.
 
 ## Scope of the model
 

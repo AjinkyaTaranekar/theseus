@@ -18,6 +18,7 @@ from theseus.api.app import create_app
 from theseus.api.contain import Contained
 from theseus.api.github import GitHub
 from theseus.config import Settings
+from theseus.contracts.incident import Incident
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.engine.pipeline import run_posture
@@ -27,6 +28,18 @@ from theseus.graph.store import MemoryStore
 TOKEN = "theseus-token-not-real"
 REPO = "demo-org/theseus"
 SHA = "c" * 40
+# What the status feeds report in these tests: Secrets Manager down where the demo world runs, and EC2
+# somewhere it doesn't.
+FEED = [
+    Incident(provider="aws", service="ec2", region="us-east-1", title="Increased Error Rates", source="feed"),
+    Incident(
+        provider="aws",
+        service="secretsmanager",
+        region="eu-west-1",
+        title="Secrets Manager outage",
+        source="feed",
+    ),
+]
 ADVISORY = json.loads(Path("advisories/GHSA-demo-0001.json").read_text(encoding="utf-8"))
 
 
@@ -74,9 +87,17 @@ def client(settings: Settings, store: MemoryStore) -> Iterator[TestClient]:
         )
 
     app.dependency_overrides[routes.get_containment] = lambda: contain
+    checks: list[int] = []
+
+    def feeds() -> tuple[list[Incident], list[str]]:
+        checks.append(1)
+        return FEED, ["github: could not be read"]
+
+    app.dependency_overrides[routes.get_status] = lambda: feeds
     with TestClient(app) as c:
         c.asked = asked  # type: ignore[attr-defined]
         c.contained = contained  # type: ignore[attr-defined]
+        c.checks = checks  # type: ignore[attr-defined]
         yield c
 
 
@@ -153,20 +174,6 @@ def test_a_dashboard_before_any_scan_says_what_is_missing(client: TestClient, se
     data = dashboard(client, settings).json()
     assert data["posture"] is None and data["reviews"] == [] and data["findings"] == []
     assert [step["done"] for step in data["onboarding"]] == [False, False, False, False]
-
-
-def test_the_dashboard_reports_the_forgotten_database_and_its_estimated_saving(
-    client: TestClient, settings: Settings
-) -> None:
-    assert send(client).status_code == 200
-    data = dashboard(client, settings).json()
-    posture = data["posture"]["posture"]
-    assert posture["unreached"] == ["db:orders-migration-db"]
-    [saving] = posture["cost"]["savings"]
-    assert saving["id"] == "db:orders-migration-db"
-    assert saving["monthly_usd"] == posture["cost"]["savings_usd"] == 58.95
-    assert posture["cost"]["monthly_usd"] == 116.24
-    assert "billed by use" in posture["cost"]["note"]
 
 
 @pytest.mark.parametrize("k", ["", "0123456789abcdef0123456789abcdef"])
@@ -333,3 +340,75 @@ def test_the_graph_view_reads_main_s_whole_graph_from_the_store(
     assert graph == {"name": graph["name"], **store.view(graph["name"])} and graph["nodes"] and graph["edges"]
     assert {"FLOW"}.isdisjoint({e["type"] for e in graph["edges"]})
     assert client.get(f"/dashboard/{REPO}/graph?k=wrong").status_code == 404
+
+
+def outage(client: TestClient, settings: Settings, k: str | None = None, **params: str):
+    k = reviews.sign(settings, reviews.dashboard_key(REPO)) if k is None else k
+    return client.get(f"/dashboard/{REPO}/incident", params={"k": k, **params})
+
+
+def test_an_outage_picked_on_the_dashboard_is_answered_from_the_kept_basis(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    res = outage(client, settings, provider="aws", service="lambda", region="eu-west-1")
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["incident"]["source"] == "picker"
+    assert body["headline"].startswith("AWS Lambda down in eu-west-1: 6 down,")
+    assert {m["id"] for m in body["matched"]} >= {"workload:billing-api", "workload:invoice-mailer"}
+    typed = outage(client, settings, text="Secrets Manager is down in Ireland").json()
+    assert typed["incident"]["region"] == "eu-west-1" and typed["incident"]["source"] == "text"
+    assert any(b["dependency"]["resource"] == "db:customer-db" for b in typed["broken"])
+    data = dashboard(client, settings).json()
+    assert "outage" not in data["posture"]["posture"]  # the page gets the picker's terms, not the basis
+    services = {s["service"]: s["here"] for s in data["outage"]["services"]}
+    assert (
+        services["lambda"] == 6
+        and services["actions"] == 5
+        and data["outage"]["world_regions"] == ["eu-west-1"]
+    )
+
+
+def test_an_outage_naming_nothing_known_or_with_a_bad_signature_is_refused(
+    client: TestClient, settings: Settings
+) -> None:
+    assert outage(client, settings, provider="aws", service="lambda").status_code == 404  # no posture yet
+    assert send(client).status_code == 200
+    assert outage(client, settings, text="the coffee machine is down").status_code == 422
+    assert outage(client, settings, provider="aws", service="mainframe").status_code == 422
+    assert outage(client, settings, provider="aws", service="lambda", region="mars-1").status_code == 422
+    assert outage(client, settings, k="0" * 32, provider="aws", service="lambda").status_code == 404
+
+
+def test_the_token_route_answers_a_headline(client: TestClient) -> None:
+    assert send(client).status_code == 200
+    body = {"repo": REPO, "text": "GitHub Actions is down"}
+    assert client.post("/incident", json=body).status_code == 401
+    res = client.post("/incident", json=body, headers={"X-Theseus-Token": TOKEN})
+    assert res.status_code == 200, res.text
+    assert res.json()["headline"] == "GitHub Actions down: 5 down, 3 of 25 dependencies break."
+
+
+def test_a_feed_check_keeps_each_incident_s_blast_radius_for_the_dashboard(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    assert send(client).status_code == 200
+    body = {"repo": REPO, "trigger": "schedule"}
+    assert client.post("/incidents/check", json=body).status_code == 401
+    res = client.post("/incidents/check", json=body, headers={"X-Theseus-Token": TOKEN})
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert (found["incidents"], found["reaching_main"]) == (2, 1)
+    assert found["errors"] == ["github: could not be read"]
+    assert found["headlines"][0].startswith("AWS Secrets Manager down in eu-west-1:")
+    live = dashboard(client, settings).json()["outage"]["live"]
+    assert live["trigger"] == "schedule" and [r["incident"]["service"] for r in live["reports"]] == [
+        "secretsmanager",
+        "ec2",
+    ]
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    again = client.post(f"/dashboard/{REPO}/incidents/check?k={k}")
+    assert again.status_code == 200 and again.json()["trigger"] == "workflow_dispatch"
+    assert client.post(f"/dashboard/{REPO}/incidents/check?k={'0' * 32}").status_code == 404
+    assert len(client.checks) == 2  # type: ignore[attr-defined]

@@ -13,37 +13,45 @@
 vocabulary:
   principals:
     - entry:internet
+    - group:contractors
     - group:data-analysts
     - group:platform-engineers
     - group:support-engineers
     - role:analytics-export
     - role:analytics-read
+    - role:backup-runner
     - role:billing-api
     - role:billing-job
     - role:ecs-task-execution
     - role:github-deploy
     - role:orders-api-task
     - role:orders-worker-task
+    - role:platform-admin
     - role:prod-support
+    - role:shared-lambda
     - role:support-portal
     - role:terraform-apply
     - user:alex-analyst
+    - user:casey-contractor
     - user:jordan-platform
     - user:priya-intern
     - user:sam-support
     - workflow:demo-org/docs-site/preview.yml
     - workflow:demo-org/infra/ci.yml
     - workflow:demo-org/infra/deploy.yml
+    - workflow:demo-org/infra/snapshot.yml
     - workflow:demo-org/website/lint.yml
     - workload:analytics-export
     - workload:billing-api
     - workload:billing-job
+    - workload:invoice-mailer
     - workload:orders-api
     - workload:orders-worker
+    - workload:receipt-renderer
     - workload:support-portal
   targets:
     - db:customer-db
-    - db:orders-migration-db
+    - db:reports-replica
     - dynamodb:demo-orders
     - log-group:/aws/lambda/analytics-export
     - log-group:/aws/lambda/billing-api
@@ -53,13 +61,16 @@ vocabulary:
     - log-group:/ecs/orders-worker
     - role:analytics-export
     - role:analytics-read
+    - role:backup-runner
     - role:billing-api
     - role:billing-job
     - role:ecs-task-execution
     - role:github-deploy
     - role:orders-api-task
     - role:orders-worker-task
+    - role:platform-admin
     - role:prod-support
+    - role:shared-lambda
     - role:support-portal
     - role:terraform-apply
     - s3://demo-app-logs/
@@ -68,8 +79,10 @@ vocabulary:
     - s3://demo-data-lake/curated/
     - s3://demo-data-lake/raw/
     - s3://demo-terraform-state/
+    - secret:legacy-reports-password
     - secret:payments-api-key
     - secret:prod-db-credentials
+    - secret:smtp-credentials
     - sns:invoice-created
     - sqs:order-events
     - sqs:order-events-dlq

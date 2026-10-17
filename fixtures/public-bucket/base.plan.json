@@ -305,7 +305,7 @@
           "type": "aws_db_instance"
         },
         {
-          "address": "aws_db_instance.orders_migration",
+          "address": "aws_db_instance.reports_replica",
           "expressions": {
             "allocated_storage": {
               "constant_value": 100
@@ -337,7 +337,7 @@
               "constant_value": true
             },
             "identifier": {
-              "constant_value": "orders-migration-db"
+              "constant_value": "reports-replica"
             },
             "instance_class": {
               "constant_value": "db.t4g.medium"
@@ -358,11 +358,11 @@
               "constant_value": true
             },
             "username": {
-              "constant_value": "demo_admin"
+              "constant_value": "reports_admin"
             }
           },
           "mode": "managed",
-          "name": "orders_migration",
+          "name": "reports_replica",
           "provider_config_key": "aws",
           "schema_version": 2,
           "type": "aws_db_instance"
@@ -757,6 +757,19 @@
           "type": "aws_iam_group"
         },
         {
+          "address": "aws_iam_group.contractors",
+          "expressions": {
+            "name": {
+              "constant_value": "contractors"
+            }
+          },
+          "mode": "managed",
+          "name": "contractors",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_group"
+        },
+        {
           "address": "aws_iam_group.platform",
           "expressions": {
             "name": {
@@ -795,6 +808,23 @@
           },
           "mode": "managed",
           "name": "analysts_assume",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_group_policy"
+        },
+        {
+          "address": "aws_iam_group_policy.contractors_assume",
+          "expressions": {
+            "group": {
+              "constant_value": "contractors"
+            },
+            "name": {
+              "constant_value": "assume-platform-admin"
+            },
+            "policy": {}
+          },
+          "mode": "managed",
+          "name": "contractors_assume",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_iam_group_policy"
@@ -921,6 +951,20 @@
           "type": "aws_iam_role"
         },
         {
+          "address": "aws_iam_role.backup_runner",
+          "expressions": {
+            "assume_role_policy": {},
+            "name": {
+              "constant_value": "backup-runner"
+            }
+          },
+          "mode": "managed",
+          "name": "backup_runner",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role"
+        },
+        {
           "address": "aws_iam_role.billing_api",
           "expressions": {
             "assume_role_policy": {},
@@ -1005,6 +1049,20 @@
           "type": "aws_iam_role"
         },
         {
+          "address": "aws_iam_role.platform_admin",
+          "expressions": {
+            "assume_role_policy": {},
+            "name": {
+              "constant_value": "platform-admin"
+            }
+          },
+          "mode": "managed",
+          "name": "platform_admin",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role"
+        },
+        {
           "address": "aws_iam_role.prod_support",
           "expressions": {
             "assume_role_policy": {},
@@ -1014,6 +1072,20 @@
           },
           "mode": "managed",
           "name": "prod_support",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role"
+        },
+        {
+          "address": "aws_iam_role.shared_lambda",
+          "expressions": {
+            "assume_role_policy": {},
+            "name": {
+              "constant_value": "shared-lambda"
+            }
+          },
+          "mode": "managed",
+          "name": "shared_lambda",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_iam_role"
@@ -1059,6 +1131,23 @@
           },
           "mode": "managed",
           "name": "analytics_export",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role_policy"
+        },
+        {
+          "address": "aws_iam_role_policy.backup_runner",
+          "expressions": {
+            "name": {
+              "constant_value": "backup-runner"
+            },
+            "policy": {},
+            "role": {
+              "constant_value": "backup-runner"
+            }
+          },
+          "mode": "managed",
+          "name": "backup_runner",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_iam_role_policy"
@@ -1149,6 +1238,23 @@
           "type": "aws_iam_role_policy"
         },
         {
+          "address": "aws_iam_role_policy.platform_admin",
+          "expressions": {
+            "name": {
+              "constant_value": "platform-admin-break-glass"
+            },
+            "policy": {},
+            "role": {
+              "constant_value": "platform-admin"
+            }
+          },
+          "mode": "managed",
+          "name": "platform_admin",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role_policy"
+        },
+        {
           "address": "aws_iam_role_policy.prod_support_read",
           "expressions": {
             "name": {
@@ -1161,6 +1267,23 @@
           },
           "mode": "managed",
           "name": "prod_support_read",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_role_policy"
+        },
+        {
+          "address": "aws_iam_role_policy.shared_lambda",
+          "expressions": {
+            "name": {
+              "constant_value": "shared-lambda"
+            },
+            "policy": {},
+            "role": {
+              "constant_value": "shared-lambda"
+            }
+          },
+          "mode": "managed",
+          "name": "shared_lambda",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_iam_role_policy"
@@ -1341,6 +1464,19 @@
           "type": "aws_iam_user"
         },
         {
+          "address": "aws_iam_user.casey",
+          "expressions": {
+            "name": {
+              "constant_value": "casey-contractor"
+            }
+          },
+          "mode": "managed",
+          "name": "casey",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_user"
+        },
+        {
           "address": "aws_iam_user.jordan",
           "expressions": {
             "name": {
@@ -1393,6 +1529,24 @@
           },
           "mode": "managed",
           "name": "alex_analysts",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_iam_user_group_membership"
+        },
+        {
+          "address": "aws_iam_user_group_membership.casey_contractors",
+          "expressions": {
+            "groups": {
+              "constant_value": [
+                "contractors"
+              ]
+            },
+            "user": {
+              "constant_value": "casey-contractor"
+            }
+          },
+          "mode": "managed",
+          "name": "casey_contractors",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_iam_user_group_membership"
@@ -1695,6 +1849,142 @@
           },
           "mode": "managed",
           "name": "billing_job",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_lambda_function"
+        },
+        {
+          "address": "aws_lambda_function.invoice_mailer",
+          "expressions": {
+            "environment": [
+              {
+                "variables": {
+                  "constant_value": {
+                    "INVOICES_BUCKET": "demo-company-files",
+                    "SMTP_SECRET": "smtp-credentials"
+                  }
+                }
+              }
+            ],
+            "function_name": {
+              "constant_value": "invoice-mailer"
+            },
+            "handler": {
+              "constant_value": "handler.handler"
+            },
+            "reserved_concurrent_executions": {
+              "constant_value": 5
+            },
+            "role": {
+              "constant_value": "arn:aws:iam::111122223333:role/shared-lambda"
+            },
+            "runtime": {
+              "constant_value": "python3.12"
+            },
+            "s3_bucket": {
+              "constant_value": "demo-artifacts"
+            },
+            "s3_key": {
+              "constant_value": "invoice-mailer/1.4.0.zip"
+            },
+            "tags": {
+              "constant_value": {
+                "theseus_code_path": "services/invoice_mailer"
+              }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
+          },
+          "mode": "managed",
+          "name": "invoice_mailer",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_lambda_function"
+        },
+        {
+          "address": "aws_lambda_function.receipt_renderer",
+          "expressions": {
+            "environment": [
+              {
+                "variables": {
+                  "constant_value": {
+                    "INVOICES_BUCKET": "demo-company-files",
+                    "SMTP_SECRET": "smtp-credentials"
+                  }
+                }
+              }
+            ],
+            "function_name": {
+              "constant_value": "receipt-renderer"
+            },
+            "handler": {
+              "constant_value": "handler.handler"
+            },
+            "reserved_concurrent_executions": {
+              "constant_value": 5
+            },
+            "role": {
+              "constant_value": "arn:aws:iam::111122223333:role/shared-lambda"
+            },
+            "runtime": {
+              "constant_value": "python3.12"
+            },
+            "s3_bucket": {
+              "constant_value": "demo-artifacts"
+            },
+            "s3_key": {
+              "constant_value": "receipt-renderer/0.9.2.zip"
+            },
+            "tags": {
+              "constant_value": {
+                "theseus_code_path": "services/receipt_renderer"
+              }
+            },
+            "tracing_config": [
+              {
+                "mode": {
+                  "constant_value": "Active"
+                }
+              }
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": {
+                  "constant_value": [
+                    "sg-0a1b2c3d4e5f60001"
+                  ]
+                },
+                "subnet_ids": {
+                  "constant_value": [
+                    "subnet-0a1b2c3d4e5f60001",
+                    "subnet-0a1b2c3d4e5f60002"
+                  ]
+                }
+              }
+            ]
+          },
+          "mode": "managed",
+          "name": "receipt_renderer",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_lambda_function"
@@ -2624,6 +2914,19 @@
           "type": "aws_s3_bucket_versioning"
         },
         {
+          "address": "aws_secretsmanager_secret.legacy_reports",
+          "expressions": {
+            "name": {
+              "constant_value": "legacy-reports-password"
+            }
+          },
+          "mode": "managed",
+          "name": "legacy_reports",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_secretsmanager_secret"
+        },
+        {
           "address": "aws_secretsmanager_secret.payments",
           "expressions": {
             "name": {
@@ -2650,6 +2953,19 @@
           },
           "mode": "managed",
           "name": "prod_db",
+          "provider_config_key": "aws",
+          "schema_version": 0,
+          "type": "aws_secretsmanager_secret"
+        },
+        {
+          "address": "aws_secretsmanager_secret.smtp",
+          "expressions": {
+            "name": {
+              "constant_value": "smtp-credentials"
+            }
+          },
+          "mode": "managed",
+          "name": "smtp",
           "provider_config_key": "aws",
           "schema_version": 0,
           "type": "aws_secretsmanager_secret"
@@ -3468,7 +3784,7 @@
           }
         },
         {
-          "address": "aws_db_instance.orders_migration",
+          "address": "aws_db_instance.reports_replica",
           "identity": {
             "account_id": null,
             "identifier": null,
@@ -3476,7 +3792,7 @@
           },
           "identity_schema_version": 0,
           "mode": "managed",
-          "name": "orders_migration",
+          "name": "reports_replica",
           "provider_name": "registry.terraform.io/hashicorp/aws",
           "schema_version": 2,
           "sensitive_values": {
@@ -3520,7 +3836,7 @@
             "engine_version": "16",
             "final_snapshot_identifier": null,
             "iam_database_authentication_enabled": true,
-            "identifier": "orders-migration-db",
+            "identifier": "reports-replica",
             "instance_class": "db.t4g.medium",
             "manage_master_user_password": true,
             "max_allocated_storage": null,
@@ -3545,7 +3861,7 @@
             },
             "timeouts": null,
             "upgrade_storage_config": null,
-            "username": "demo_admin",
+            "username": "reports_admin",
             "warning_event_categories": null
           }
         },
@@ -4182,6 +4498,24 @@
           }
         },
         {
+          "address": "aws_iam_group.contractors",
+          "identity": {
+            "account_id": null,
+            "name": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "contractors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_group",
+          "values": {
+            "name": "contractors",
+            "path": "/"
+          }
+        },
+        {
           "address": "aws_iam_group.platform",
           "identity": {
             "account_id": null,
@@ -4229,6 +4563,20 @@
             "group": "data-analysts",
             "name": "assume-analytics-read",
             "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/analytics-read\",\"Sid\":\"AssumeAnalyticsRead\"}]}"
+          }
+        },
+        {
+          "address": "aws_iam_group_policy.contractors_assume",
+          "mode": "managed",
+          "name": "contractors_assume",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_group_policy",
+          "values": {
+            "group": "contractors",
+            "name": "assume-platform-admin",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/platform-admin\",\"Sid\":\"AssumePlatformAdmin\"}]}"
           }
         },
         {
@@ -4440,6 +4788,38 @@
           }
         },
         {
+          "address": "aws_iam_role.backup_runner",
+          "identity": {
+            "account_id": null,
+            "name": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "backup_runner",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "inline_policy": [],
+            "managed_policy_arns": [],
+            "tags_all": {}
+          },
+          "type": "aws_iam_role",
+          "values": {
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\"},\"StringLike\":{\"token.actions.githubusercontent.com:sub\":\"repo:demo-org/infra:*\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com\"},\"Sid\":\"GitHubActionsOIDC\"}],\"Version\":\"2012-10-17\"}",
+            "description": null,
+            "force_detach_policies": false,
+            "max_session_duration": 3600,
+            "name": "backup-runner",
+            "path": "/",
+            "permissions_boundary": null,
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
+            }
+          }
+        },
+        {
           "address": "aws_iam_role.billing_api",
           "identity": {
             "account_id": null,
@@ -4632,6 +5012,38 @@
           }
         },
         {
+          "address": "aws_iam_role.platform_admin",
+          "identity": {
+            "account_id": null,
+            "name": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "platform_admin",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "inline_policy": [],
+            "managed_policy_arns": [],
+            "tags_all": {}
+          },
+          "type": "aws_iam_role",
+          "values": {
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Sid\":\"TrustAccountPrincipals\"}],\"Version\":\"2012-10-17\"}",
+            "description": null,
+            "force_detach_policies": false,
+            "max_session_duration": 3600,
+            "name": "platform-admin",
+            "path": "/",
+            "permissions_boundary": null,
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
+            }
+          }
+        },
+        {
           "address": "aws_iam_role.prod_support",
           "identity": {
             "account_id": null,
@@ -4654,6 +5066,38 @@
             "force_detach_policies": false,
             "max_session_duration": 3600,
             "name": "prod-support",
+            "path": "/",
+            "permissions_boundary": null,
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
+            }
+          }
+        },
+        {
+          "address": "aws_iam_role.shared_lambda",
+          "identity": {
+            "account_id": null,
+            "name": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "shared_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "inline_policy": [],
+            "managed_policy_arns": [],
+            "tags_all": {}
+          },
+          "type": "aws_iam_role",
+          "values": {
+            "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+            "description": null,
+            "force_detach_policies": false,
+            "max_session_duration": 3600,
+            "name": "shared-lambda",
             "path": "/",
             "permissions_boundary": null,
             "tags": null,
@@ -4745,6 +5189,26 @@
             "name": "analytics-export",
             "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"dynamodb:Scan\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:dynamodb:eu-west-1:111122223333:table/demo-orders\",\"Sid\":\"ReadOrders\"},{\"Action\":[\"s3:PutObject\",\"s3:GetObject\"],\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-data-lake/raw/*\",\"Sid\":\"RawZone\"},{\"Action\":\"s3:PutObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-data-lake/curated/*\",\"Sid\":\"CuratedZone\"}]}",
             "role": "analytics-export"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.backup_runner",
+          "identity": {
+            "account_id": null,
+            "name": null,
+            "role": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "backup_runner",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_role_policy",
+          "values": {
+            "name": "backup-runner",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:*\",\"Sid\":\"BackupSecrets\"},{\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::demo-company-files\",\"arn:aws:s3:::demo-company-files/*\"],\"Sid\":\"BackupCompanyFiles\"}]}",
+            "role": "backup-runner"
           }
         },
         {
@@ -4848,6 +5312,26 @@
           }
         },
         {
+          "address": "aws_iam_role_policy.platform_admin",
+          "identity": {
+            "account_id": null,
+            "name": null,
+            "role": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "platform_admin",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_role_policy",
+          "values": {
+            "name": "platform-admin-break-glass",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:*\",\"Sid\":\"ReadAllSecrets\"},{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/*\",\"Sid\":\"ReadCompanyFiles\"}]}",
+            "role": "platform-admin"
+          }
+        },
+        {
           "address": "aws_iam_role_policy.prod_support_read",
           "identity": {
             "account_id": null,
@@ -4865,6 +5349,26 @@
             "name": "prod-support-read",
             "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::demo-app-logs\",\"arn:aws:s3:::demo-app-logs/*\"],\"Sid\":\"ReadLogs\"},{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"ReadInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-credentials-*\",\"Sid\":\"ReadDbSecret\"}]}",
             "role": "prod-support"
+          }
+        },
+        {
+          "address": "aws_iam_role_policy.shared_lambda",
+          "identity": {
+            "account_id": null,
+            "name": null,
+            "role": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "shared_lambda",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {},
+          "type": "aws_iam_role_policy",
+          "values": {
+            "name": "shared-lambda",
+            "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:smtp-credentials-*\",\"Sid\":\"ReadSmtpSecret\"},{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"ReadInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"}]}",
+            "role": "shared-lambda"
           }
         },
         {
@@ -5087,6 +5591,33 @@
           }
         },
         {
+          "address": "aws_iam_user.casey",
+          "identity": {
+            "account_id": null,
+            "name": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "casey",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "tags_all": {}
+          },
+          "type": "aws_iam_user",
+          "values": {
+            "force_destroy": false,
+            "name": "casey-contractor",
+            "path": "/",
+            "permissions_boundary": null,
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
+            }
+          }
+        },
+        {
           "address": "aws_iam_user.jordan",
           "identity": {
             "account_id": null,
@@ -5184,6 +5715,25 @@
               "data-analysts"
             ],
             "user": "alex-analyst"
+          }
+        },
+        {
+          "address": "aws_iam_user_group_membership.casey_contractors",
+          "mode": "managed",
+          "name": "casey_contractors",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "groups": [
+              false
+            ]
+          },
+          "type": "aws_iam_user_group_membership",
+          "values": {
+            "groups": [
+              "contractors"
+            ],
+            "user": "casey-contractor"
           }
         },
         {
@@ -5632,6 +6182,236 @@
               "Environment": "prod",
               "Project": "demo-store",
               "theseus_code_path": "services/billing_job"
+            },
+            "tenancy_config": [],
+            "timeout": 3,
+            "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
+            "use_resource_timeout_for_propagation": null,
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_lambda_function.invoice_mailer",
+          "identity": {
+            "account_id": null,
+            "function_name": null,
+            "region": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "invoice_mailer",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "architectures": [],
+            "capacity_provider_config": [],
+            "dead_letter_config": [],
+            "durable_config": [],
+            "environment": [
+              {
+                "variables": {}
+              }
+            ],
+            "ephemeral_storage": [],
+            "file_system_config": [],
+            "image_config": [],
+            "logging_config": [],
+            "snap_start": [],
+            "tags": {},
+            "tags_all": {},
+            "tenancy_config": [],
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
+          },
+          "type": "aws_lambda_function",
+          "values": {
+            "capacity_provider_config": [],
+            "code_signing_config_arn": null,
+            "dead_letter_config": [],
+            "description": null,
+            "durable_config": [],
+            "environment": [
+              {
+                "variables": {
+                  "INVOICES_BUCKET": "demo-company-files",
+                  "SMTP_SECRET": "smtp-credentials"
+                }
+              }
+            ],
+            "file_system_config": [],
+            "filename": null,
+            "function_name": "invoice-mailer",
+            "handler": "handler.handler",
+            "image_config": [],
+            "image_uri": null,
+            "kms_key_arn": null,
+            "layers": null,
+            "memory_size": 128,
+            "package_type": "Zip",
+            "publish": false,
+            "publish_to": null,
+            "region": "eu-west-1",
+            "replace_security_groups_on_destroy": null,
+            "replacement_security_group_ids": null,
+            "reserved_concurrent_executions": 5,
+            "role": "arn:aws:iam::111122223333:role/shared-lambda",
+            "runtime": "python3.12",
+            "s3_bucket": "demo-artifacts",
+            "s3_key": "invoice-mailer/1.4.0.zip",
+            "s3_object_version": null,
+            "skip_destroy": false,
+            "snap_start": [],
+            "source_kms_key_arn": null,
+            "tags": {
+              "theseus_code_path": "services/invoice_mailer"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store",
+              "theseus_code_path": "services/invoice_mailer"
+            },
+            "tenancy_config": [],
+            "timeout": 3,
+            "timeouts": null,
+            "tracing_config": [
+              {
+                "mode": "Active"
+              }
+            ],
+            "use_resource_timeout_for_propagation": null,
+            "vpc_config": [
+              {
+                "ipv6_allowed_for_dual_stack": false,
+                "security_group_ids": [
+                  "sg-0a1b2c3d4e5f60001"
+                ],
+                "subnet_ids": [
+                  "subnet-0a1b2c3d4e5f60001",
+                  "subnet-0a1b2c3d4e5f60002"
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "address": "aws_lambda_function.receipt_renderer",
+          "identity": {
+            "account_id": null,
+            "function_name": null,
+            "region": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "receipt_renderer",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "architectures": [],
+            "capacity_provider_config": [],
+            "dead_letter_config": [],
+            "durable_config": [],
+            "environment": [
+              {
+                "variables": {}
+              }
+            ],
+            "ephemeral_storage": [],
+            "file_system_config": [],
+            "image_config": [],
+            "logging_config": [],
+            "snap_start": [],
+            "tags": {},
+            "tags_all": {},
+            "tenancy_config": [],
+            "tracing_config": [
+              {}
+            ],
+            "vpc_config": [
+              {
+                "security_group_ids": [
+                  false
+                ],
+                "subnet_ids": [
+                  false,
+                  false
+                ]
+              }
+            ]
+          },
+          "type": "aws_lambda_function",
+          "values": {
+            "capacity_provider_config": [],
+            "code_signing_config_arn": null,
+            "dead_letter_config": [],
+            "description": null,
+            "durable_config": [],
+            "environment": [
+              {
+                "variables": {
+                  "INVOICES_BUCKET": "demo-company-files",
+                  "SMTP_SECRET": "smtp-credentials"
+                }
+              }
+            ],
+            "file_system_config": [],
+            "filename": null,
+            "function_name": "receipt-renderer",
+            "handler": "handler.handler",
+            "image_config": [],
+            "image_uri": null,
+            "kms_key_arn": null,
+            "layers": null,
+            "memory_size": 128,
+            "package_type": "Zip",
+            "publish": false,
+            "publish_to": null,
+            "region": "eu-west-1",
+            "replace_security_groups_on_destroy": null,
+            "replacement_security_group_ids": null,
+            "reserved_concurrent_executions": 5,
+            "role": "arn:aws:iam::111122223333:role/shared-lambda",
+            "runtime": "python3.12",
+            "s3_bucket": "demo-artifacts",
+            "s3_key": "receipt-renderer/0.9.2.zip",
+            "s3_object_version": null,
+            "skip_destroy": false,
+            "snap_start": [],
+            "source_kms_key_arn": null,
+            "tags": {
+              "theseus_code_path": "services/receipt_renderer"
+            },
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store",
+              "theseus_code_path": "services/receipt_renderer"
             },
             "tenancy_config": [],
             "timeout": 3,
@@ -6979,6 +7759,37 @@
           }
         },
         {
+          "address": "aws_secretsmanager_secret.legacy_reports",
+          "identity": {
+            "arn": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "legacy_reports",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "replica": [],
+            "tags_all": {}
+          },
+          "type": "aws_secretsmanager_secret",
+          "values": {
+            "description": null,
+            "force_overwrite_replica_secret": false,
+            "kms_key_id": null,
+            "name": "legacy-reports-password",
+            "recovery_window_in_days": 30,
+            "region": "eu-west-1",
+            "replica": [],
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
+            },
+            "type": null
+          }
+        },
+        {
           "address": "aws_secretsmanager_secret.payments",
           "identity": {
             "arn": null
@@ -7040,6 +7851,37 @@
               "Environment": "prod",
               "Project": "demo-store",
               "db_instance": "customer-db"
+            },
+            "type": null
+          }
+        },
+        {
+          "address": "aws_secretsmanager_secret.smtp",
+          "identity": {
+            "arn": null
+          },
+          "identity_schema_version": 0,
+          "mode": "managed",
+          "name": "smtp",
+          "provider_name": "registry.terraform.io/hashicorp/aws",
+          "schema_version": 0,
+          "sensitive_values": {
+            "replica": [],
+            "tags_all": {}
+          },
+          "type": "aws_secretsmanager_secret",
+          "values": {
+            "description": null,
+            "force_overwrite_replica_secret": false,
+            "kms_key_id": null,
+            "name": "smtp-credentials",
+            "recovery_window_in_days": 30,
+            "region": "eu-west-1",
+            "replica": [],
+            "tags": null,
+            "tags_all": {
+              "Environment": "prod",
+              "Project": "demo-store"
             },
             "type": null
           }
@@ -7546,21 +8388,9 @@
   "relevant_attributes": [
     {
       "attribute": [
-        "arn"
+        "key_id"
       ],
-      "resource": "aws_lambda_function.billing_job"
-    },
-    {
-      "attribute": [
-        "bucket"
-      ],
-      "resource": "aws_s3_bucket.terraform_state"
-    },
-    {
-      "attribute": [
-        "arn"
-      ],
-      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+      "resource": "aws_kms_key.queues"
     },
     {
       "attribute": [
@@ -7570,15 +8400,111 @@
     },
     {
       "attribute": [
+        "bucket"
+      ],
+      "resource": "aws_s3_bucket.data_lake"
+    },
+    {
+      "attribute": [
+        "function_name"
+      ],
+      "resource": "aws_lambda_function.billing_job"
+    },
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+    },
+    {
+      "attribute": [
         "id"
       ],
-      "resource": "aws_internet_gateway.main"
+      "resource": "aws_subnet.private_b"
+    },
+    {
+      "attribute": [
+        "name"
+      ],
+      "resource": "aws_cloudwatch_event_rule.billing_nightly"
     },
     {
       "attribute": [
         "function_name"
       ],
       "resource": "aws_lambda_function.analytics_export"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_vpc.main"
+    },
+    {
+      "attribute": [
+        "arn"
+      ],
+      "resource": "aws_lambda_function.billing_job"
+    },
+    {
+      "attribute": [
+        "arn"
+      ],
+      "resource": "aws_lambda_function.analytics_export"
+    },
+    {
+      "attribute": [
+        "bucket"
+      ],
+      "resource": "aws_s3_bucket.company_files"
+    },
+    {
+      "attribute": [
+        "arn"
+      ],
+      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_subnet.private_a"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_subnet.public_b"
+    },
+    {
+      "attribute": [
+        "arn"
+      ],
+      "resource": "aws_cloudwatch_event_rule.billing_nightly"
+    },
+    {
+      "attribute": [
+        "zone_id"
+      ],
+      "resource": "aws_route53_zone.internal"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_internet_gateway.main"
+    },
+    {
+      "attribute": [
+        "bucket"
+      ],
+      "resource": "aws_s3_bucket.terraform_state"
+    },
+    {
+      "attribute": [
+        "id"
+      ],
+      "resource": "aws_route_table.public"
     },
     {
       "attribute": [
@@ -7594,93 +8520,9 @@
     },
     {
       "attribute": [
-        "bucket"
-      ],
-      "resource": "aws_s3_bucket.data_lake"
-    },
-    {
-      "attribute": [
         "id"
       ],
       "resource": "aws_security_group.db"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.private_a"
-    },
-    {
-      "attribute": [
-        "zone_id"
-      ],
-      "resource": "aws_route53_zone.internal"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.private_b"
-    },
-    {
-      "attribute": [
-        "function_name"
-      ],
-      "resource": "aws_lambda_function.billing_job"
-    },
-    {
-      "attribute": [
-        "bucket"
-      ],
-      "resource": "aws_s3_bucket.company_files"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_subnet.public_b"
-    },
-    {
-      "attribute": [
-        "name"
-      ],
-      "resource": "aws_cloudwatch_event_rule.analytics_nightly"
-    },
-    {
-      "attribute": [
-        "name"
-      ],
-      "resource": "aws_cloudwatch_event_rule.billing_nightly"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_vpc.main"
-    },
-    {
-      "attribute": [
-        "arn"
-      ],
-      "resource": "aws_lambda_function.analytics_export"
-    },
-    {
-      "attribute": [
-        "arn"
-      ],
-      "resource": "aws_cloudwatch_event_rule.billing_nightly"
-    },
-    {
-      "attribute": [
-        "key_id"
-      ],
-      "resource": "aws_kms_key.queues"
-    },
-    {
-      "attribute": [
-        "id"
-      ],
-      "resource": "aws_route_table.public"
     }
   ],
   "resource_changes": [
@@ -8364,7 +9206,7 @@
       "type": "aws_db_instance"
     },
     {
-      "address": "aws_db_instance.orders_migration",
+      "address": "aws_db_instance.reports_replica",
       "change": {
         "actions": [
           "create"
@@ -8394,7 +9236,7 @@
           "engine_version": "16",
           "final_snapshot_identifier": null,
           "iam_database_authentication_enabled": true,
-          "identifier": "orders-migration-db",
+          "identifier": "reports-replica",
           "instance_class": "db.t4g.medium",
           "manage_master_user_password": true,
           "max_allocated_storage": null,
@@ -8419,7 +9261,7 @@
           },
           "timeouts": null,
           "upgrade_storage_config": null,
-          "username": "demo_admin",
+          "username": "reports_admin",
           "warning_event_categories": null
         },
         "after_identity": {
@@ -8497,7 +9339,7 @@
         "before_sensitive": false
       },
       "mode": "managed",
-      "name": "orders_migration",
+      "name": "reports_replica",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_db_instance"
     },
@@ -9402,6 +10244,34 @@
       "type": "aws_iam_group"
     },
     {
+      "address": "aws_iam_group.contractors",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "contractors",
+          "path": "/"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "unique_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "contractors",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_group"
+    },
+    {
       "address": "aws_iam_group.platform",
       "change": {
         "actions": [
@@ -9478,6 +10348,30 @@
       },
       "mode": "managed",
       "name": "analysts_assume",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_group_policy"
+    },
+    {
+      "address": "aws_iam_group_policy.contractors_assume",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "group": "contractors",
+          "name": "assume-platform-admin",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:iam::111122223333:role/platform-admin\",\"Sid\":\"AssumePlatformAdmin\"}]}"
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "contractors_assume",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_group_policy"
     },
@@ -9791,6 +10685,53 @@
       "type": "aws_iam_role"
     },
     {
+      "address": "aws_iam_role.backup_runner",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRoleWithWebIdentity\",\"Condition\":{\"StringEquals\":{\"token.actions.githubusercontent.com:aud\":\"sts.amazonaws.com\"},\"StringLike\":{\"token.actions.githubusercontent.com:sub\":\"repo:demo-org/infra:*\"}},\"Effect\":\"Allow\",\"Principal\":{\"Federated\":\"arn:aws:iam::111122223333:oidc-provider/token.actions.githubusercontent.com\"},\"Sid\":\"GitHubActionsOIDC\"}],\"Version\":\"2012-10-17\"}",
+          "description": null,
+          "force_detach_policies": false,
+          "max_session_duration": 3600,
+          "name": "backup-runner",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          }
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        },
+        "after_sensitive": {
+          "inline_policy": [],
+          "managed_policy_arns": [],
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "create_date": true,
+          "id": true,
+          "inline_policy": true,
+          "managed_policy_arns": true,
+          "name_prefix": true,
+          "tags_all": {},
+          "unique_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "backup_runner",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role"
+    },
+    {
       "address": "aws_iam_role.billing_api",
       "change": {
         "actions": [
@@ -10073,6 +11014,53 @@
       "type": "aws_iam_role"
     },
     {
+      "address": "aws_iam_role.platform_admin",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"AWS\":\"arn:aws:iam::111122223333:root\"},\"Sid\":\"TrustAccountPrincipals\"}],\"Version\":\"2012-10-17\"}",
+          "description": null,
+          "force_detach_policies": false,
+          "max_session_duration": 3600,
+          "name": "platform-admin",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          }
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        },
+        "after_sensitive": {
+          "inline_policy": [],
+          "managed_policy_arns": [],
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "create_date": true,
+          "id": true,
+          "inline_policy": true,
+          "managed_policy_arns": true,
+          "name_prefix": true,
+          "tags_all": {},
+          "unique_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "platform_admin",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role"
+    },
+    {
       "address": "aws_iam_role.prod_support",
       "change": {
         "actions": [
@@ -10116,6 +11104,53 @@
       },
       "mode": "managed",
       "name": "prod_support",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role"
+    },
+    {
+      "address": "aws_iam_role.shared_lambda",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "assume_role_policy": "{\"Statement\":[{\"Action\":\"sts:AssumeRole\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"lambda.amazonaws.com\"}}],\"Version\":\"2012-10-17\"}",
+          "description": null,
+          "force_detach_policies": false,
+          "max_session_duration": 3600,
+          "name": "shared-lambda",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          }
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        },
+        "after_sensitive": {
+          "inline_policy": [],
+          "managed_policy_arns": [],
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "create_date": true,
+          "id": true,
+          "inline_policy": true,
+          "managed_policy_arns": true,
+          "name_prefix": true,
+          "tags_all": {},
+          "unique_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "shared_lambda",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_role"
     },
@@ -10239,6 +11274,35 @@
       },
       "mode": "managed",
       "name": "analytics_export",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role_policy"
+    },
+    {
+      "address": "aws_iam_role_policy.backup_runner",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "backup-runner",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:*\",\"Sid\":\"BackupSecrets\"},{\"Action\":[\"s3:GetObject\",\"s3:ListBucket\"],\"Effect\":\"Allow\",\"Resource\":[\"arn:aws:s3:::demo-company-files\",\"arn:aws:s3:::demo-company-files/*\"],\"Sid\":\"BackupCompanyFiles\"}]}",
+          "role": "backup-runner"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "backup_runner",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_role_policy"
     },
@@ -10388,6 +11452,35 @@
       "type": "aws_iam_role_policy"
     },
     {
+      "address": "aws_iam_role_policy.platform_admin",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "platform-admin-break-glass",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:*\",\"Sid\":\"ReadAllSecrets\"},{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/*\",\"Sid\":\"ReadCompanyFiles\"}]}",
+          "role": "platform-admin"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "platform_admin",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role_policy"
+    },
+    {
       "address": "aws_iam_role_policy.prod_support_read",
       "change": {
         "actions": [
@@ -10413,6 +11506,35 @@
       },
       "mode": "managed",
       "name": "prod_support_read",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_role_policy"
+    },
+    {
+      "address": "aws_iam_role_policy.shared_lambda",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "name": "shared-lambda",
+          "policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:smtp-credentials-*\",\"Sid\":\"ReadSmtpSecret\"},{\"Action\":\"s3:GetObject\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:s3:::demo-company-files/invoices/*\",\"Sid\":\"ReadInvoices\"},{\"Action\":\"secretsmanager:GetSecretValue\",\"Effect\":\"Allow\",\"Resource\":\"arn:aws:secretsmanager:eu-west-1:111122223333:secret:payments-api-key-*\",\"Sid\":\"ReadPaymentsKey\"}]}",
+          "role": "shared-lambda"
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null,
+          "role": null
+        },
+        "after_sensitive": {},
+        "after_unknown": {
+          "id": true,
+          "name_prefix": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "shared_lambda",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_role_policy"
     },
@@ -10729,6 +11851,44 @@
       "type": "aws_iam_user"
     },
     {
+      "address": "aws_iam_user.casey",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "force_destroy": false,
+          "name": "casey-contractor",
+          "path": "/",
+          "permissions_boundary": null,
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          }
+        },
+        "after_identity": {
+          "account_id": null,
+          "name": null
+        },
+        "after_sensitive": {
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "tags_all": {},
+          "unique_id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "casey",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_user"
+    },
+    {
       "address": "aws_iam_user.jordan",
       "change": {
         "actions": [
@@ -10870,6 +12030,37 @@
       },
       "mode": "managed",
       "name": "alex_analysts",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_iam_user_group_membership"
+    },
+    {
+      "address": "aws_iam_user_group_membership.casey_contractors",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "groups": [
+            "contractors"
+          ],
+          "user": "casey-contractor"
+        },
+        "after_sensitive": {
+          "groups": [
+            false
+          ]
+        },
+        "after_unknown": {
+          "groups": [
+            false
+          ],
+          "id": true
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "casey_contractors",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_iam_user_group_membership"
     },
@@ -11558,6 +12749,340 @@
       },
       "mode": "managed",
       "name": "billing_job",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_lambda_function"
+    },
+    {
+      "address": "aws_lambda_function.invoice_mailer",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "capacity_provider_config": [],
+          "code_signing_config_arn": null,
+          "dead_letter_config": [],
+          "description": null,
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {
+                "INVOICES_BUCKET": "demo-company-files",
+                "SMTP_SECRET": "smtp-credentials"
+              }
+            }
+          ],
+          "file_system_config": [],
+          "filename": null,
+          "function_name": "invoice-mailer",
+          "handler": "handler.handler",
+          "image_config": [],
+          "image_uri": null,
+          "kms_key_arn": null,
+          "layers": null,
+          "memory_size": 128,
+          "package_type": "Zip",
+          "publish": false,
+          "publish_to": null,
+          "region": "eu-west-1",
+          "replace_security_groups_on_destroy": null,
+          "replacement_security_group_ids": null,
+          "reserved_concurrent_executions": 5,
+          "role": "arn:aws:iam::111122223333:role/shared-lambda",
+          "runtime": "python3.12",
+          "s3_bucket": "demo-artifacts",
+          "s3_key": "invoice-mailer/1.4.0.zip",
+          "s3_object_version": null,
+          "skip_destroy": false,
+          "snap_start": [],
+          "source_kms_key_arn": null,
+          "tags": {
+            "theseus_code_path": "services/invoice_mailer"
+          },
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store",
+            "theseus_code_path": "services/invoice_mailer"
+          },
+          "tenancy_config": [],
+          "timeout": 3,
+          "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
+          "use_resource_timeout_for_propagation": null,
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
+        },
+        "after_identity": {
+          "account_id": null,
+          "function_name": null,
+          "region": null
+        },
+        "after_sensitive": {
+          "architectures": [],
+          "capacity_provider_config": [],
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {}
+            }
+          ],
+          "ephemeral_storage": [],
+          "file_system_config": [],
+          "image_config": [],
+          "logging_config": [],
+          "snap_start": [],
+          "tags": {},
+          "tags_all": {},
+          "tenancy_config": [],
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
+        },
+        "after_unknown": {
+          "architectures": true,
+          "arn": true,
+          "capacity_provider_config": [],
+          "code_sha256": true,
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {}
+            }
+          ],
+          "ephemeral_storage": true,
+          "file_system_config": [],
+          "id": true,
+          "image_config": [],
+          "invoke_arn": true,
+          "last_modified": true,
+          "logging_config": true,
+          "qualified_arn": true,
+          "qualified_invoke_arn": true,
+          "response_streaming_invoke_arn": true,
+          "signing_job_arn": true,
+          "signing_profile_version_arn": true,
+          "snap_start": [],
+          "source_code_hash": true,
+          "source_code_size": true,
+          "tags": {},
+          "tags_all": {},
+          "tenancy_config": [],
+          "tracing_config": [
+            {}
+          ],
+          "version": true,
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "invoice_mailer",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_lambda_function"
+    },
+    {
+      "address": "aws_lambda_function.receipt_renderer",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "capacity_provider_config": [],
+          "code_signing_config_arn": null,
+          "dead_letter_config": [],
+          "description": null,
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {
+                "INVOICES_BUCKET": "demo-company-files",
+                "SMTP_SECRET": "smtp-credentials"
+              }
+            }
+          ],
+          "file_system_config": [],
+          "filename": null,
+          "function_name": "receipt-renderer",
+          "handler": "handler.handler",
+          "image_config": [],
+          "image_uri": null,
+          "kms_key_arn": null,
+          "layers": null,
+          "memory_size": 128,
+          "package_type": "Zip",
+          "publish": false,
+          "publish_to": null,
+          "region": "eu-west-1",
+          "replace_security_groups_on_destroy": null,
+          "replacement_security_group_ids": null,
+          "reserved_concurrent_executions": 5,
+          "role": "arn:aws:iam::111122223333:role/shared-lambda",
+          "runtime": "python3.12",
+          "s3_bucket": "demo-artifacts",
+          "s3_key": "receipt-renderer/0.9.2.zip",
+          "s3_object_version": null,
+          "skip_destroy": false,
+          "snap_start": [],
+          "source_kms_key_arn": null,
+          "tags": {
+            "theseus_code_path": "services/receipt_renderer"
+          },
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store",
+            "theseus_code_path": "services/receipt_renderer"
+          },
+          "tenancy_config": [],
+          "timeout": 3,
+          "timeouts": null,
+          "tracing_config": [
+            {
+              "mode": "Active"
+            }
+          ],
+          "use_resource_timeout_for_propagation": null,
+          "vpc_config": [
+            {
+              "ipv6_allowed_for_dual_stack": false,
+              "security_group_ids": [
+                "sg-0a1b2c3d4e5f60001"
+              ],
+              "subnet_ids": [
+                "subnet-0a1b2c3d4e5f60001",
+                "subnet-0a1b2c3d4e5f60002"
+              ]
+            }
+          ]
+        },
+        "after_identity": {
+          "account_id": null,
+          "function_name": null,
+          "region": null
+        },
+        "after_sensitive": {
+          "architectures": [],
+          "capacity_provider_config": [],
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {}
+            }
+          ],
+          "ephemeral_storage": [],
+          "file_system_config": [],
+          "image_config": [],
+          "logging_config": [],
+          "snap_start": [],
+          "tags": {},
+          "tags_all": {},
+          "tenancy_config": [],
+          "tracing_config": [
+            {}
+          ],
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ]
+            }
+          ]
+        },
+        "after_unknown": {
+          "architectures": true,
+          "arn": true,
+          "capacity_provider_config": [],
+          "code_sha256": true,
+          "dead_letter_config": [],
+          "durable_config": [],
+          "environment": [
+            {
+              "variables": {}
+            }
+          ],
+          "ephemeral_storage": true,
+          "file_system_config": [],
+          "id": true,
+          "image_config": [],
+          "invoke_arn": true,
+          "last_modified": true,
+          "logging_config": true,
+          "qualified_arn": true,
+          "qualified_invoke_arn": true,
+          "response_streaming_invoke_arn": true,
+          "signing_job_arn": true,
+          "signing_profile_version_arn": true,
+          "snap_start": [],
+          "source_code_hash": true,
+          "source_code_size": true,
+          "tags": {},
+          "tags_all": {},
+          "tenancy_config": [],
+          "tracing_config": [
+            {}
+          ],
+          "version": true,
+          "vpc_config": [
+            {
+              "security_group_ids": [
+                false
+              ],
+              "subnet_ids": [
+                false,
+                false
+              ],
+              "vpc_id": true
+            }
+          ]
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "receipt_renderer",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_lambda_function"
     },
@@ -13520,6 +15045,50 @@
       "type": "aws_s3_bucket_versioning"
     },
     {
+      "address": "aws_secretsmanager_secret.legacy_reports",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "description": null,
+          "force_overwrite_replica_secret": false,
+          "kms_key_id": null,
+          "name": "legacy-reports-password",
+          "recovery_window_in_days": 30,
+          "region": "eu-west-1",
+          "replica": [],
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          },
+          "type": null
+        },
+        "after_identity": {
+          "arn": null
+        },
+        "after_sensitive": {
+          "replica": [],
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "name_prefix": true,
+          "policy": true,
+          "replica": [],
+          "tags_all": {}
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "legacy_reports",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_secretsmanager_secret"
+    },
+    {
       "address": "aws_secretsmanager_secret.payments",
       "change": {
         "actions": [
@@ -13609,6 +15178,50 @@
       },
       "mode": "managed",
       "name": "prod_db",
+      "provider_name": "registry.terraform.io/hashicorp/aws",
+      "type": "aws_secretsmanager_secret"
+    },
+    {
+      "address": "aws_secretsmanager_secret.smtp",
+      "change": {
+        "actions": [
+          "create"
+        ],
+        "after": {
+          "description": null,
+          "force_overwrite_replica_secret": false,
+          "kms_key_id": null,
+          "name": "smtp-credentials",
+          "recovery_window_in_days": 30,
+          "region": "eu-west-1",
+          "replica": [],
+          "tags": null,
+          "tags_all": {
+            "Environment": "prod",
+            "Project": "demo-store"
+          },
+          "type": null
+        },
+        "after_identity": {
+          "arn": null
+        },
+        "after_sensitive": {
+          "replica": [],
+          "tags_all": {}
+        },
+        "after_unknown": {
+          "arn": true,
+          "id": true,
+          "name_prefix": true,
+          "policy": true,
+          "replica": [],
+          "tags_all": {}
+        },
+        "before": null,
+        "before_sensitive": false
+      },
+      "mode": "managed",
+      "name": "smtp",
       "provider_name": "registry.terraform.io/hashicorp/aws",
       "type": "aws_secretsmanager_secret"
     },

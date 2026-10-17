@@ -24,6 +24,8 @@ WORKLOADS = {
     "billing-api": "services/billing_api",
     "support-portal": "services/support_portal",
     "analytics-export": "services/analytics_export",
+    "invoice-mailer": "services/invoice_mailer",
+    "receipt-renderer": "services/receipt_renderer",
 }
 RESOURCES = {
     "dynamodb:demo-orders": ("demo-orders", "dynamodb", "Database"),
@@ -37,6 +39,7 @@ RESOURCES = {
     "s3://demo-data-lake/curated/": ("demo-data-lake/curated/", "s3", "ObjectStorage"),
     "sqs:order-events": ("order-events", "sqs", "MessageQueue"),
     "sns:invoice-created": ("invoice-created", "sns", "MessageTopic"),
+    "secret:smtp-credentials": ("smtp-credentials", "secret", "Secret"),
 }
 # Each workload's Terraform environment, as the cloud adapter turns it into HAS_ENV (spec 02 workload table).
 ENV = [
@@ -53,6 +56,12 @@ ENV = [
     ("analytics-export", "ORDERS_TABLE", "dynamodb:demo-orders"),
     ("analytics-export", "LAKE_BUCKET", "s3://demo-data-lake/raw/"),
     ("analytics-export", "LAKE_BUCKET", "s3://demo-data-lake/curated/"),
+    ("invoice-mailer", "INVOICES_BUCKET", "s3://demo-company-files/invoices/"),
+    ("invoice-mailer", "INVOICES_BUCKET", "s3://demo-company-files/public/"),
+    ("invoice-mailer", "SMTP_SECRET", "secret:smtp-credentials"),
+    ("receipt-renderer", "INVOICES_BUCKET", "s3://demo-company-files/invoices/"),
+    ("receipt-renderer", "INVOICES_BUCKET", "s3://demo-company-files/public/"),
+    ("receipt-renderer", "SMTP_SECRET", "secret:smtp-credentials"),
 ]
 CODE_PR_ENV = [("support-portal", "DB_SECRET", "secret:prod-db-credentials")]
 UNLOCKS = [("secret:prod-db-credentials", "db:customer-db")]
@@ -145,7 +154,28 @@ def expected_calls(
     api, worker = "services/orders_api/store.py", "services/orders_worker/fulfil.py"
     invoices, payments = "services/billing_job/invoices.py", "services/billing_job/payments.py"
     db, export = "services/billing_api/db.py", "services/analytics_export/export.py"
+    mailer, renderer = "services/invoice_mailer/handler.py", "services/receipt_renderer/handler.py"
     return {
+        ("workload:invoice-mailer", "s3://demo-company-files/invoices/"): (
+            ["read"],
+            ["s3:GetObject"],
+            at(mailer, "_s3.get_object("),
+        ),
+        ("workload:invoice-mailer", "secret:smtp-credentials"): (
+            ["read"],
+            ["secretsmanager:GetSecretValue"],
+            at(mailer, "_sm.get_secret_value("),
+        ),
+        ("workload:receipt-renderer", "s3://demo-company-files/invoices/"): (
+            ["read"],
+            ["s3:GetObject"],
+            at(renderer, "_s3.get_object("),
+        ),
+        ("workload:receipt-renderer", "secret:smtp-credentials"): (
+            ["read"],
+            ["secretsmanager:GetSecretValue"],
+            at(renderer, "_sm.get_secret_value("),
+        ),
         ("workload:orders-api", "dynamodb:demo-orders"): (
             ["read", "write"],
             ["dynamodb:GetItem", "dynamodb:PutItem"],

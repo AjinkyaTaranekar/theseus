@@ -11,7 +11,7 @@
     }
   },
   "model": "jev-1.13.0",
-  "ms": 210,
+  "ms": 195,
   "request": {
     "model": "jev-latest",
     "questions": {

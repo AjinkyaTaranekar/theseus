@@ -104,7 +104,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 
 **Decisions the kit settles, so agents never invent them:**
 
-- Every name in the demo world (123 resources and six services), from Terraform addresses to statement Sids, and each scenario's expected outcome. The world lives in demo-infra/ in this repo; demo PRs change only that folder, and the App may write only there.
+- Every name in the demo world (137 resources and eight services), from Terraform addresses to statement Sids, and each scenario's expected outcome. The world lives in demo-infra/ in this repo; demo PRs change only that folder, and the App may write only there.
 - The IAM subset, and that everything outside it is UNKNOWN.
 - Capacities: 1,000,000 for required routes and non-permission edges, 1,000 for grants the code uses, 1 otherwise.
 - Candidate IDs: A revert, B the LLM, C conditional Deny, D cut the shared hop, S scope down, K containment, U unused grant.

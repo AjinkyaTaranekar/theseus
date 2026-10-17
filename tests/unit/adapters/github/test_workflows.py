@@ -19,6 +19,7 @@ DEMO = {
         ["repo:demo-org/infra:environment:production", "repo:demo-org/infra:ref:refs/heads/main"],
     ),
     "workflow:demo-org/infra/ci.yml": (False, []),
+    "workflow:demo-org/infra/snapshot.yml": (True, ["repo:demo-org/infra:ref:refs/heads/main"]),
     "workflow:demo-org/docs-site/preview.yml": (True, ["repo:demo-org/docs-site:pull_request"]),
     "workflow:demo-org/website/lint.yml": (False, []),
 }
@@ -41,6 +42,11 @@ USES = {
     "workflow:demo-org/website/lint.yml": {
         "action:actions/checkout": "v4",
         "action:demo-thirdparty/file-diff": "v3",
+    },
+    "workflow:demo-org/infra/snapshot.yml": {
+        "action:actions/checkout": "v4",
+        "action:aws-actions/configure-aws-credentials": "v4",
+        "action:demo-thirdparty/s3-sync": "v1",
     },
 }
 

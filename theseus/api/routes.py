@@ -21,7 +21,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import yaml
 from falkordb import FalkorDB
@@ -36,9 +36,11 @@ from theseus.api import reviews, suggest, webhooks
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
-from theseus.contracts.posture import PostureReport
+from theseus.contracts.incident import Incident, IncidentReport
+from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import is_candidate_id
+from theseus.engine.incident import blast, read_incident
 from theseus.errors import GitHubError, GraphError, PatchError, TheseusError
 from theseus.graph.client import server_version
 
@@ -126,6 +128,22 @@ class ScanRequest(BaseModel):
     repo: str | None = None
 
 
+class IncidentRequest(BaseModel):
+    """An outage to answer on `main`: a headline (`text`), or a picked provider, service and region."""
+
+    repo: str
+    text: str | None = None
+    provider: str | None = None
+    service: str | None = None
+    region: str | None = None
+    severity: Literal["down", "degraded"] = "down"
+
+
+class CheckRequest(BaseModel):
+    repo: str
+    trigger: str = "workflow_dispatch"
+
+
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
@@ -206,6 +224,19 @@ def get_containment(request: Request) -> Containment:
 
 
 ContainmentDep = Annotated[Containment, Depends(get_containment)]
+# The providers' status feeds, read now: their incidents and a line per feed that failed. `api/app.py` builds
+# it from the adapters' feed readers; tests replace it.
+StatusFeeds = Callable[[], tuple[list[Incident], list[str]]]
+
+
+def get_status(request: Request) -> StatusFeeds:
+    feeds = getattr(request.app.state, "status_feeds", None)
+    if feeds is None:
+        raise HTTPException(503, "the status feeds are not ready")
+    return feeds
+
+
+StatusDep = Annotated[StatusFeeds, Depends(get_status)]
 SHA = re.compile(r"^[0-9a-f]{40}$")
 # What started a posture run: the workflow's event, or a person at the command line.
 TRIGGERS = frozenset({"push", "schedule", "workflow_dispatch", "cli"})
@@ -878,6 +909,103 @@ def posture(
     }
 
 
+# An outage's blast radius on main -------------------------------------------------------------------------
+
+TEXT_MAX = 500
+
+
+def _basis(store: reviews.ReviewStore, repo: str) -> OutageBasis:
+    try:
+        basis = reviews.outage_basis(store, repo)
+    except GraphError as e:
+        log.error("%s: cannot read the outage basis: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if basis is None:
+        raise HTTPException(404, "main has no posture with an outage basis yet; run Theseus main")
+    return basis
+
+
+def _incident(
+    basis: OutageBasis,
+    text: str | None,
+    provider: str | None,
+    service: str | None,
+    region: str | None,
+    severity: Literal["down", "degraded"],
+) -> Incident:
+    """The incident a headline names, or the one picked; a 422 naming what is known when neither works."""
+    regions = {r.code for r in basis.regions}
+    if region and region not in regions:
+        raise HTTPException(422, f"unknown region {region[:40]!r}")
+    if text and text.strip():
+        found = read_incident(text[:TEXT_MAX], basis.terms, basis.regions)
+        if found is None:
+            names = ", ".join(t.name for t in basis.terms[:8])
+            raise HTTPException(422, f"the headline names no service Theseus maps, such as {names}")
+        return found.model_copy(update={"region": region or found.region})
+    term = next((t for t in basis.terms if (t.provider, t.service) == (provider, service)), None)
+    if term is None:
+        raise HTTPException(422, "give a headline, or a provider and service from the picker")
+    return Incident(
+        provider=term.provider, service=term.service, region=region, severity=severity, title=term.name
+    )
+
+
+@router.post("/incident", response_model=IncidentReport)
+def incident(
+    req: IncidentRequest,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> IncidentReport:
+    """An outage's blast radius on `main`, answered from the outage basis its newest posture kept: what goes
+    down, what loses something it needs, and which dependencies break. The headline is matched against
+    service and region names only; it is never evidence and never an instruction."""
+    _require_token(settings, x_theseus_token)
+    _require_repo(gh, req.repo)
+    basis = _basis(store, req.repo)
+    return blast(basis, _incident(basis, req.text, req.provider, req.service, req.region, req.severity))
+
+
+def _check(store: reviews.ReviewStore, repo: str, feeds: StatusFeeds, trigger: str) -> dict[str, Any]:
+    basis = _basis(store, repo)
+    incidents, errors = feeds()
+    reports = [blast(basis, i) for i in incidents]
+    # The ones that reach this world first; the rest stay listed, so a reader sees what was checked.
+    reports.sort(key=lambda r: (not r.matched, -len(r.broken), r.incident.provider, r.incident.service))
+    try:
+        return reviews.save_incidents(store, repo, reports, errors, now(), trigger)
+    except GraphError as e:
+        log.error("%s: cannot keep the incidents: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+
+
+@router.post("/incidents/check")
+def incidents_check(
+    req: CheckRequest,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    feeds: StatusDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> dict[str, Any]:
+    """Reads the providers' status feeds now and keeps each current incident's blast radius on `main` for
+    the dashboard. Sent by the Theseus main workflow nightly and on demand."""
+    _require_token(settings, x_theseus_token)
+    _require_repo(gh, req.repo)
+    if req.trigger not in TRIGGERS:
+        raise HTTPException(422, f"trigger must be one of {', '.join(sorted(TRIGGERS))}")
+    doc = _check(store, req.repo, feeds, req.trigger)
+    return {
+        "repo": req.repo,
+        "incidents": len(doc["reports"]),
+        "reaching_main": sum(1 for r in doc["reports"] if r["matched"]),
+        "errors": doc["errors"],
+        "headlines": [r["headline"] for r in doc["reports"] if r["matched"]],
+    }
+
+
 # The organisation's dashboard (O4) --------------------------------------------------------------------------
 
 DASHBOARD = Path(__file__).resolve().parents[1] / "web" / "dashboard.html"
@@ -927,6 +1055,41 @@ def dashboard_reviews(
     except GraphError as e:
         log.error("%s: cannot read the reviews: %s", repo, e)
         raise HTTPException(502, "the graph store did not answer") from e
+
+
+@router.get("/dashboard/{owner}/{name}/incident", response_model=IncidentReport)
+def dashboard_incident(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    text: str | None = None,
+    provider: str | None = None,
+    service: str | None = None,
+    region: str | None = None,
+    severity: Literal["down", "degraded"] = "down",
+) -> IncidentReport:
+    """The dashboard's what-if: an outage picked or typed, answered from the kept basis. Reads only."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    basis = _basis(store, repo)
+    return blast(basis, _incident(basis, text, provider, service, region or None, severity))
+
+
+@router.post("/dashboard/{owner}/{name}/incidents/check")
+def dashboard_incidents_check(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    feeds: StatusDep,
+    k: str | None = None,
+) -> dict[str, Any]:
+    """Checks the status feeds now, from the dashboard: the nightly check, kept the same way."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    return _check(store, repo, feeds, "workflow_dispatch")
 
 
 @router.get("/dashboard/{owner}/{name}/graph")

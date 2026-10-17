@@ -30,10 +30,12 @@ def test_a_fixture_request_runs_the_real_scan(client: TestClient) -> None:
     assert result.mode == "scan" and result.graphs == {"main": "fx__unused-grant__main"}
     assert result.headline != "stub"
     assert [(g.workload, g.resource, g.access) for g in result.unused_grants] == [
-        ("workload:support-portal", "secret:prod-db-credentials", "read")
+        ("workload:invoice-mailer", "secret:payments-api-key", "read"),
+        ("workload:receipt-renderer", "secret:payments-api-key", "read"),
+        ("workload:support-portal", "secret:prod-db-credentials", "read"),
     ]
     assert [(c.id, c.verdict, c.recommended) for c in result.candidates] == [("U", "pass", True)]
-    assert result.min_cut is not None and result.min_cut.value == 1
+    assert result.min_cut is not None and result.min_cut.value == 2
 
 
 def test_a_fixture_that_is_not_a_scan_is_refused(client: TestClient) -> None:

@@ -131,8 +131,13 @@ def test_trusts_edges_exist_exactly_for_the_three_pairs_spec_02_names(rows: Any)
     trusts = sorted((e.src, e.dst, e.kind) for e in rows.edges if e.type == "TRUSTS")
     assert trusts == [
         ("workflow:demo-org/docs-site/preview.yml", "role:github-deploy", "configured"),
+        # legacy.tf: backup-runner trusts any workflow in demo-org/infra (spec 02, "The gaps planted").
+        ("workflow:demo-org/infra/deploy.yml", "role:backup-runner", "configured"),
         ("workflow:demo-org/infra/deploy.yml", "role:github-deploy", "configured"),
         ("workflow:demo-org/infra/deploy.yml", "role:terraform-apply", "configured"),
+        ("workflow:demo-org/infra/snapshot.yml", "role:backup-runner", "configured"),
+        # github-deploy's own wide `repo:demo-org/*` trust takes the snapshot workflow too.
+        ("workflow:demo-org/infra/snapshot.yml", "role:github-deploy", "configured"),
     ]
 
 
@@ -140,10 +145,17 @@ def test_each_trusts_edge_cites_the_role_s_trust_statement(rows: Any) -> None:
     ci = (ROOT / "fixtures/intern/base/terraform/ci.tf").read_text(encoding="utf-8").splitlines()
     sids = [i for i, line in enumerate(ci, 1) if 'Sid    = "GitHubActionsOIDC"' in line]
     lines = {"role:github-deploy": sids[0], "role:terraform-apply": sids[1]}
+    legacy = (ROOT / "fixtures/intern/base/terraform/legacy.tf").read_text(encoding="utf-8").splitlines()
+    [backup] = [i for i, line in enumerate(legacy, 1) if 'Sid    = "GitHubActionsOIDC"' in line]
     for e in rows.edges:
         if e.type == "TRUSTS":
             (ev,) = e.evidence
-            assert (ev.file, ev.line, ev.part) == ("terraform/ci.tf", lines[e.dst], "GitHubActionsOIDC")
+            where = (
+                ("terraform/legacy.tf", backup)
+                if e.dst == "role:backup-runner"
+                else ("terraform/ci.tf", lines[e.dst])
+            )
+            assert (ev.file, ev.line, ev.part) == (*where, "GitHubActionsOIDC")
             assert ev.note and e.src.removeprefix("workflow:") in ev.note
 
 
@@ -154,5 +166,5 @@ def test_workflows_without_an_id_token_trust_nothing(rows: Any) -> None:
 
 def test_with_workflows_in_the_graph_every_requirement_has_its_principal(rows: Any) -> None:
     fors = {e.src for e in rows.edges if e.type == "FOR"}
-    assert fors == {f"req:R{i}" for i in range(1, 18)}
+    assert fors == {f"req:R{i}" for i in range(1, 22)}
     assert not [u for u in rows.unknowns if "missing FOR endpoint" in u]

@@ -19,7 +19,8 @@ from urllib.parse import quote
 from theseus.agent.labels import severity
 from theseus.agent.render import verdict
 from theseus.config import Settings
-from theseus.contracts.posture import PostureReport
+from theseus.contracts.incident import IncidentReport
+from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import PATH_TYPES
 from theseus.engine.simulate import candidate_graph
@@ -239,6 +240,59 @@ def snapshot(report: PostureReport, sha: str, trigger: str, at: str) -> dict[str
     }
 
 
+def incidents_key(repo: str) -> str:
+    return f"incidents:{repo}"
+
+
+def outage_basis(store: ReviewStore, repo: str) -> OutageBasis | None:
+    """The outage basis `main`'s newest posture kept, or None before a posture run that kept one."""
+    raw = ((_load(store, posture_key(repo)) or {}).get("posture") or {}).get("outage")
+    if not raw or not raw.get("tags"):
+        return None
+    return OutageBasis.model_validate(raw)
+
+
+def outage_terms(basis: OutageBasis) -> dict[str, Any]:
+    """The services and regions the incident picker offers, each service with how many nodes it runs here."""
+    here: dict[tuple[str, str], set[str]] = {}
+    for tag in basis.tags:
+        here.setdefault((tag.provider, tag.service), set()).add(tag.node)
+    return {
+        "services": [
+            {
+                "provider": t.provider,
+                "service": t.service,
+                "name": t.name,
+                "here": len(here.get((t.provider, t.service), set())),
+            }
+            for t in basis.terms
+        ],
+        "regions": [{"code": r.code, "name": r.name} for r in basis.regions],
+        "world_regions": sorted({t.region for t in basis.tags if t.region}),
+    }
+
+
+def save_incidents(
+    store: ReviewStore,
+    repo: str,
+    reports: list[IncidentReport],
+    errors: list[str],
+    checked_at: str,
+    trigger: str,
+) -> dict[str, Any]:
+    """Keeps the newest check of the status feeds: each incident's blast radius on `main`."""
+    doc = {
+        "repo": repo,
+        "checked_at": checked_at,
+        "trigger": trigger,
+        "errors": errors,
+        "reports": [r.model_dump(mode="json") for r in reports],
+    }
+    store.put_doc(incidents_key(repo), json.dumps(doc, sort_keys=True))
+    log.info("%s: kept %d incident(s) from the status feeds", repo, len(reports))
+    return doc
+
+
 def dashboard_url(settings: Settings, repo: str) -> str | None:
     """The dashboard's public link, or None without a public hostname or THESEUS_TOKEN."""
     sig = sign(settings, dashboard_key(repo))
@@ -312,8 +366,15 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
             {"actor": p.actor, "target": p.target, "sensitivity": p.sensitivity} for p in result.opened
         ],
         "beyond_intent": len(result.use_beyond_intent),
-        "fixes": [{"id": c.id, "verdict": c.verdict, "title": c.title} for c in result.candidates],
+        # The fix that passes, the one a reviewer would commit; the others are named on the PR.
+        "fixes": [
+            {"id": c.id, "verdict": c.verdict, "title": c.title}
+            for c in result.candidates
+            if c.verdict == "pass"
+        ],
+        "fixes_tried": len(result.candidates),
         "url": page_url(settings, repo, int(doc["number"])),
+        "pr_url": f"https://github.com/{quote(repo)}/pull/{int(doc['number'])}",
     }
 
 
@@ -378,6 +439,13 @@ def dashboard_data(store: ReviewStore, settings: Settings, repo: str) -> dict[st
     """Everything the dashboard shows for one repo, read from the store now: `main`'s posture, every PR
     review and every finding, and the onboarding steps."""
     posture = _load(store, posture_key(repo))
+    outage = None
+    if posture is not None:
+        # The basis is for the incident routes; the page gets the picker's terms and the last feed check.
+        raw = (posture.get("posture") or {}).pop("outage", None)
+        if raw and raw.get("tags"):
+            outage = outage_terms(OutageBasis.model_validate(raw))
+            outage["live"] = _load(store, incidents_key(repo))
     rows = []
     for doc_key in store.docs(f"review:{repo}#"):
         doc = _load(store, doc_key)
@@ -403,6 +471,7 @@ def dashboard_data(store: ReviewStore, settings: Settings, repo: str) -> dict[st
         "org_url": org_url(settings, repo.split("/", 1)[0]),
         "history": (_load(store, history_key(repo)) or {}).get("runs", []),
         "posture": posture,
+        "outage": outage,
         "main_graph": main_graph,
         "reviews": rows,
         "findings": findings,

@@ -22,7 +22,7 @@ log = logging.getLogger(__name__)
 
 RECORDINGS = Path("recordings")
 # A2's one recorded sensitivity answer for the demo world, by node ID.
-SENSITIVITY = "jev/sensitivity-38b5f02e4cbd.json"
+SENSITIVITY = ("jev/sensitivity-38b5f02e4cbd.json", "jev/sensitivity-4f9306d7b906.json")
 
 
 class ReplayedIntent:
@@ -55,7 +55,11 @@ class ReplayedJev:
 
     def __init__(self, settings: Settings, recordings: Path = RECORDINGS) -> None:
         try:
-            saved = json.loads((recordings / SENSITIVITY).read_text(encoding="utf-8"))["answers"]
+            saved = {
+                k: v
+                for name in SENSITIVITY
+                for k, v in json.loads((recordings / name).read_text(encoding="utf-8"))["answers"].items()
+            }
         except (OSError, ValueError, KeyError) as e:
             raise ModelError(f"sensitivity: cannot read the recorded answers in {recordings}: {e}") from e
         self.answers = {k: JevAnswer.model_validate(v) for k, v in saved.items()}
