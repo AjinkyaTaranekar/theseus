@@ -5,12 +5,13 @@ to a real account or pushed to a real org. Only tasks F4 and C1 change it; other
 
 - **Spec 02 is the source of truth.** Every address, name, Sid, ARN, environment variable and workflow line must
   match `docs/spec/02-demo-world.md` exactly. If you need something it does not list, ask first.
-- **Literal names and ARNs only** in the modeled files (`people.tf` to `containers.tf`, `queues.tf`, `logs.tf`).
+- **Literal names and ARNs only** in the modeled files (`people.tf` to `containers.tf`, `queues.tf`, `logs.tf`,
+  `migration.tf`).
   Never `aws_iam_role.x.arn`: without real state, plan marks it unknown. No `data` blocks, no `backend` block.
   The skipped files may use Terraform references, since the importer never reads them.
 - **Modeled and skipped resources stay in separate files.** `network.tf` and `platform.tf` hold only types the
-  importer skips, so adding to them never moves a line in a modeled file. `queues.tf` and `logs.tf` hold only
-  modeled types.
+  importer skips, so adding to them never moves a line in a modeled file. `queues.tf`, `logs.tf` and
+  `migration.tf` hold only modeled types.
 - **New resources pass Checkov.** Add `#checkov:skip=<ID>:<reason>` only where a real team would skip, with
   that team's reason.
 - **Moving a line in a modeled file breaks every `expected.json` that cites it.** If you must, say so in the PR

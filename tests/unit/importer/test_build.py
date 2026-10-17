@@ -57,7 +57,7 @@ def test_real_fixture_counts_and_only_new_membership() -> None:
         ("Group", 3),
         ("Role", 11),
         ("Workload", 6),
-        ("Resource", 19),
+        ("Resource", 20),
         ("Requirement", 17),
     ]:
         assert sum(label in n.labels for n in base.nodes) == count

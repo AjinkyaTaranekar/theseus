@@ -37,6 +37,7 @@ demo-infra/
 │   ├── containers.tf             ECS cluster, task definitions, services and task roles        F4
 │   ├── queues.tf                 SQS queues and the SNS topic                                  C1
 │   ├── logs.tf                   one CloudWatch log group per workload                         C1
+│   ├── migration.tf              a cutover copy of the database nobody uses any more
 │   ├── network.tf                VPC, subnets, security groups (not modeled)                   C1
 │   └── platform.tf               KMS, ECR, schedules, DNS, API, bucket settings (not modeled)  C1
 ├── services/                     one folder per workload, several modules each                 C1
@@ -68,8 +69,10 @@ fixture the same way.
   it for one resource of every type in this file, with Terraform 1.16.6 and AWS provider 6.69.0; pin
   `version = "~> 6.69"` in `providers.tf`.
 - **Modeled and not-modeled resources live in different files.** `network.tf` and `platform.tf` hold only types
-  Theseus skips, so they grow without moving a line that an `expected.json` cites. `queues.tf` and `logs.tf` hold
-  only modeled types; C1 added them as new files, so they moved no existing line either.
+  Theseus skips, so they grow without moving a line that an `expected.json` cites. `queues.tf`, `logs.tf` and
+  `migration.tf` hold only modeled types; each was added as a new file, so it moved no existing line either.
+  A new modeled resource goes in a new file, not at the end of `data.tf` or `people.tf`: scenarios append there,
+  and their answer keys cite the appended lines.
 - **`theseus_code_path` tag** on every Lambda function and ECS service names its folder under `services/`.
 - **Buckets use SSE-S3**, not KMS, so reading them needs no `kms:Decrypt`. KMS key policies are outside the
   supported IAM subset, and the demo stays inside it.
@@ -171,6 +174,7 @@ requirement looks wrong.
 | DB secret | `secret:prod-db-credentials` | Credentials of the app's database user. Tag `db_instance = customer-db`. Expected `regulated` |
 | Payments key | `secret:payments-api-key` | The card processor's API key. Expected `regulated` |
 | Customer database | `db:customer-db` | Postgres. Expected `regulated` |
+| Migration copy | `db:orders-migration-db` | A restored copy of `customer-db`. Override `regulated` in `theseus.yaml`, so Jev is not asked and its recorded answers stay valid |
 | Orders table | `dynamodb:demo-orders` | Orders with customer IDs and addresses. Expected `confidential` |
 | Queues, topic, log groups | `sqs:order-events`, `sqs:order-events-dlq`, `sns:invoice-created`, `log-group:/aws/lambda/<function>`, `log-group:/ecs/<service>` | Events and request metadata, never customer data. Override `internal` in `theseus.yaml`, so they open no dangerous path whatever Jev says |
 | Internet | `entry:internet` | Anyone; used by S3 bucket policies with `Principal = "*"` |
@@ -336,7 +340,17 @@ One log group per workload, 365 days' retention, CloudWatch's default encryption
 | `aws_cloudwatch_log_group.orders_api` | `/ecs/orders-api` | |
 | `aws_cloudwatch_log_group.orders_worker` | `/ecs/orders-worker` | |
 
-70 modeled resources across `people.tf` to `logs.tf`.
+### `migration.tf`
+
+The billing team restored a snapshot of `customer-db` here for the schema v2 cutover and never removed it. No
+secret is tagged with its name, no role may read its credentials and no code connects to it, so no actor
+reaches it.
+
+| Address | Name | What it says |
+| --- | --- | --- |
+| `aws_db_instance.orders_migration` | `orders-migration-db` | Postgres 16, `db.t4g.medium`, 100 GB, single-AZ (a Checkov exception says why); otherwise hardened as `customer-db`, with the same subnet group and parameter group |
+
+71 modeled resources across `people.tf` to `migration.tf`.
 
 ## Terraform that Theseus skips (task C1)
 
@@ -349,7 +363,7 @@ These make the account look real. The importer skips every type it does not mode
 | `network.tf` | `aws_vpc.main`; `aws_default_security_group.main` with no rules, so nothing can use it; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_egress_rule.app_https` (443 out from the app group); `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
 | `platform.tf` | `aws_kms_key.queues` (rotation on; its policy lets the orders task roles use it through SQS) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
 
-In total the world has 122 resources across 16 AWS services (counting the VPC types as EC2): 70 modeled and 52
+In total the world has 123 resources across 16 AWS services (counting the VPC types as EC2): 71 modeled and 52
 skipped.
 
 ## Services (task C1)
@@ -408,6 +422,7 @@ data_locations:
 sensitive_overrides:             # node ID -> class; a person's override always beats Jev
   "s3://demo-terraform-state/": regulated
   "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
+  "db:orders-migration-db": regulated     # a restored copy of customer-db
   # Queues, the topic and the log groups carry events and request metadata, never customer data.
   "sqs:order-events": internal
   "sqs:order-events-dlq": internal
@@ -457,6 +472,11 @@ Everything else is covered by a requirement or is not sensitive: the analysts re
 group only the logs, `terraform-apply` only the state (R17), and every workload only what its code calls.
 Betweenness over the traversal and grant edges ranks `role:prod-support` first among roles (20 actor-to-data
 pairs pass through it, 12 through `github-deploy`).
+
+**One resource is unreached:** `db:orders-migration-db`. No actor has a path to it and no code calls it, so the
+posture lists it under unreached data and the cost estimate offers its line as a saving (about $59 a month at
+list price). The dashboard presents it as a cleanup candidate for a person to confirm: the graph cannot see
+manual connections, backups or recovery plans. It opens no dangerous path and adds no single point of failure.
 
 These outcomes were checked with a throwaway model before the event; it is not part of the repo. F5 confirms
 them on the real plans.

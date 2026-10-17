@@ -11,6 +11,7 @@ data_locations:
 sensitive_overrides:             # node ID -> class; a person's override always beats Jev
   "s3://demo-terraform-state/": regulated
   "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
+  "db:orders-migration-db": regulated     # a restored copy of customer-db
   # Queues, the topic and the log groups carry events and request metadata, never customer data.
   "sqs:order-events": internal
   "sqs:order-events-dlq": internal

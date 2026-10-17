@@ -38,7 +38,7 @@ def test_intern_structural_nodes_and_iam_integration() -> None:
     rows = AwsAdapter(CONFIG).rows(
         read.resources, [], lambda a, p: TerraformAdapter().locate(read.files, a, p)
     )
-    for label, count in [("User", 4), ("Group", 3), ("Role", 11), ("Workload", 6), ("Resource", 19)]:
+    for label, count in [("User", 4), ("Group", 3), ("Role", 11), ("Workload", 6), ("Resource", 20)]:
         assert sum(label in n.labels for n in rows.nodes) == count
     assert all(n.props.get("arn") for n in rows.nodes if set(n.labels) & {"User", "Group", "Role"})
     assert all(

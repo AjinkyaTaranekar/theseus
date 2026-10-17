@@ -27,6 +27,8 @@ DB_SECRET = "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-creden
 # F4's modeled files, whose lines every expected.json cites. C1 adds two more modeled files and two skipped.
 F4_MODELED = ("people", "roles", "policies", "ci", "data", "services", "containers")
 C1_MODELED = ("queues", "logs")
+# Modeled files added later, each as a new file so no cited line moves.
+ADDED_MODELED = ("migration",)
 SKIPPED = ("network", "platform")
 SCENARIOS = ["intern", "public-bucket", "compromised-action", "unused-grant", "code-pr"]
 
@@ -229,8 +231,8 @@ def test_every_spec_resource_has_its_exact_address_and_name(resources: dict[str,
         f"aws_iam_role_policy_attachment.{name}_logs"
         for name in ("billing_job", "billing_api", "support_portal", "analytics_export")
     )
-    assert declared(F4_MODELED + C1_MODELED) == expected
-    assert declared(F4_MODELED + C1_MODELED + SKIPPED) == set(resources)
+    assert declared(F4_MODELED + C1_MODELED + ADDED_MODELED) == expected
+    assert declared(F4_MODELED + C1_MODELED + ADDED_MODELED + SKIPPED) == set(resources)
 
 
 def declared(stems: tuple[str, ...]) -> set[str]:
@@ -248,7 +250,7 @@ def test_modeled_and_skipped_types_live_in_separate_files() -> None:
 
     for stem in SKIPPED:
         assert not {a.split(".")[0] for a in declared((stem,))} & MODELED_TYPES, stem
-    for stem in C1_MODELED:
+    for stem in C1_MODELED + ADDED_MODELED:
         assert {a.split(".")[0] for a in declared((stem,))} <= MODELED_TYPES, stem
 
 
@@ -406,7 +408,7 @@ def test_config_matches_spec_and_all_requirement_ids_exist(resources: dict[str, 
 def test_source_is_literal_and_contains_no_backend_or_data_sources() -> None:
     for path in sorted((WORLD / "terraform").glob("*.tf")):
         text = path.read_text(encoding="utf-8")
-        if path.stem in F4_MODELED + C1_MODELED:
+        if path.stem in F4_MODELED + C1_MODELED + ADDED_MODELED:
             assert not re.search(r"\baws_\w+\.\w+\.", text), path
         parsed = hcl2.loads(text)
         assert "data" not in parsed
@@ -1419,7 +1421,7 @@ def test_resources_remain_in_the_files_assigned_by_spec() -> None:
         expected[f"aws_iam_role_policy_attachment.{name}_logs"] = "services.tf"
     actual: dict[str, str] = {}
     paths = sorted((WORLD / "terraform").glob("*.tf"))
-    assert {p.stem for p in paths} == {"providers", *F4_MODELED, *C1_MODELED, *SKIPPED}
+    assert {p.stem for p in paths} == {"providers", *F4_MODELED, *C1_MODELED, *ADDED_MODELED, *SKIPPED}
     for path in paths:
         if path.stem in SKIPPED:
             continue  # test_every_skipped_resource_spec_02_lists_exists checks these against the skip table
