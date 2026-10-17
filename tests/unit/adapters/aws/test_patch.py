@@ -357,3 +357,15 @@ def test_role_creation_refuses_unknown_or_inconsistent_trust_identity(
             [op("add_role", name="new", trust_principals=["user:priya-intern"], statements=[statement()])],
             account=account,
         )
+
+
+def test_a_new_role_is_named_the_same_whatever_the_order_of_its_principals() -> None:
+    """The graph copy and the Terraform render name the role alike, or a verified fix renders elsewhere."""
+    from theseus.adapters.aws.patch import _label
+
+    principals = ["user:priya-intern", "role:github-deploy"]
+    labels = {
+        _label(op("add_role", name="new", trust_principals=order, statements=[statement()]))
+        for order in (principals, sorted(principals), [*principals, principals[0]])
+    }
+    assert len(labels) == 1

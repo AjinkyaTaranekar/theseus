@@ -42,7 +42,7 @@ log = logging.getLogger(__name__)
 def adapters_for(config: dict[str, Any]) -> Adapters:
     """AWS, Terraform, GitHub Actions and Python, configured from the world's theseus.yaml."""
     return Adapters(
-        iac=TerraformAdapter(), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
+        iac=TerraformAdapter(config), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
     )
 
 

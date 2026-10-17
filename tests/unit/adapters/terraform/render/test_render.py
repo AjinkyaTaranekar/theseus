@@ -633,3 +633,13 @@ def test_every_operation_on_demo_infra_has_a_reviewable_diff_snapshot(operation:
     )
     assert diff == (SNAPSHOTS / f"demo_{operation}.diff").read_text()
     parse_all(result)
+
+
+def test_the_api_supplies_its_world_account_to_the_renderer() -> None:
+    """Fixes render through the API too (A9), so its adapters carry the world's account like the CLI's."""
+    from theseus.api.app import adapters_for
+
+    result = adapters_for({"account": "444455556666", "region": "eu-west-1"}).iac.render(
+        {"terraform/main.tf": SOURCE}, [op("add_role")]
+    )
+    assert '"arn:aws:iam::444455556666:user/priya-intern"' in result[GENERATED]

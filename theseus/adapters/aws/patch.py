@@ -117,8 +117,19 @@ def _append(resources: list[IacResource], kind: str, label: str, values: dict[st
     resources.append(IacResource(address=address, type=kind, name=label, provider="aws", values=values))
 
 
+# Lists whose order means nothing: the Terraform renderer sorts and dedups them before it names a resource.
+_SETS = ("resources", "patterns", "trust_principals")
+
+
 def _label(op: PatchOp) -> str:
-    payload = json.dumps(op.model_dump(), sort_keys=True, separators=(",", ":"))
+    """The new resource's label: a hash of the op with its unordered lists sorted, so a fix verified on the
+    graph copy renders to the same Terraform address whatever order its principals came in."""
+    data = op.model_dump()
+    args = dict(data["args"])
+    for key in _SETS:
+        if isinstance(args.get(key), list):
+            args[key] = sorted(set(args[key]))
+    payload = json.dumps({**data, "args": args}, sort_keys=True, separators=(",", ":"))
     return "theseus_" + op.op + "_" + hashlib.sha256(payload.encode()).hexdigest()[:12]
 
 
