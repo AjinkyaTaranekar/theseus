@@ -69,6 +69,7 @@
   .tag { position: absolute; font: 600 11.5px/1.3 var(--mono); padding: 4px 7px; border-radius: 4px; white-space: nowrap;
          background: var(--accent); color: #fff; }
   .tag.quiet { background: var(--chip); color: var(--muted); }
+  .tag.ok { background: var(--ok); color: #fff; }
   .edge-label { font: 11px/1 var(--mono); fill: var(--muted); paint-order: stroke; stroke: var(--bg);
                 stroke-width: 5px; stroke-linejoin: round; }
   .edge-label.new { fill: var(--accent); font-weight: 700; }
@@ -86,6 +87,7 @@
   .way li .src a { color: var(--muted); }
   .chip { display: inline-block; font: 600 11px/1 var(--mono); padding: 3px 6px; border-radius: 4px; margin-left: 6px;
           background: var(--accent); color: #fff; vertical-align: 1px; }
+  .chip.ok { background: var(--ok); }
   details { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; }
   details summary { cursor: pointer; font-weight: 600; }
   details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
@@ -125,6 +127,11 @@
     <div id="full" hidden></div>
   </div>
 
+  <section id="todo-section" hidden>
+    <h2>What to do</h2>
+    <div class="ways" id="todo"></div>
+  </section>
+
   <section id="steps-section">
     <h2>Step by step</h2>
     <div class="ways" id="ways"></div>
@@ -156,7 +163,8 @@ const HOLDS = { regulated: "personal, payment or health data", confidential: "bu
                 internal: "internal data", public: "public data" };
 const TAGS = { regulated: "Customer data", confidential: "Business data" };
 const VERBS = { MEMBER_OF: "is in", CAN_ASSUME: "can become", TRUSTS: "can log in as", RUNS_AS: "runs as",
-                UNLOCKS: "opens", USES: "uses", CALLS: "calls", REQUESTS: "calls", HAS_ENV: "is configured with" };
+                UNLOCKS: "opens", USES: "uses", CALLS: "calls", REQUESTS: "calls", HAS_ENV: "is configured with",
+                RUNS_IN: "runs in" };
 const RANK = { regulated: 0, confidential: 1 };
 
 // Line icons, drawn here: no data ever reaches them.
@@ -169,6 +177,7 @@ const ICONS = {
   storage: "M3 7l9-4 9 4-9 4-9-4zM3 7v10l9 4 9-4V7M12 11v10",
   service: "M12 2l8.5 5v10L12 22l-8.5-5V7z",
   "CI workflow": "M5 4l14 8-14 8z",
+  "GitHub Action": "M13 2L4 14h7l-1 8 9-12h-7z",
   internet: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.8 2.5 15.2 0 18M12 3c-2.5 2.8-2.5 15.2 0 18",
   logs: "M6 3h9l3 3v15H6zM9 9h6M9 13h6M9 17h4",
   queue: "M3 6h18M3 12h18M3 18h12",
@@ -253,13 +262,21 @@ function render(data) {
   const isNew = (step) => { const ev = (r.evidence || {})[step.evidence]; return !!ev && changed.has(ev.address); };
   const opened = [...r.opened].sort(byRank);
   const already = [...(r.unchanged || [])].sort(byRank);
+  const finding = r.mode === "finding";
+  const advisory = r.finding || {};
+  const actionId = advisory.action || "";
+  const cut = r.min_cut && r.min_cut.cuttable ? r.min_cut.cut || [] : [];
+  const cutKeys = new Set(cut.map((c) => `${c.src}|${c.type}|${c.dst}`));
+  const rotate = new Set(r.rotate || []);
+  const marked = (step) => (finding ? cutKeys.has(`${step.from}|${step.type}|${step.to}`) : isNew(step));
 
-  document.title = `${data.repo} #${data.number} · Theseus`;
-  $("where").textContent = `${data.repo} #${data.number} · ${data.head_sha.slice(0, 7)}`;
+  document.title = finding ? `${advisory.id} · Theseus` : `${data.repo} #${data.number} · Theseus`;
+  $("where").textContent = finding ? `${advisory.id} · ${data.repo}` : `${data.repo} #${data.number} · ${data.head_sha.slice(0, 7)}`;
   const badge = $("badge");
   badge.hidden = false;
   badge.className = `badge ${data.verdict.level}`;
-  badge.textContent = { blocked: "Merge blocked", look: "Needs a look", clear: "Safe to merge" }[data.verdict.level];
+  badge.textContent = (finding ? { blocked: "At risk", look: "Needs a look", clear: "Not exposed" }
+    : { blocked: "Merge blocked", look: "Needs a look", clear: "Safe to merge" })[data.verdict.level];
   $("main").hidden = false;
 
   // The finding, in one sentence and one line under it.
@@ -270,7 +287,22 @@ function render(data) {
     : [];
   const askedLine = !intent ? "" : !intent.stated ? " The PR doesn't say what it's for."
     : asked.length ? ` The PR only asked to ${list(asked)}.` : " The PR says it changes no access.";
-  if (opened.length) {
+  if (finding) {
+    const flows = advisory.workflows || [];
+    const action = nameOf(actionId);
+    if (opened.length) {
+      const top = opened[0];
+      title.append(`If ${action} is compromised, ${short(top.actor)} could ${access(top.grants)} `);
+      title.append(el("em", nameOf(top.target)));
+      title.append(".");
+    } else {
+      title.textContent = `If ${action} is compromised, it reaches no sensitive data.`;
+    }
+    const parts = [`${flows.length} ${flows.length === 1 ? "workflow uses" : "workflows use"} it at an affected version: ${list(flows.map(short))}.`];
+    if (rotate.size) parts.push(`Rotate ${list([...rotate].map(nameOf))} now.`);
+    if (cut.length) parts.push(cut.length === 1 ? "Cutting one link contains it." : `Cutting ${cut.length} links contains it.`);
+    lede.textContent = parts.join(" ");
+  } else if (opened.length) {
     const top = opened[0];
     title.append(`This PR would let ${nameOf(top.actor)} ${access(top.grants)} `);
     title.append(el("em", nameOf(top.target)));
@@ -293,9 +325,12 @@ function render(data) {
   const place = new Map(), used = new Map();
   let rows = 0;
   const routeOf = (p) => (p.steps.length ? [p.steps[0].from, ...p.steps.map((s) => s.to)] : [p.actor]);
-  for (const p of opened) {
+  const lead = finding && actionId ? [actionId] : [];
+  const quiet = finding ? (advisory.workflows || []).filter((w) => !opened.some((p) => p.actor === w)) : [];
+  const routes = [...opened.map((p) => [...lead, ...routeOf(p)]), ...quiet.map((w) => [...lead, w])];
+  for (const route of routes) {
     let row = null;
-    routeOf(p).forEach((id, col) => {
+    route.forEach((id, col) => {
       if (place.has(id)) { row = place.get(id).row; return; }
       const taken = used.get(col) || new Set();
       let r0 = row === null ? 0 : row;
@@ -306,14 +341,17 @@ function render(data) {
     });
   }
   const edges = new Map();
+  if (lead.length) for (const w of advisory.workflows || []) {
+    edges.set(`${actionId}|RUNS_IN|${w}`, { step: { from: actionId, type: "RUNS_IN", to: w, evidence: null }, fresh: false });
+  }
   for (const p of opened) for (const s of p.steps) {
     const key = `${s.from}|${s.type}|${s.to}`;
-    if (!edges.has(key)) edges.set(key, { step: s, fresh: isNew(s) });
+    if (!edges.has(key)) edges.set(key, { step: s, fresh: marked(s) });
   }
   // Past a step this PR adds, nothing was reachable before it.
   const outOfReach = new Set();
   for (const p of opened) {
-    const i = p.steps.findIndex(isNew);
+    const i = p.steps.findIndex(marked);
     p.steps.slice(i < 0 ? p.steps.length - 1 : i).forEach((s) => outOfReach.add(s.to));
     if (!p.steps.length) outOfReach.add(p.target);
   }
@@ -341,7 +379,7 @@ function render(data) {
     canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
     const layer = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}` });
     const defs = svg("defs");
-    for (const [id, color] of [["arrow", "var(--faint)"], ["arrow-new", "var(--accent)"]]) {
+    for (const [id, color] of [["arrow", "var(--faint)"], ["arrow-new", finding ? "var(--ok)" : "var(--accent)"]]) {
       const m = svg("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
       m.append(svg("path", { d: "M0 0L10 5L0 10z", fill: color }));
       defs.append(m);
@@ -355,13 +393,14 @@ function render(data) {
       const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, dx = (x2 - x1) / 2;
       const hot = fresh && !before;
       const path = svg("path", { d: `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`, fill: "none",
-                                 stroke: hot ? "var(--accent)" : "var(--faint)", "stroke-width": hot ? 2.5 : 1.4,
+                                 stroke: hot ? (finding ? "var(--ok)" : "var(--accent)") : "var(--faint)", "stroke-width": hot ? 2.5 : 1.4,
                                  "marker-end": `url(#${hot ? "arrow-new" : "arrow"})` });
       if (fresh && before) path.setAttribute("stroke-dasharray", "5 5");
       layer.append(path);
       const label = svg("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, "text-anchor": "middle",
                                   class: `edge-label${hot ? " new" : ""}` });
-      label.textContent = fresh && before ? "not there today" : verb(step);
+      label.textContent = fresh && before ? (finding ? "cut" : "not there today") : verb(step);
+      if (hot && finding) label.style.fill = "var(--ok)";
       layer.append(label);
     }
 
@@ -379,9 +418,17 @@ function render(data) {
       else if (exposed.has(id) || sens === "regulated" || sens === "confidential") tile.classList.add("exposed");
       canvas.append(tile);
       // A tag over the data this PR exposes, the way a reviewer would say it.
-      if (exposed.has(id)) {
-        const label = keyTo.has(id) ? `Key to ${short(keyTo.get(id))}` : TAGS[sens] || "Sensitive data";
-        const tag = el("div", before ? "Out of reach today" : label, { class: `tag${before ? " quiet" : ""}` });
+      const away = finding ? "Out of reach once cut" : "Out of reach today";
+      let tagText = null, tagClass = "tag";
+      if (id === actionId) tagText = "Compromised";
+      else if (quiet.includes(id)) { tagText = "Reaches nothing"; tagClass = "tag quiet"; }
+      else if (exposed.has(id)) {
+        const label = finding && rotate.has(id) ? "Rotate now" : keyTo.has(id) ? `Key to ${short(keyTo.get(id))}` : TAGS[sens] || "Sensitive data";
+        tagText = before ? away : label;
+        if (before) tagClass = "tag quiet";
+      }
+      if (tagText) {
+        const tag = el("div", tagText, { class: tagClass });
         tag.style.left = `${pos.x}px`; tag.style.top = `${pos.y - 27}px`;
         canvas.append(tag);
       }
@@ -392,13 +439,19 @@ function render(data) {
       const a = at(first.step.from), b = at(first.step.to);
       const ev = (r.evidence || {})[first.step.evidence];
       const where = ev && ev.line ? ` · ${ev.file.split("/").pop()}:${ev.line}` : "";
-      const tag = el("div", before ? "This PR adds it" : `Added by this PR${where}`, { class: `tag${before ? " quiet" : ""}` });
-      tag.style.left = `${a.x + W - 30}px`; tag.style.top = `${Math.max(a.y, b.y) + H + 10}px`;
+      const text = finding ? (before ? "Cut" : `Cut here to contain it${where}`) : before ? "This PR adds it" : `Added by this PR${where}`;
+      const tag = el("div", text, { class: finding ? `tag${before ? " quiet" : " ok"}` : `tag${before ? " quiet" : ""}` });
+      tag.style.left = `${a.x + W / 2}px`; tag.style.top = `${Math.min(a.y, b.y) - 27}px`;
       canvas.append(tag);
     }
+    // A long route is scaled down to fit the stage rather than cut off at its right edge.
+    const room = $("stage").clientWidth - 48;
+    canvas.style.zoom = room > 0 && width > room ? String(room / width) : "";
     const actor = nameOf(opened[0].actor);
-    $("note").textContent = before
-      ? `Today, ${actor} can't reach the highlighted data.`
+    $("note").textContent = finding
+      ? (before ? "With that one link cut, none of the highlighted data is reachable."
+                : `${opened.length} ${opened.length === 1 ? "way" : "ways"} in from the compromised Action.`)
+      : before ? `Today, ${actor} can't reach the highlighted data.`
       : `If merged: ${opened.length} new ${opened.length === 1 ? "way" : "ways"} in.`;
   }
 
@@ -416,7 +469,7 @@ function render(data) {
   }
   let full = null;
   function drawFull() {
-    const g = data.graphs.head;
+    const g = data.graphs.head || data.graphs.base;
     if (!g) { $("note").textContent = "The graph isn't in the store any more."; return; }
     const routes = new Set(opened.flatMap(routeOf));
     const sensitive = (id) => ["regulated", "confidential"].includes(info(id).sensitivity);
@@ -496,6 +549,12 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     document.head.append(s);
   }
 
+  if (finding) {
+    $("v-after").textContent = "Blast radius";
+    $("v-before").textContent = "Contained";
+    $("v-before").before($("v-after"));
+    $("v-before").hidden = !cut.length;
+  }
   $("v-before").addEventListener("click", () => drawBoard("before"));
   $("v-after").addEventListener("click", () => drawBoard("after"));
   $("v-full").addEventListener("click", () => drawBoard("full"));
@@ -524,11 +583,50 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       } else if (ev) {
         li.append(el("span", ev.note ? `(from ${ev.note})` : "(inferred)", { class: "src" }));
       }
-      if (isNew(s)) li.append(el("span", "new", { class: "chip" }));
+      if (marked(s)) li.append(el("span", finding ? "cut here" : "new", { class: finding ? "chip ok" : "chip" }));
       ol.append(li);
     }
     card.append(ol);
     $("ways").append(card);
+  }
+
+  if (finding) {
+    const todo = $("todo");
+    const card = (title, sub) => {
+      const c = el("article", null, { class: "way" });
+      c.append(el("h3", title));
+      if (sub) c.append(el("div", sub, { class: "sub" }));
+      todo.append(c);
+      return c;
+    };
+    for (const c of cut) {
+      const box = card("Cut one link", `It carries every way in. Cut it and ${list(opened.map((p) => short(p.target)).filter((v, i, a) => a.indexOf(v) === i))} are out of reach.`);
+      const line = el("p", `${short(c.src)} ${verb({ type: c.type, grants: [] })} ${short(c.dst)}`);
+      const ev = (r.evidence || {})[c.evidence];
+      if (ev && ev.file && ev.file !== "unknown") {
+        line.append(" ");
+        line.append(el("a", `${ev.file}${ev.line ? `:${ev.line}` : ""}`, { href: blob(ev.file, ev.line), target: "_blank", rel: "noopener" }));
+      }
+      box.append(line);
+    }
+    if (rotate.size) {
+      const box = card("Rotate now", "The compromised workflows can read these. Treat them as leaked.");
+      const ul = el("ul");
+      for (const s of rotate) ul.append(el("li", `${nameOf(s)} (${kindOf(s, info(s))})`));
+      box.append(ul);
+    }
+    const staging = r.staging_to_prod || [];
+    if (staging.length) {
+      const box = card("Staging reaches production", "A workflow meant for previews can reach production data.");
+      const ul = el("ul");
+      for (const s of staging) ul.append(el("li", `${short(s.actor)} → ${nameOf(s.target)}`));
+      box.append(ul);
+    }
+    const chokes = (r.choke_points || []).slice(0, 3);
+    if (chokes.length) {
+      card("Where to harden", `Most routes to sensitive data pass through ${list(chokes.map((c) => short(c.id)))}.`);
+    }
+    $("todo-section").hidden = !todo.childElementCount;
   }
 
   // Access that was there before this PR: not its doing, but worth knowing.
@@ -538,7 +636,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     for (const p of already) $("already").append(el("li", `${nameOf(p.actor)} → ${nameOf(p.target)}`));
   }
 
-  const g = data.graphs.head;
+  const g = data.graphs.head || data.graphs.base;
   $("footer").textContent = g
     ? `Built from ${g.nodes.length} resources and ${g.edges.length} connections, read live from FalkorDB.`
     : "";
