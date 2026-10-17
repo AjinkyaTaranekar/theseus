@@ -19,7 +19,7 @@ resource "aws_iam_role" "github_deploy" {
       Condition = {
         StringEquals = { "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com" }
         # Widened for docs-site preview publishing; narrow this again after the preview rollout.
-        StringLike = { "token.actions.githubusercontent.com:sub" = "repo:demo-org/*" }
+        StringLike = { "token.actions.githubusercontent.com:sub" = ["repo:demo-org/infra:environment:production", "repo:demo-org/infra:ref:refs/heads/main"] }
       }
     }]
   })
