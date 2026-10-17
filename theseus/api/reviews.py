@@ -390,6 +390,16 @@ def save_incidents(
     return doc
 
 
+def kept_posture(store: ReviewStore, repo: str) -> dict[str, Any] | None:
+    """main's newest kept posture document, or None before the first scan."""
+    return _load(store, posture_key(repo))
+
+
+def kept_review(store: ReviewStore, repo: str, number: int) -> dict[str, Any] | None:
+    """A PR's kept review document, or None."""
+    return _load(store, key(repo, number))
+
+
 def blob_base(repo: str, sha: str, world_root: str) -> str:
     """Where a world file is on GitHub at a commit: append `<file>#L<line>`."""
     root = world_root.strip("/")

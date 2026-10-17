@@ -464,3 +464,42 @@ def test_each_weak_point_comes_with_the_routes_that_all_pass_through_it(
         all("secret:prod-db-credentials" in route[1:-1] for route in d["routes"]) for d in deps
     )
     assert data["posture"]["blob"] == f"https://github.com/{REPO}/blob/{SHA}/demo-infra"
+
+
+class Sources(GitHub):
+    """The App's file reads, answered from the demo world on disk."""
+
+    reads: list[tuple[str, str]] = []
+
+    def read_file(self, repo: str, path: str, sha: str) -> str:
+        Sources.reads.append((path, sha))
+        if not path.startswith("demo-infra/"):
+            raise GitHubError("outside the world root")
+        file = Path(path)
+        if not file.is_file():
+            raise GitHubError("404 Not Found")
+        return file.read_text(encoding="utf-8")
+
+
+def test_the_lines_behind_a_claim_open_without_github_access(client: TestClient, settings: Settings) -> None:
+    assert send(client).status_code == 200
+    client.app.dependency_overrides[routes.get_github] = lambda: Sources(settings)  # type: ignore[attr-defined]
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    res = client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": "terraform/legacy.tf", "line": 13})
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert found["sha"] == SHA and found["start"] <= 13 <= found["start"] + len(found["lines"]) - 1
+    line = next(x for x in found["lines"] if x["n"] == 13)
+    assert "casey" in line["text"] or "contractors" in "".join(x["text"] for x in found["lines"])
+    assert found["url"].endswith("/demo-infra/terraform/legacy.tf#L13")
+    for bad in ("../.env", "/etc/passwd", "terraform/../../x"):
+        assert client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": bad}).status_code == 422
+    assert (
+        client.get(
+            f"/dashboard/{REPO}/source", params={"k": "0" * 32, "file": "terraform/legacy.tf"}
+        ).status_code
+        == 404
+    )
+    reads = len(Sources.reads)
+    client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": "terraform/legacy.tf", "line": 24})
+    assert len(Sources.reads) == reads  # a commit's file is read once

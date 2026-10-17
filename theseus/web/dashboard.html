@@ -233,6 +233,17 @@
   .lead { font-size: 15px; line-height: 1.55; color: var(--text); margin: 0; }
   .lead b { font-weight: 600; }
   .cutbox { border: 1px solid rgba(115, 191, 105, .45); background: var(--green-bg); border-radius: 4px; padding: 10px 12px; }
+  dialog.src { width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 32px); padding: 0; border: 1px solid #3a3d44;
+                border-radius: 6px; background: #0b0c0e; color: #e8e9ec; box-shadow: 0 20px 60px rgba(0, 0, 0, .8); }
+  dialog.src::backdrop { background: rgba(0, 0, 0, .6); }
+  dialog.src .sh { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #24262b; }
+  dialog.src .sh h2 { margin: 0; flex: 1; font: 600 14px/1.3 "Roboto Mono", ui-monospace, monospace; overflow-wrap: anywhere; }
+  dialog.src pre { margin: 0; padding: 10px 0; overflow: auto; font: 12.5px/1.6 "Roboto Mono", ui-monospace, monospace; }
+  dialog.src .ln { display: block; padding: 0 14px; white-space: pre; }
+  dialog.src .ln b { display: inline-block; width: 42px; color: #5c6068; font-weight: 400; user-select: none; }
+  dialog.src .ln.at { background: rgba(110, 159, 255, .16); box-shadow: inset 3px 0 0 #6e9fff; }
+  dialog.src .sf { padding: 10px 14px; border-top: 1px solid #24262b; font-size: 12.5px; color: #9a9fa8; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  dialog.src .sf a { color: #8fb4ff; }
   .cutbox h4 { margin: 0 0 6px; color: var(--green); font-size: 13px; text-transform: none; letter-spacing: 0; }
   @media (max-width: 1280px) { .s4 { grid-column: span 8; } .s6 { grid-column: span 12; } }
   @media (max-width: 980px) {
@@ -291,6 +302,11 @@
 </div>
 
 <div id="tipfloat" role="presentation" hidden></div>
+<dialog class="src" id="srcdlg" aria-labelledby="src-title">
+  <div class="sh"><h2 id="src-title"></h2><button type="button" id="src-close" class="btn dash" aria-label="Close">Close</button></div>
+  <pre id="src-body"></pre>
+  <div class="sf" id="src-foot"></div>
+</dialog>
 <dialog id="dlg" aria-labelledby="dlg-title">
   <div class="dh"><h2 id="dlg-title"></h2><button class="btn" type="button" id="dlg-close" aria-label="Close">Close</button></div>
   <div class="db" id="dlg-body"></div>
@@ -725,7 +741,7 @@ function proofLink(p) {
   if (!p || !p.file || p.file === "unknown") return el("span", "no line recorded", { class: "proof sub" });
   const text = `${p.file.split("/").pop()}${p.line ? `:${p.line}` : ""}`;
   const url = p.url || (BLOB ? `${BLOB}/${p.file.split("/").map(encodeURIComponent).join("/")}${p.line ? `#L${p.line}` : ""}` : null);
-  return url ? el("a", `${text} ↗`, { href: url, target: "_blank", rel: "noopener", class: "proof", title: p.address ? `${p.address}${p.part ? ` · ${p.part}` : ""}` : "" }) : el("span", text, { class: "proof sub" });
+  return url ? el("a", text, { href: url, target: "_blank", rel: "noopener", class: "proof", "data-file": p.file, "data-line": p.line ? String(p.line) : "", title: `Show the Terraform line${p.address ? `: ${p.address}${p.part ? ` · ${p.part}` : ""}` : ""}` }) : el("span", text, { class: "proof sub" });
 }
 function stepVerb(s) {
   if (s.type === "CAN") return `can ${(s.grants && s.grants.length ? s.grants : ["reach"]).join(" and ")}`;
@@ -792,7 +808,13 @@ function mini(nodes, edges, opts) {
     if (e.label) {
       const t = svg("text", { x: mx, y: (y1 + y2) / 2 - 5, "text-anchor": "middle", class: "v" });
       t.textContent = e.label;
-      if (e.href) { const link = svg("a", { href: e.href, target: "_blank", rel: "noopener" }); link.append(t); s.append(link); } else s.append(t);
+      if (e.href) {
+        const link = svg("a", { href: e.href, target: "_blank", rel: "noopener", "data-file": e.file || "", "data-line": e.line ? String(e.line) : "" });
+        const hint = svg("title");
+        hint.textContent = `Show the line: ${e.file}${e.line ? `:${e.line}` : ""}`;
+        link.append(hint, t);
+        s.append(link);
+      } else s.append(t);
     }
   }
   for (const n of nodes) {
@@ -821,7 +843,7 @@ function pathsGraph(paths, proofOf, infoOf, focus) {
     if (!edges.has(key)) {
       const p = proofOf(s);
       const url = p && p.file && p.file !== "unknown" ? (proofLink(p).getAttribute("href") || null) : null;
-      edges.set(key, { src: s.from, dst: s.to, label: stepVerb(s), href: url, tone: "hot" });
+      edges.set(key, { src: s.from, dst: s.to, label: stepVerb(s), href: url, file: p && p.file, line: p && p.line, tone: "hot" });
     }
   }
   return mini([...nodes.values()], [...edges.values()], { infoOf, label: `${nodes.size} nodes on ${plural(paths.length, "route")}` });
@@ -903,6 +925,49 @@ function compromiseButton(node, infoOf, text) {
   b.addEventListener("click", (e) => { e.stopPropagation(); showCompromise(node, infoOf); });
   return b;
 }
+function sourceUrl(file, line) { return `${BASE}/source?file=${encodeURIComponent(file)}${line ? `&line=${line}` : ""}&k=${encodeURIComponent(K)}`; }
+
+// The lines behind a claim, in Theseus: the repo is private, so a GitHub link alone opens only for people with
+// access. A plain click shows the lines here; a click with a modifier still opens GitHub.
+function showSource(file, line, github) {
+  const dlg = document.getElementById("srcdlg");
+  document.getElementById("src-title").textContent = `${file}${line ? `:${line}` : ""}`;
+  const body = document.getElementById("src-body"), foot = document.getElementById("src-foot");
+  body.textContent = "Reading the file at this commit through the GitHub App…";
+  foot.replaceChildren();
+  if (!dlg.open) dlg.showModal();
+  fetch(sourceUrl(file, line), { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+    .then((s) => {
+      body.replaceChildren();
+      let at = null;
+      for (const x of s.lines) {
+        const row = document.createElement("span");
+        row.className = `ln${x.n === s.line ? " at" : ""}`;
+        const n = document.createElement("b");
+        n.textContent = String(x.n);
+        row.append(n, document.createTextNode(x.text || " "));
+        body.append(row);
+        if (x.n === s.line) at = row;
+      }
+      if (at) at.scrollIntoView({ block: "center" });
+      const note = document.createElement("span");
+      note.textContent = `At commit ${s.sha.slice(0, 7)}, read just now.`;
+      const gh = document.createElement("a");
+      gh.href = github || s.url; gh.target = "_blank"; gh.rel = "noopener";
+      gh.textContent = "Open on GitHub ↗ (needs access to the repo)";
+      foot.append(note, gh);
+    })
+    .catch(() => { body.textContent = "The file couldn't be read right now."; });
+}
+document.getElementById("src-close").addEventListener("click", () => document.getElementById("srcdlg").close());
+document.getElementById("srcdlg").addEventListener("click", (e) => { if (e.target.id === "srcdlg") e.target.close(); });
+document.addEventListener("click", (e) => {
+  const a = e.target.closest && e.target.closest("a[data-file]");
+  if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  showSource(a.getAttribute("data-file"), Number(a.getAttribute("data-line")) || null, a.getAttribute("href"));
+});
 $("dlg-close").addEventListener("click", () => $("dlg").close());
 $("dlg").addEventListener("click", (e) => { if (e.target === $("dlg")) $("dlg").close(); });
 
