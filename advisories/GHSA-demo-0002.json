@@ -1,0 +1,8 @@
+{
+  "action": "demo-thirdparty/s3-sync",
+  "affected_versions": [
+    "v1"
+  ],
+  "id": "GHSA-demo-0002",
+  "text": "Summary: Token exfiltration in demo-thirdparty/s3-sync.\n\nSeverity: High.\n\nAffected versions: v1.\nPatched versions: v2.\n\nA dependency of the v1 Action sends the runner's environment, including temporary cloud credentials, to a third-party host. Any workflow that ran an affected version should treat the credentials it held as exposed.\n\nUpgrade to v2, pin the reviewed commit, and rotate credentials the workflow could read."
+}

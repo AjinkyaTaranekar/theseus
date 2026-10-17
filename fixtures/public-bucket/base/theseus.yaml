@@ -43,3 +43,7 @@ requirements:
   - {id: R15, principal: user:alex-analyst, access: read, resource: "s3://demo-data-lake/curated/"}
   - {id: R16, principal: user:jordan-platform, access: read, resource: "s3://demo-app-logs/"}
   - {id: R17, principal: workflow:demo-org/infra/deploy.yml, access: write, resource: "s3://demo-terraform-state/"}
+  - {id: R18, principal: workload:invoice-mailer, access: read, resource: "s3://demo-company-files/invoices/"}
+  - {id: R19, principal: workload:invoice-mailer, access: read, resource: "secret:smtp-credentials"}
+  - {id: R20, principal: workload:receipt-renderer, access: read, resource: "s3://demo-company-files/invoices/"}
+  - {id: R21, principal: workload:receipt-renderer, access: read, resource: "secret:smtp-credentials"}

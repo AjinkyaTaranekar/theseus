@@ -559,7 +559,7 @@ function repoViews(d) {
       catch (e) { pb.replaceChildren(el("div", "The reviews could not be loaded.", { class: "empty" })); return; }
       const t = el("table");
       t.append(el("caption", "Pull request reviews", { class: "sr-only" }));
-      t.append(add(el("thead"), add(el("tr"), ...["PR", "Review", "Severity", "What it would open", "Fixes", "Reviewed", ""].map((h) => el("th", h, { scope: "col" })))));
+      t.append(add(el("thead"), add(el("tr"), ...["PR", "Review", "Severity", "What it would open", "Fix", "Reviewed", ""].map((h) => el("th", h, { scope: "col" })))));
       const tb = el("tbody");
       for (const r of page.reviews) {
         const [vt, vc] = VERDICT[r.verdict.level] || ["Unknown", "b-grey"];
@@ -570,12 +570,16 @@ function repoViews(d) {
         } else what.textContent = r.headline || "Nothing new reaches sensitive data.";
         if (r.beyond_intent) what.append(el("div", `Its code now reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
         const fixes = el("td");
-        for (const f of r.fixes) fixes.append(el("span", `${f.id} ${f.verdict}`, { class: `badge ${FIX[f.verdict] || "b-grey"}`, title: f.title, style: "margin:0 4px 4px 0" }));
-        if (!r.fixes.length) fixes.append(el("span", "none needed", { class: "sub" }));
+        for (const f of r.fixes) fixes.append(add(el("div"), badge("Fix passes", "b-green"), el("div", f.title, { class: "sub" })));
+        if (!r.fixes.length) fixes.append(el("span", r.fixes_tried ? "no fix passes" : "none needed", { class: "sub" }));
         const link = el("td");
-        if (r.url) link.append(el("a", "Open review", { href: r.url, "aria-label": `Open the review of pull request ${r.number}` }));
+        if (r.url) link.append(add(el("div"), el("a", "Open review", { href: r.url, "aria-label": `Open the review of pull request ${r.number}` })));
+        if (r.pr_url) link.append(add(el("div"), el("a", "Open PR ↗", { href: r.pr_url, target: "_blank", rel: "noopener", "aria-label": `Open pull request ${r.number} on GitHub` })));
+        const prCell = el("td");
+        prCell.append(r.pr_url ? el("a", `#${r.number}`, { href: r.pr_url, target: "_blank", rel: "noopener", class: "mono" }) : el("div", `#${r.number}`, { class: "mono" }));
+        prCell.append(el("div", r.title, { class: "sub" }));
         tb.append(add(el("tr"),
-          add(el("td"), el("div", `#${r.number}`, { class: "mono" }), el("div", r.title, { class: "sub" })),
+          prCell,
           add(el("td"), badge(vt, vc)),
           add(el("td"), el("span", r.severity === null || r.severity === undefined ? "–" : `S${r.severity}`, { class: "mono", title: "S0 is the most severe, S6 the least" })),
           what, fixes, el("td", ago(r.updated_at), { class: "sub" }), link));

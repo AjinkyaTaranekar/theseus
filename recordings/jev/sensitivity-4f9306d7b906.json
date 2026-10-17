@@ -1,0 +1,84 @@
+{
+  "answers": {
+    "db:reports-replica": {
+      "calibrated": true,
+      "choice": "internal",
+      "confidence": 0.6,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.25,
+        "internal": 0.7,
+        "public": 0.02,
+        "regulated": 0.03
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "secret:legacy-reports-password": {
+      "calibrated": true,
+      "choice": "regulated",
+      "confidence": 0.96,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.02,
+        "internal": 0.01,
+        "public": 0.0,
+        "regulated": 0.97
+      },
+      "source": "jev",
+      "type": "choice"
+    },
+    "secret:smtp-credentials": {
+      "calibrated": true,
+      "choice": "regulated",
+      "confidence": 0.97,
+      "noul": null,
+      "probabilities": {
+        "confidential": 0.01,
+        "internal": 0.01,
+        "public": 0.0,
+        "regulated": 0.98
+      },
+      "source": "jev",
+      "type": "choice"
+    }
+  },
+  "model": "jev-1.13.0",
+  "ms": 357,
+  "request": {
+    "model": "jev-latest",
+    "questions": {
+      "db:reports-replica": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the database 'reports-replica'?",
+        "type": "choice"
+      },
+      "secret:legacy-reports-password": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the secret 'legacy-reports-password'?",
+        "type": "choice"
+      },
+      "secret:smtp-credentials": {
+        "criteria": {
+          "confidential": "business-sensitive: financial records, invoices, contracts",
+          "internal": "internal only, little harm if exposed",
+          "public": "safe to publish openly",
+          "regulated": "personal, payment or health data, or credentials and secrets that unlock such data"
+        },
+        "instructions": "Data sensitivity of the secret 'smtp-credentials'?",
+        "type": "choice"
+      }
+    },
+    "state": "Data stores declared in a company's Terraform repository. Classify each from its name and kind only. Credentials and secrets that unlock databases are as sensitive as the data they unlock."
+  }
+}

@@ -27,6 +27,8 @@ DB_SECRET = "arn:aws:secretsmanager:eu-west-1:111122223333:secret:prod-db-creden
 # F4's modeled files, whose lines every expected.json cites. C1 adds two more modeled files and two skipped.
 F4_MODELED = ("people", "roles", "policies", "ci", "data", "services", "containers")
 C1_MODELED = ("queues", "logs")
+# The planted gaps (spec 02, "The gaps planted in legacy.tf").
+GAPS_MODELED = ("legacy",)
 SKIPPED = ("network", "platform")
 SCENARIOS = ["intern", "public-bucket", "compromised-action", "unused-grant", "code-pr"]
 
@@ -229,8 +231,8 @@ def test_every_spec_resource_has_its_exact_address_and_name(resources: dict[str,
         f"aws_iam_role_policy_attachment.{name}_logs"
         for name in ("billing_job", "billing_api", "support_portal", "analytics_export")
     )
-    assert declared(F4_MODELED + C1_MODELED) == expected
-    assert declared(F4_MODELED + C1_MODELED + SKIPPED) == set(resources)
+    assert declared(F4_MODELED + C1_MODELED + GAPS_MODELED) == expected
+    assert declared(F4_MODELED + C1_MODELED + GAPS_MODELED + SKIPPED) == set(resources)
 
 
 def declared(stems: tuple[str, ...]) -> set[str]:
@@ -397,7 +399,7 @@ def test_config_matches_spec_and_all_requirement_ids_exist(resources: dict[str, 
         f"workflow:{p.relative_to(WORLD / 'workflows').as_posix()}"
         for p in (WORLD / "workflows").rglob("*.yml")
     )
-    assert len(config["requirements"]) == 17
+    assert len(config["requirements"]) == 21  # R18 to R21: what legacy.tf's two functions need
     for requirement in config["requirements"]:
         assert requirement["principal"] in ids
         assert requirement["resource"] in ids
@@ -429,13 +431,23 @@ def test_workflow_token_boundaries_and_deploy_jobs() -> None:
         p.relative_to(workflow_root).as_posix(): yaml.safe_load(p.read_text(encoding="utf-8"))
         for p in workflow_root.rglob("*.yml")
     }
-    assert set(workflows) == {"infra/deploy.yml", "infra/ci.yml", "docs-site/preview.yml", "website/lint.yml"}
+    assert set(workflows) == {
+        "infra/deploy.yml",
+        "infra/ci.yml",
+        "infra/snapshot.yml",
+        "docs-site/preview.yml",
+        "website/lint.yml",
+    }
     for path, workflow in workflows.items():
         token = workflow.get("permissions", {}).get("id-token")
-        assert (token == "write") == (path in {"infra/deploy.yml", "docs-site/preview.yml"})
+        assert (token == "write") == (
+            path in {"infra/deploy.yml", "infra/snapshot.yml", "docs-site/preview.yml"}
+        )
         triggers = workflow.get("on", workflow.get(True))
         assert triggers == (
-            {"push": {"branches": ["main"]}} if path == "infra/deploy.yml" else {"pull_request": None}
+            {"push": {"branches": ["main"]}}
+            if path in {"infra/deploy.yml", "infra/snapshot.yml"}
+            else {"pull_request": None}
         )
     jobs = workflows["infra/deploy.yml"]["jobs"]
     assert jobs["apply"]["environment"] == "production"
@@ -600,6 +612,10 @@ def test_all_policy_sids_and_managed_attachments_match_spec(resources: dict[str,
         "aws_iam_role_policy.billing_api": {"ReadDbSecret"},
         "aws_iam_role_policy.support_portal": {"LegacyDbSecret"},
         "aws_iam_role_policy.analytics_export": {"ReadOrders", "RawZone", "CuratedZone"},
+        "aws_iam_group_policy.contractors_assume": {"AssumePlatformAdmin"},
+        "aws_iam_role_policy.platform_admin": {"ReadAllSecrets", "ReadCompanyFiles"},
+        "aws_iam_role_policy.backup_runner": {"BackupSecrets", "BackupCompanyFiles"},
+        "aws_iam_role_policy.shared_lambda": {"ReadSmtpSecret", "ReadInvoices", "ReadPaymentsKey"},
     }
     actual = {
         address: {s["Sid"] for s in json.loads(value["policy"])["Statement"]}
@@ -1419,7 +1435,7 @@ def test_resources_remain_in_the_files_assigned_by_spec() -> None:
         expected[f"aws_iam_role_policy_attachment.{name}_logs"] = "services.tf"
     actual: dict[str, str] = {}
     paths = sorted((WORLD / "terraform").glob("*.tf"))
-    assert {p.stem for p in paths} == {"providers", *F4_MODELED, *C1_MODELED, *SKIPPED}
+    assert {p.stem for p in paths} == {"providers", *F4_MODELED, *C1_MODELED, *GAPS_MODELED, *SKIPPED}
     for path in paths:
         if path.stem in SKIPPED:
             continue  # test_every_skipped_resource_spec_02_lists_exists checks these against the skip table
