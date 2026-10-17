@@ -19,6 +19,8 @@ engine checking it, stop.
 ```bash
 git config core.hooksPath .githooks        # once per clone: checks every commit message
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"   # Windows: .venv\Scripts\pip install -e ".[dev]"
+# .mcp.json starts the MCP server with ${THESEUS_PYTHON:-python}; a stock macOS has no `python` on its PATH
+export THESEUS_PYTHON=.venv/bin/python      # per shell; Windows (cmd): set THESEUS_PYTHON=.venv\Scripts\python.exe
 pytest -q                                   # offline: unit, golden, contract, replay. Run before every commit
 pytest -q tests/golden/test_intern.py -x    # one golden test, stop at the first failure
 pytest -q -m falkordb                       # runs against FalkorDB Cloud; needs the FALKORDB_* settings in .env

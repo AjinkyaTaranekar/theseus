@@ -29,7 +29,7 @@ flowchart TD
   subgraph PR["PR review: run_pr"]
     S1["prepare_state<br/>Jev: sensitivity of new resources"] --> S2["read_intent<br/>LLM: what the PR says it needs<br/>Jev: does the text steer the review"]
     S2 --> S3["engine: paths, diff, cut, rule fixes"]
-    S3 --> S4["agent_fix<br/>LLM: design candidate B with MCP tools"]
+    S3 --> S4["agent_fix<br/>LLM: design candidate B with the graph tools"]
     S4 --> S5["engine: simulate B on a GRAPH.COPY"]
     S5 --> S6["breakage_scores<br/>Jev: could this fix break legitimate use"]
     S6 --> S7["rank: Jev may veto, never approve"]
@@ -121,7 +121,7 @@ sequenceDiagram
 
 - **Context, not text.** The agent gets JSON: the IAM resources with addresses and statement IDs, the
   requirements (unapproved ones marked), the opened paths and the cut. It never sees the PR's words.
-- **Five tools out of ten.** The MCP registry (`theseus/mcp/tools.py`) has ten tools; the agent may call
+- **Five tools out of ten.** The tool registry (`theseus/mcp/tools.py`) has ten tools; the agent may call
   `explain_path`, `shortest_route`, `min_cut`, `check_requirements` and `simulate_fix` (`TOOLS` in
   `agent/fixer.py`), at most 8 times (`MAX_TOOL_CALLS`). `simulate_fix` is the only one that writes, and it only
   adds a graph copy.

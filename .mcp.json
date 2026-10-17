@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "theseus": {
-      "command": "python",
+      "command": "${THESEUS_PYTHON:-python}",
       "args": ["-m", "theseus.mcp.server", "fixtures/intern"]
     }
   }
