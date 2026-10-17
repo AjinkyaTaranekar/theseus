@@ -118,7 +118,7 @@ class AwsAdapter:
 
     def monthly_cost(self, resources: list[IacResource]) -> list[CostLine]:
         """List-price estimates from `cost.py`; a type it cannot price is left out."""
-        return monthly_cost(resources)
+        return monthly_cost(resources, self.config["region"])
 
     def outages(self, resources: list[IacResource], rows: GraphRows) -> OutageMap:
         """`health.py`'s tags for the world's region, with every AWS service and region an incident names."""
