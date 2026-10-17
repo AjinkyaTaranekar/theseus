@@ -47,7 +47,7 @@ what goes down, who loses access and which dependencies break). How it is built:
 
 ![How Theseus works: three inputs, one graph per state, one human decision](docs/images/end-to-end-flow.png)
 
-**The demo world is synthetic.** [`demo-infra/`](demo-infra/) is a made-up online store in this repo: about 140
+**The demo world is synthetic.** [`demo-infra/`](demo-infra/) is a made-up online store in this repo: 137
 planned Terraform resources, eight Python services on Lambda and ECS, five GitHub workflows and a
 `theseus.yaml`. There is no AWS account and no GitHub org behind it ([spec 02](docs/spec/02-demo-world.md)).
 
