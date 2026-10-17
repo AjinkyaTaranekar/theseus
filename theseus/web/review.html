@@ -108,6 +108,28 @@
   .fixops code { font-family: var(--mono); font-size: 12.5px; }
   footer { padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
   .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
+  .message button { margin-left: 12px; height: 32px; padding: 0 12px; border: 1px solid var(--tile-line); border-radius: 4px;
+                    background: var(--card-2); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; }
+  .message button:hover { border-color: var(--muted); }
+  .todo-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; color: var(--muted); font-size: 13px; }
+  .todo-actions code, .way code { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+  .todo-actions button { height: 30px; padding: 0 11px; border: 1px solid var(--tile-line); border-radius: 4px;
+                         background: var(--card-2); color: var(--text); font: 500 13px/1 var(--font); cursor: pointer; }
+  .todo-actions button:hover { border-color: var(--muted); }
+  .way ul.ops { margin: 0 0 4px; padding-left: 18px; }
+  .way ul.ops li { margin: 3px 0; }
+  .badge[hidden], .dash[hidden] { display: none; }
+  .skeleton { padding-top: 8px; }
+  .skeleton .line, .skeleton .block { border-radius: 4px; background: var(--card-2); }
+  .skeleton .line { height: 14px; margin: 14px 0; }
+  .skeleton .line.big { height: 28px; width: min(720px, 90%); margin-top: 36px; }
+  .skeleton .line.mid { width: min(520px, 70%); }
+  .skeleton .block { height: 300px; margin-top: 24px; border: 1px solid var(--line); }
+  .skeleton .status { color: var(--muted); font-size: 13px; margin-top: 12px; }
+  @media (prefers-reduced-motion: no-preference) {
+    .skeleton .line, .skeleton .block { animation: pulse 1.4s ease-in-out infinite; }
+    @keyframes pulse { 50% { opacity: .45; } }
+  }
   @media (max-width: 720px) {
     .wrap { padding: 0 16px; }
     header .wrap { height: auto; flex-wrap: wrap; padding-top: 8px; padding-bottom: 8px; row-gap: 6px; }
@@ -128,6 +150,13 @@
   <a class="dash" id="ghpr" hidden target="_blank" rel="noopener">Open PR on GitHub</a>
   <a class="dash" id="dash" hidden>Dashboard</a>
 </div></header>
+
+<div class="wrap skeleton" id="loading" role="status" aria-live="polite">
+  <div class="line big"></div>
+  <div class="line mid"></div>
+  <div class="block"></div>
+  <p class="status" id="loading-status">Reading the review from FalkorDB…</p>
+</div>
 
 <main class="wrap" id="main" hidden>
   <div class="hero">
@@ -277,21 +306,42 @@ function list(items) {
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
 
-function fail(text) {
+function fail(text, retry) {
+  $("loading").hidden = true;
   $("main").hidden = true;
-  $("footer").replaceChildren(el("p", text, { class: "message" }));
+  const message = el("p", text, { class: "message" });
+  if (retry) {
+    const again = el("button", "Try again", { type: "button" });
+    again.addEventListener("click", () => { $("footer").replaceChildren(); $("loading").hidden = false; main(); });
+    message.append(again);
+  }
+  $("footer").replaceChildren(message);
 }
 
+// A slow answer shows the skeleton and then says so; no answer at all ends in a message with a way to retry.
+const SLOW_MS = 6000, GIVE_UP_MS = 60000;
 async function main() {
   const k = new URLSearchParams(location.search).get("k") || "";
+  const status = $("loading-status");
+  status.textContent = "Reading the review from FalkorDB…";
+  const slow = setTimeout(() => { status.textContent = "Still reading the graph from FalkorDB. This is taking longer than usual…"; }, SLOW_MS);
+  const controller = new AbortController();
+  const giveUp = setTimeout(() => controller.abort(), GIVE_UP_MS);
   let data;
   try {
-    const res = await fetch(`${location.pathname.replace(/\/$/, "")}/data?k=${encodeURIComponent(k)}`, { cache: "no-store" });
+    const res = await fetch(`${location.pathname.replace(/\/$/, "")}/data?k=${encodeURIComponent(k)}`, { cache: "no-store", signal: controller.signal });
+    if (res.status === 404) {
+      fail("This link doesn't open a review. It may be mistyped, or the PR hasn't been reviewed yet.", false);
+      return;
+    }
     if (!res.ok) throw new Error(String(res.status));
     data = await res.json();
   } catch (e) {
-    fail("This link doesn't open a review. It may be mistyped, or the PR hasn't been reviewed yet.");
+    fail("Theseus couldn't read this review just now. The graph store may be slow or busy.", true);
     return;
+  } finally {
+    clearTimeout(slow);
+    clearTimeout(giveUp);
   }
   render(data);
 }
@@ -331,6 +381,7 @@ function render(data) {
     pr.textContent = `PR #${data.number} on GitHub`;
     pr.hidden = false;
   }
+  $("loading").hidden = true;
   $("main").hidden = false;
 
   // The finding, in one sentence and one line under it.
@@ -415,7 +466,9 @@ function render(data) {
   for (const p of drawn) for (const s of p.steps) if (s.type === "UNLOCKS" && exposed.has(s.to)) keyTo.set(s.from, s.to);
   const cols = Math.max(1, ...[...place.values()].map((v) => v.col + 1));
 
+  let shown = "after";
   function drawBoard(mode) {
+    shown = mode;
     const fix = mode.startsWith("fix:") ? mode.slice(4) : null;
     $("stage").hidden = mode === "full" || !!fix;
     $("full").hidden = mode !== "full";
@@ -631,7 +684,74 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
   // dashed), what it adds (green), and the route that still gives the actor what the PR asked for (blue).
   // Only the fixes that pass: the others are named in the comment, so the page offers what is good.
   const fixes = finding ? [] : (r.candidates || []).filter((c) => c.verdict === "pass");
-  const fixCache = new Map();
+  // One change a fix makes, as a list item: the op, what it names, and what it trusts or removes.
+  function opLine(op) {
+    const args = op.args || {};
+    const who = args.name || args.role || args.principal || args.user || args.policy_address || "";
+    return add(el("li"), el("code", op.op.replace(/_/g, " ")), document.createTextNode(who ? ` ${who}` : ""),
+      document.createTextNode(args.group ? ` from ${args.group}` : args.trust_principals ? `, trusted only by ${args.trust_principals.map(nameOf).join(", ")}` : ""));
+  }
+  const fixCache = new Map(); // fix id -> the promise of its graph, so a click and the background load share one request
+  function loadFix(id) {
+    if (!fixCache.has(id)) {
+      const k = new URLSearchParams(location.search).get("k") || "";
+      fixCache.set(id, fetch(`${location.pathname.replace(/\/$/, "")}/fixes/${encodeURIComponent(id)}?k=${encodeURIComponent(k)}`, { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null)
+        .then((fx) => { if (!fx) fixCache.delete(id); return fx; }));
+    }
+    return fixCache.get(id);
+  }
+  // Once the page is up, fetch each passing fix's graph and the graph library, one after another, so a fix's
+  // tab opens at once instead of waiting on the store.
+  async function prefetchFixes() {
+    if (typeof cytoscape === "undefined" && !document.querySelector("script[data-cytoscape]")) {
+      const s = el("script", null, { src: CYTOSCAPE.src, integrity: CYTOSCAPE.integrity, crossorigin: "anonymous", referrerpolicy: "no-referrer", "data-cytoscape": "" });
+      document.head.append(s);
+    }
+    for (const fx of fixes) await loadFix(fx.id);
+  }
+  // What to do about a PR: each fix that passed, the one Theseus recommends first. Every claim on a card is a
+  // field the engine set on the candidate; where it can't back "closes" or "breaks nothing" the card says what it knows.
+  function fixCards(box) {
+    const ordered = [...fixes].sort((a, b) => Number(!!b.recommended) - Number(!!a.recommended) || (a.id < b.id ? -1 : 1));
+    for (const fx of ordered) {
+      const card = el("article", null, { class: "way" });
+      const heading = el("h3", fixes.length === 1 ? fx.title : `Fix ${fx.id}: ${fx.title}`);
+      if (fx.recommended) heading.append(el("span", "recommended", { class: "chip ok" }));
+      const open = (fx.paths_left || []).length + (fx.new_paths || []).length;
+      const broken = (fx.requirements_broken || []).length + (fx.calls_broken || []).length + (fx.unknown || []).length;
+      const closes = open ? `${plural(open, "way")} in would remain` : opened.length === 1 ? "closes the way in" : `closes all ${opened.length} ways in`;
+      const sub = `Tested on a copy of the graph: ${closes}${broken ? `, but ${plural(broken, "check")} did not come out clean` : " and breaks nothing"}.`;
+      card.append(heading, el("div", sub, { class: "sub" }));
+      const ul = el("ul", null, { class: "ops" });
+      for (const op of fx.ops || []) ul.append(opLine(op));
+      card.append(ul);
+      const command = fixes.length === 1 ? "/theseus apply" : `/theseus apply ${fx.id}`;
+      const actions = el("div", null, { class: "todo-actions" });
+      actions.append(document.createTextNode("Commit Theseus's suggestion on the PR, or reply "), el("code", command), document.createTextNode(" to commit it."));
+      const see = el("button", "See it on the graph", { type: "button" });
+      see.addEventListener("click", () => {
+        drawBoard(`fix:${fx.id}`);
+        $("note").scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "center" });
+      });
+      actions.append(see);
+      card.append(actions);
+      box.append(card);
+    }
+    if (!fixes.length && opened.length) {
+      const card = el("article", null, { class: "way" });
+      card.append(el("h3", "No fix Theseus could prove safe"));
+      const tried = r.candidates || [];
+      card.append(el("div", tried.length ? "It tried these on a copy of the graph; none passed:" : "It found no change to try. Ask the author to narrow the access this PR grants.", { class: "sub" }));
+      if (tried.length) {
+        const ul = el("ul", null, { class: "ops" });
+        for (const c of tried) ul.append(el("li", `${c.title}: ${c.reason || c.verdict}`));
+        card.append(ul);
+      }
+      box.append(card);
+    }
+  }
   for (const fx of fixes) {
     const b = el("button", fixes.length === 1 ? "With the fix" : `With fix ${fx.id}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
                                                     title: `${fx.title}: ${fx.verdict}${fx.recommended ? ", recommended" : ""}` });
@@ -658,15 +778,9 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
   let fixCy = null;
   async function drawFix(id) {
     const head = data.graphs.head;
-    if (!fixCache.has(id)) {
-      $("note").textContent = `Loading fix ${id}'s graph from FalkorDB…`;
-      const k = new URLSearchParams(location.search).get("k") || "";
-      try {
-        const res = await fetch(`${location.pathname.replace(/\/$/, "")}/fixes/${encodeURIComponent(id)}?k=${encodeURIComponent(k)}`, { cache: "no-store" });
-        fixCache.set(id, res.ok ? await res.json() : null);
-      } catch (e) { fixCache.set(id, null); }
-    }
-    const fx = fixCache.get(id);
+    $("note").textContent = fixCache.has(id) ? `Loading fix ${id}'s graph…` : `Loading fix ${id}'s graph from FalkorDB…`;
+    const fx = await loadFix(id);
+    if (shown !== `fix:${id}`) return; // the view changed while this loaded
     if (!fx || !head) { $("note").textContent = "This fix's graph isn't in the store any more."; return; }
     const headEdges = new Map(head.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
     const fixEdges = new Map(fx.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
@@ -734,12 +848,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       (still.length ? `${plural(still.length, "way")} in ${still.length === 1 ? "is" : "are"} still open.` : `None of the ${plural(opened.length, "way")} in remains.`) + keeps;
     const ops = $("fixops");
     const list = el("ul");
-    for (const op of fx.ops || []) {
-      const args = op.args || {};
-      const who = args.name || args.role || args.principal || args.user || args.policy_address || "";
-      list.append(add(el("li"), el("code", op.op.replace(/_/g, " ")), document.createTextNode(who ? ` ${who}` : ""),
-        document.createTextNode(args.group ? ` from ${args.group}` : args.trust_principals ? `, trusted only by ${args.trust_principals.map(nameOf).join(", ")}` : "")));
-    }
+    for (const op of fx.ops || []) list.append(opLine(op));
     ops.replaceChildren(el("div", `What ${which.toLowerCase()} changes, ${fx.verdict === "pass" ? "checked on a copy of the graph" : `and why it doesn't pass: ${fx.reason || fx.verdict}`}:`), list);
     if (fx.verdict === "pass") {
       const command = fixes.length === 1 ? "/theseus apply" : `/theseus apply ${fx.id}`;
@@ -756,6 +865,7 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
   $("v-after").addEventListener("click", () => drawBoard("after"));
   $("v-full").addEventListener("click", () => drawBoard("full"));
   drawBoard("after");
+  if (fixes.length) setTimeout(prefetchFixes, 0);
 
   // Every step, with the line it comes from.
   const blob = (file, line) => {
@@ -824,6 +934,9 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       card("Where to harden", `Most routes to sensitive data pass through ${list(chokes.map((c) => short(c.id)))}.`);
     }
     $("todo-section").hidden = !todo.childElementCount;
+  } else {
+    fixCards($("todo"));
+    $("todo-section").hidden = !$("todo").childElementCount;
   }
 
   // Access that was there before this PR: not its doing, but worth knowing.
