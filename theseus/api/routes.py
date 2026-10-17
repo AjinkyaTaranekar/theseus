@@ -1078,6 +1078,34 @@ def dashboard_incident(
     return blast(basis, _incident(basis, text, provider, service, region or None, severity))
 
 
+@router.get("/dashboard/{owner}/{name}/compromise")
+def dashboard_compromise(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    node: str = "",
+) -> dict[str, Any]:
+    """What a node could reach on main if it were compromised, traced now by the engine on main's graph in
+    FalkorDB: every resource with its shortest valid path and the file and line behind each hop, the data
+    classes at risk, and the links any one of which cuts every route to sensitive data. Reads only."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    if not node or len(node) > 300:
+        raise HTTPException(422, "name a node on main, such as user:casey-contractor")
+    try:
+        found = reviews.compromise(store, repo, node)
+    except KeyError as e:
+        raise HTTPException(404, "main's graph has no such node") from e
+    except GraphError as e:
+        log.error("%s: cannot trace %s: %s", repo, node, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if found is None:
+        raise HTTPException(404, "main has no graph yet")
+    return found
+
+
 @router.post("/dashboard/{owner}/{name}/incidents/check")
 def dashboard_incidents_check(
     owner: str,

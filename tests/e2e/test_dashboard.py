@@ -412,3 +412,55 @@ def test_a_feed_check_keeps_each_incident_s_blast_radius_for_the_dashboard(
     assert again.status_code == 200 and again.json()["trigger"] == "workflow_dispatch"
     assert client.post(f"/dashboard/{REPO}/incidents/check?k={'0' * 32}").status_code == 404
     assert len(client.checks) == 2  # type: ignore[attr-defined]
+
+
+def compromise(client: TestClient, settings: Settings, node: str, k: str | None = None):
+    k = reviews.sign(settings, reviews.dashboard_key(REPO)) if k is None else k
+    return client.get(f"/dashboard/{REPO}/compromise", params={"k": k, "node": node})
+
+
+def test_a_compromised_contractor_reaches_the_secrets_through_platform_admin_with_every_line(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    res = compromise(client, settings, "user:casey-contractor")
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert found["sensitive"] >= 6 and found["classes"]["regulated"] >= 5
+    secret = next(r for r in found["reaches"] if r["target"] == "secret:prod-db-credentials")
+    assert [(s["type"], s["to"]) for s in secret["steps"]] == [
+        ("MEMBER_OF", "group:contractors"),
+        ("CAN_ASSUME", "role:platform-admin"),
+        ("CAN", "secret:prod-db-credentials"),
+    ]
+    first = secret["steps"][0]["proof"]
+    assert first["file"] == "terraform/legacy.tf" and first["url"].endswith(f"legacy.tf#L{first['line']}")
+    assert first["url"].startswith(f"https://github.com/{REPO}/blob/{SHA}/")
+    # Cutting either of the first two links cuts every route to sensitive data.
+    assert {(c["from"], c["to"]) for c in found["cut"]} == {
+        ("user:casey-contractor", "group:contractors"),
+        ("group:contractors", "role:platform-admin"),
+    }
+    group = compromise(client, settings, "group:contractors").json()
+    assert {r["target"] for r in group["reaches"]} == {r["target"] for r in found["reaches"]}
+
+
+def test_a_compromise_needs_a_known_node_and_the_signed_link(client: TestClient, settings: Settings) -> None:
+    assert compromise(client, settings, "user:casey-contractor").status_code == 404  # no posture yet
+    assert send(client).status_code == 200
+    assert compromise(client, settings, "user:nobody").status_code == 404
+    assert compromise(client, settings, "").status_code == 422
+    assert compromise(client, settings, "user:casey-contractor", k="0" * 32).status_code == 404
+
+
+def test_each_weak_point_comes_with_the_routes_that_all_pass_through_it(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    data = dashboard(client, settings).json()
+    weak = data["posture"]["weak_routes"]
+    deps = weak["secret:prod-db-credentials"]
+    assert deps and all(
+        all("secret:prod-db-credentials" in route[1:-1] for route in d["routes"]) for d in deps
+    )
+    assert data["posture"]["blob"] == f"https://github.com/{REPO}/blob/{SHA}/demo-infra"
