@@ -446,6 +446,44 @@ def test_required_unknown_access_prevents_a_pass_even_without_dangerous_paths() 
     assert got.paths_left == got.requirements_broken == []
 
 
+def maybe_deny_read(sid: str, arn: str) -> PatchOp:
+    return op(
+        "add_policy",
+        principal="role:prod-support",
+        statements=[
+            {
+                "sid": sid,
+                "effect": "Deny",
+                "actions": ["s3:GetObject"],
+                "resources": [arn],
+                "condition": {"op": "StringNotEquals", "key": "aws:SourceVpc", "value": "vpc-1"},
+            }
+        ],
+    )
+
+
+@pytest.mark.parametrize("touch_r2,verdict", [(False, "pass"), (True, "unknown")])
+def test_only_a_requirement_that_becomes_unknown_makes_a_candidate_unknown(
+    touch_r2: bool, verdict: str
+) -> None:
+    deps, initial, reqs = intern()
+    changed_world = initial.world.model_copy(deep=True)
+    changed_world.resources = deps.adapters.cloud.apply_ops(
+        initial.world.resources, [maybe_deny_read("MaybeNoLogs", "arn:aws:s3:::demo-app-logs/*")]
+    )
+    head, _ = prepare_state(changed_world, "head", deps)
+    load_graph(deps.store, head)
+    who = ["user:priya-intern"]
+    before = {req.id: req.status for req in analyze(deps.store, head, reqs, who).requirements}
+    assert before["R1"] == "unknown" and before["R2"] == "satisfied"
+    extra = [maybe_deny_read("MaybeNoInvoices", "arn:aws:s3:::demo-company-files/invoices/*")]
+    candidate = fix_b().model_copy(update={"ops": [*fix_b().ops, *(extra if touch_r2 else [])]})
+    got = simulate(deps.store, head, candidate, who, reqs, deps.adapters)
+    assert got.verdict == verdict
+    assert got.unknown == (["requirement R2: access is unknown"] if touch_r2 else [])
+    assert got.paths_left == got.requirements_broken == []
+
+
 def test_existing_classification_provenance_is_preserved_without_models() -> None:
     deps, head, reqs = intern()
     for node in head.rows.nodes:

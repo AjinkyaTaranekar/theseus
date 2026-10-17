@@ -114,7 +114,7 @@ def simulate(
             *(
                 f"requirement {req.id}: access is unknown"
                 for req in after.requirements
-                if req.id in enforced and req.status == "unknown"
+                if req.id in enforced and req.status == "unknown" and old_status[req.id] != "unknown"
             ),
             *(
                 f"path {path.id}: {path.actor} -> {path.target} is unknown"
