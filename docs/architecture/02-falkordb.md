@@ -76,9 +76,19 @@ states never share a node, so a query on one can never see the other by mistake,
 draw the base and the head side by side by reading two graphs. [08. Decisions](08-decisions.md), "A graph per
 state", has the reasoning.
 
-**What is kept.** The posture run replaces `demo-infra__main` each time. PR graphs and candidate graphs stay in
-the store after a review, because the review page reads them live (below). The spec says PR graphs are deleted
-when the PR closes; the current webhook handler does not delete them yet, so that is a known gap.
+**What is kept, and for how long.** FalkorDB Cloud holds about 100 MB and never evicts, and a graph costs about
+0.8 MB, so graphs are not kept for ever ([decision 32](08-decisions.md#32-a-prs-graphs-live-as-long-as-the-pr-is-open)).
+
+| Graphs | While | Deleted when |
+| --- | --- | --- |
+| `demo-infra__main` | Replaced by every posture run | Never by Theseus |
+| A PR's base, head and one `-fix-<id>` for each candidate its newest review lists, so 3 to 5 | The PR is open. A push loads the same names again, which replaces them; a fix the newest review no longer lists is deleted when it is kept (`reviews.save`) | The PR closes or merges (`_on_closed` in the webhook), or `python -m theseus prune` finds it closed |
+| `fx__<scenario>__<side>` | Fixture runs: tests, the CLI, the Try page | Never by Theseus |
+| `theseus__docs` | Every review, finding and posture document | Never by Theseus |
+
+A closed PR keeps its **review**, a document in `theseus__docs`, so the dashboard keeps its history and its page
+keeps its text; the page says its graphs were removed instead of drawing an empty one. Reopening the PR reviews
+it again and rebuilds them.
 
 ## What a node and an edge look like
 

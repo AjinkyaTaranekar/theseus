@@ -78,6 +78,7 @@ flowchart TD
   S -- no --> X["401"]
   S -- yes --> E{"event"}
   E -->|"pull_request"| PR["opened, reopened, synchronize, edited:<br/>check in progress<br/>no world-root change: success check"]
+  E -->|"pull_request closed"| CL["closed or merged:<br/>delete the PR's graphs, keep its review"]
   E -->|"issue_comment"| C{"comment"}
   C -->|"/theseus apply"| AP["write access? commit the passing fix"]
   C -->|"/theseus review"| RV["write access? re-run the newest Theseus run"]
@@ -87,6 +88,9 @@ flowchart TD
 
 - **The signature is checked before anything in the body is read**, and an event from a repository outside
   `THESEUS_REPOS` is refused.
+- **A closed PR's graphs are deleted** (`_on_closed`): its base, head and every fix graph, by name, from the number
+  in the event, so GitHub is not called. Its review stays. If the store cannot delete, the delivery fails with a
+  502 and can be redelivered. See [decision 32](08-decisions.md#32-a-prs-graphs-live-as-long-as-the-pr-is-open).
 - **The handlers run in a thread pool.** The route is `async`, but the handlers call GitHub synchronously, and
   applying a fix takes seconds. Running them on the event loop once made GitHub give up on the next delivery
   (`ClientDisconnect`), so a `/theseus review` sent during an apply was lost.

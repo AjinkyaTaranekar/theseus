@@ -24,6 +24,7 @@ decision came from a bug found in testing, the record says so.
 - **Posture and incidents:** [28](#28-single-points-of-failure-from-the-engines-own-routes),
   [29](#29-cost-from-list-prices-only-for-what-the-code-declares),
   [30](#30-the-outage-basis-is-kept-at-posture-time), [31](#31-incident-headlines-are-matched-not-read-by-a-model)
+- **Housekeeping:** [32](#32-a-prs-graphs-live-as-long-as-the-pr-is-open)
 
 ---
 
@@ -86,8 +87,8 @@ decision came from a bug found in testing, the record says so.
 - **Decision.** Each state is its own FalkorDB graph: `demo-infra__main`, `demo-infra__pr85-base`,
   `demo-infra__pr85-head`, `demo-infra__pr85-fix-b`, and `fx__<scenario>__<side>` for fixtures.
 - **Consequences.** Queries stay simple and cannot leak across states. The review page reads base and head as two
-  graphs. A candidate is one `GRAPH.COPY` away. The cost is more graphs in the store; PR graphs are meant to be
-  deleted when the PR closes, which the current code does not do yet.
+  graphs. A candidate is one `GRAPH.COPY` away. The cost is more graphs in the store; a PR's graphs are deleted when it closes
+  ([32](#32-a-prs-graphs-live-as-long-as-the-pr-is-open)).
 - **Alternatives.** One graph with versioned edges; computing diffs in Python only. Both rejected for the
   reasons above.
 
@@ -351,3 +352,33 @@ decision came from a bug found in testing, the record says so.
   the provider breaks ties, and words such as "degraded" or "elevated" make it a degradation. No model reads it.
 - **Consequences.** No injection surface and no model cost, and the same headline always gives the same answer. A
   headline that names no known service gets a clear "name a service" reply instead of a guess.
+
+---
+
+## Housekeeping
+
+### 32. A PR's graphs live as long as the PR is open
+
+- **Context.** Every review writes a base graph, a head graph and one graph per candidate fix, 3 to 5 graphs of
+  about 0.8 MB each on FalkorDB Cloud, and nothing deleted them. On 2026-10-17 the instance held 116 graphs and
+  used 96.3 MB of about 105 MB, 43 of them for 12 PRs, closed ones included. Its policy is `noeviction`, so a full
+  instance refuses writes: the live site and every review fail.
+- **Decision.** A PR keeps its base, its head and one fix graph for each candidate its newest review lists, and no
+  more. A push loads the same names again, which replaces them; a fix an earlier review listed and the newest does
+  not is deleted when the review is kept (`reviews.save`). The `closed` webhook, for a closed or a merged PR,
+  deletes all of them; reopening reviews again and rebuilds them. A review of a PR that is already closed keeps
+  none. The review itself, in the documents graph, is never deleted: the page keeps its text, the dashboard its
+  history, and the page says its graphs were removed. `python -m theseus prune` does the same for graphs already
+  there. It is a dry run that asks GitHub which PRs are closed or merged and lists their graphs; `--yes` deletes
+  exactly the names it listed and prints the memory before and after. It never selects `*__main`, `fx__*`,
+  `theseus__docs`, `theseus__benchmark`, the graphs of an open PR, or those of a PR GitHub does not list.
+- **Consequences.** An instance holds at most about 5 graphs for each open PR, and a closed PR costs nothing. The
+  page of a closed PR loses its graph and fix views. Housekeeping never fails a review: if the store cannot
+  delete, the graphs stay for `prune` and the log says so; if the close handler cannot, the delivery fails with a
+  502, so it shows in GitHub and can be redelivered. Two limits remain. A review that is still running when its PR
+  closes finishes after the delete and leaves its graphs for `prune`. And graph names do not name the repo (spec
+  03), so two repos that share a world root and a PR number share graphs: closing one deletes the other's, and
+  `prune` keeps a number that is open in any repo.
+- **Alternatives.** Delete the candidate graphs once the result is posted, as spec 03 says: the page reads each
+  fix's graph live ([25](#25-pages-read-the-graph-live)), so its fix views would break. Delete by age: it would
+  take the graphs of a PR that stays open for weeks.
