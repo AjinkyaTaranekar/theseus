@@ -1,14 +1,14 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**priya-intern**, a user, could read **customer-db**, a database with personal, payment or health data (1 of 3 new ways in).
+**This PR would let priya-intern read customer-db**, which holds personal, payment or health data.
 
 > ⚠️ Text in this PR tries to steer the review. Theseus ignored it, and nothing the PR asks for counts as approved.
 
-**Says:** let Priya read the app logs.\
-**Needs:** no new access, it says · **Grants:** **customer-db**, **prod-db-credentials** and **demo-company-files/invoices/**\
-**Why:** **priya-intern** is a member of **support-engineers** ([terraform/people.tf:20](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L20), changed here) → can switch into **prod-support** → can read **prod-db-credentials** → unlocks **customer-db**.\
-**Do:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya). Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.
+**The PR says:** let Priya read the app logs.\
+**It asked for:** no new access · **It would get:** **customer-db**, **prod-db-credentials** and **demo-company-files/invoices/**\
+**How:** **priya-intern** is in **support-engineers** ([terraform/people.tf:20](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L20), new) → can become **prod-support** → can read **prod-db-credentials** → opens **customer-db**.\
+**Fix:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -18,20 +18,20 @@ flowchart LR
   n4["prod-db-credentials<br/>secret"]
   n5["customer-db<br/>database"]
   n6["demo-company-files/invoices/<br/>storage location"]
-  n1 -->|"is a member of, added here"| n2
-  n2 -->|"switch into"| n3
-  n3 -->|"read"| n4
-  n4 -->|"unlocks"| n5
-  n3 -->|"read"| n6
+  n1 -->|"is in · new"| n2
+  n2 -->|"can become"| n3
+  n3 -->|"can read"| n4
+  n4 -->|"opens"| n5
+  n3 -->|"can read"| n6
   classDef sensitive fill:#ffebe9,stroke:#cf222e,color:#1f2328
   class n4,n5,n6 sensitive
   linkStyle 0 stroke:#cf222e,stroke-width:3px
 ```
 
-<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+<sub>Red arrow: added by this PR · Shaded: sensitive data</sub>
 
 <details>
-<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
+<summary><b>Step by step</b> (3 ways in, each linked to its line)</summary>
 
 **What's at risk**
 
@@ -83,14 +83,14 @@ Reply `/theseus apply B` to commit a fix.
 </details>
 
 <details>
-<summary><b>What Theseus could not check</b> (1)</summary>
+<summary><b>What Theseus couldn't check</b> (1)</summary>
 
 - aws\_kms\_key.main: key policy conditions are not modeled
 
 </details>
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
@@ -119,8 +119,8 @@ Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

@@ -84,3 +84,18 @@ def test_a_document_round_trips_next_to_the_graphs(falkor: FalkorStore) -> None:
         assert falkor.get_doc(key) == '{"a": 2}'
     finally:
         falkor._query(DOCS, "MATCH (d:Doc {key: $key}) DELETE d", {"key": key})
+
+
+def test_the_view_leaves_out_flow_edges_the_engine_writes(falkor: FalkorStore) -> None:
+    deps = deps_for("intern")
+    state, _ = prepare_state(world("intern", "head"), "head", deps)
+    name = f"{PREFIX}flow"
+    memory = MemoryStore()
+    memory.load(name, state.rows)
+    falkor.load(name, state.rows)
+    falkor._query(
+        name,
+        "MATCH (a:Node {id: 'user:priya-intern'}), (b:Node {id: 'group:support-engineers'}) "
+        "CREATE (a)-[:FLOW {eids: ['x'], capacity: 1}]->(b)",
+    )
+    assert falkor.view(name) == memory.view(name)

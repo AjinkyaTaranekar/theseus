@@ -289,18 +289,18 @@ def test_the_card_comes_first_and_the_sections_follow_in_spec_order() -> None:
     comment = render(intern())
     assert comment.startswith(MARKER + "\n## 🔴 Merge blocked\n")
     order = [
-        "**priya-intern**, a user, could read **customer-db**",
-        "**Says:**",
-        "**Needs:**",
-        "**Why:**",
-        "**Do:**",
-        "<summary><b>The path, step by step</b> (3 ways in",
+        "**This PR would let priya-intern read customer-db**",
+        "**The PR says:**",
+        "**It asked for:**",
+        "**How:**",
+        "**Fix:**",
+        "<summary><b>Step by step</b> (3 ways in",
         "**What's at risk**",
         "<summary><b>All 4 fixes Theseus tested</b>",
-        "<summary><b>What Theseus could not check</b> (1)",
-        "<summary><b>What Theseus checked</b>",
+        "<summary><b>What Theseus couldn't check</b> (1)",
+        "<summary><b>Details</b>",
         "Checkov 3.2.255 passed this commit",
-        "<summary><b>What is Theseus?</b>",
+        "<summary><b>About Theseus</b>",
     ]
     positions = [comment.index(part) for part in order]
     assert positions == sorted(positions)
@@ -309,8 +309,8 @@ def test_the_card_comes_first_and_the_sections_follow_in_spec_order() -> None:
 
 
 def test_the_card_is_five_lines_with_no_headings_then_its_diagram() -> None:
-    """The verdict, the consequence, then says, needs and grants, why and do: one line each. The diagram of
-    the connections follows, still above every fold."""
+    """The verdict, the consequence, then what the PR says, what it asked for and would get, how, and the
+    fix: one line each. The diagram of the connections follows, still above every fold."""
     top = card(render(intern()))
     assert "####" not in top
     words, _, diagram = top.partition("```mermaid")
@@ -356,51 +356,50 @@ def test_the_verdict_matches_the_check_run() -> None:
 # The consequence --------------------------------------------------------------------------------------------
 
 
-def test_the_consequence_says_who_could_do_what_to_which_data() -> None:
+def test_the_consequence_says_what_the_pr_would_let_someone_do() -> None:
+    """A PR isn't merged yet, so its access would exist; a finding reads main as it is."""
     assert consequence(intern()) == (
-        "**priya-intern**, a user, could read **customer-db**, a database with personal, payment or health"
-        " data (1 of 3 new ways in)."
+        "**This PR would let priya-intern read customer-db**, which holds personal, payment or health data."
     )
-    one = intern().model_copy(update={"opened": intern().opened[:1]})
-    assert consequence(one).endswith("health data.")
     public = path(8, "s3://demo-company-files/public/", "confidential").model_copy(
         update={"actor": "entry:internet", "grants": ["read", "write"]}
     )
     assert consequence(intern().model_copy(update={"opened": [public]})) == (
-        "**Anyone on the internet** could read and change **demo-company-files/public/**, a data store with"
+        "**This PR would let anyone on the internet read and change demo-company-files/public/**, which holds"
         " business-sensitive data."
     )
+    finding = AnalysisResult(mode="finding", opened=intern().opened, nodes=NODES)
+    assert consequence(finding).startswith("**priya-intern can read customer-db**, which holds")
 
 
 def test_the_consequence_of_code_reading_beyond_intent_and_of_the_other_verdicts() -> None:
     assert consequence(code_pr()) == (
-        "The code of **billing-api**, a service, now reads **customer-db**, a database with personal, payment"
-        " or health data, and the PR does not mention it."
+        "**This PR would make billing-api's code read customer-db**, which holds personal, payment or health"
+        " data. The PR doesn't mention it."
     )
-    assert consequence(needs_a_look()) == (
-        "Theseus could not check 1 thing in this change; see **What Theseus could not check** below."
+    assert (
+        consequence(needs_a_look()) == "**Theseus couldn't check 1 part of this change.** It's listed below."
     )
-    assert consequence(AnalysisResult(mode="pr")) == "This change opens no new way to reach sensitive data."
+    assert consequence(AnalysisResult(mode="pr")) == "**No new access to sensitive data.**"
 
 
-# Says, needs and grants -------------------------------------------------------------------------------------
+# What the PR says, asked for and would get ------------------------------------------------------------------
 
 
 def test_says_is_the_purpose_in_plain_words() -> None:
-    assert says_line(intern()) == "**Says:** let Priya read the app logs."
+    assert says_line(intern()) == "**The PR says:** let Priya read the app logs."
     unstated = intern().model_copy(update={"intent": Intent(purpose="", stated=False)})
-    assert says_line(unstated) == "**Says:** nothing about what it's for. Ask the author to describe it."
+    assert says_line(unstated) == "**The PR says:** nothing about what it's for."
     assert says_line(intern().model_copy(update={"intent": None})) is None
 
 
-def test_needs_and_grants_put_the_gap_side_by_side() -> None:
+def test_asked_for_and_would_get_put_the_gap_side_by_side() -> None:
     assert needs_and_grants(intern()) == (
-        "**Needs:** read **demo-app-logs/** · **Grants too:** **customer-db**, **prod-db-credentials** and"
-        " **demo-company-files/invoices/**"
+        "**It asked for:** read **demo-app-logs/** · **It would get:** **customer-db**,"
+        " **prod-db-credentials** and **demo-company-files/invoices/**"
     )
-    assert (
-        needs_and_grants(code_pr())
-        == "**Needs:** no new access, it says · **Code now reads:** **customer-db**"
+    assert needs_and_grants(code_pr()) == (
+        "**It asked for:** no new access · **Its code would read:** **customer-db**"
     )
     other = intern().model_copy(
         update={
@@ -411,53 +410,45 @@ def test_needs_and_grants_put_the_gap_side_by_side() -> None:
         }
     )
     assert needs_and_grants(other).startswith(
-        "**Needs:** **sam-support** to change **demo-orders** · **Grants too:**"
+        "**It asked for:** **sam-support** to change **demo-orders** · **It would get:**"
     )
-    asked = intern().model_copy(
-        update={
-            "intent": Intent(
-                purpose="p", grants=[Grant(principal=PRIYA[0], access="read", resource="db:customer-db")]
-            )
-        }
-    )
-    assert "**Grants:** **customer-db**" in needs_and_grants(asked)
-    assert needs_and_grants(intern().model_copy(update={"intent": None})).startswith("**Grants:**")
+    assert needs_and_grants(intern().model_copy(update={"intent": None})).startswith("**It would get:**")
 
 
 def test_a_suspicious_pr_gets_a_warning_under_the_consequence() -> None:
     comment = render(intern().model_copy(update={"intent": Intent(purpose="p", suspicious=True)}))
     warning = comment.index("tries to steer the review")
-    assert comment.index("could read **customer-db**") < warning < comment.index("**Says:**")
+    assert comment.index("**This PR would let") < warning < comment.index("**The PR says:**")
     assert "steer the review" not in render(intern())
 
 
-# Why --------------------------------------------------------------------------------------------------------
+# How --------------------------------------------------------------------------------------------------------
 
 
-def test_why_follows_the_path_and_links_the_line_this_change_adds() -> None:
+def test_how_follows_the_path_and_links_the_line_this_change_adds() -> None:
     assert chain(intern().opened[0], intern(), REPO, SHA, "demo-infra") == (
-        f"**priya-intern** is a member of **support-engineers** ([terraform/people.tf:20]({BLOB}terraform/"
-        "people.tf#L20), changed here) → can switch into **prod-support** → can read **prod-db-credentials**"
-        " → unlocks **customer-db**."
+        f"**priya-intern** is in **support-engineers** ([terraform/people.tf:20]({BLOB}terraform/"
+        "people.tf#L20), new) → can become **prod-support** → can read **prod-db-credentials** → opens"
+        " **customer-db**."
     )
-    assert why_line(intern(), REPO, SHA, "demo-infra").startswith("**Why:** **priya-intern** is a member of")
+    assert why_line(intern(), REPO, SHA, "demo-infra").startswith("**How:** **priya-intern** is in")
 
 
 def test_each_hop_says_its_own_access_not_the_path_s() -> None:
-    """The secret step grants read; the database the secret unlocks is read and changed."""
+    """The secret step grants read; the database the secret opens is read and changed."""
     db = intern().opened[0]
     steps = [s.model_copy(update={"grants": ["read"]}) if s.type == "CAN" else s for s in db.steps]
     p = db.model_copy(update={"grants": ["read", "write"], "steps": steps})
     text = chain(p, intern(), REPO, SHA, "demo-infra")
     assert "can read **prod-db-credentials**" in text and "read and change" not in text
     assert consequence(intern().model_copy(update={"opened": [p]})).startswith(
-        "**priya-intern**, a user, could read and change **customer-db**"
+        "**This PR would let priya-intern read and change customer-db**"
     )
 
 
-def test_why_names_the_code_line_that_reads_beyond_intent() -> None:
+def test_how_names_the_code_line_that_reads_beyond_intent() -> None:
     assert why_line(code_pr(), REPO, SHA, "demo-infra") == (
-        "**Why:** **billing-api**'s code reads **customer-db** at"
+        "**How:** **billing-api**'s code reads **customer-db** at"
         f" [services/billing\\_api/app.py:12]({BLOB}services/billing_api/app.py#L12)."
     )
     assert why_line(AnalysisResult(mode="pr"), REPO, SHA, "demo-infra") is None
@@ -475,7 +466,7 @@ def test_what_is_at_risk_is_said_in_plain_words_most_sensitive_first() -> None:
         " contracts",
     ]
     assert more == 0
-    assert "**What's at risk**" in folded(render(intern()), "The path")
+    assert "**What's at risk**" in folded(render(intern()), "Step by step")
 
 
 def test_without_node_info_a_resource_is_a_data_store() -> None:
@@ -492,34 +483,34 @@ def test_more_than_five_risks_are_counted_not_listed() -> None:
     assert "- and 3 more, in the table below" in render(intern().model_copy(update={"opened": many}))
 
 
-# Do ---------------------------------------------------------------------------------------------------------
+# Fix --------------------------------------------------------------------------------------------------------
 
 
-def test_do_names_the_recommended_fix_and_what_it_was_tested_for() -> None:
+def test_fix_names_the_recommended_fix_and_what_it_was_tested_for() -> None:
     assert do_line(intern(), "blocked") == (
-        "**Do:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya). Theseus"
-        " tested it on a copy of the graph: it closes all 3 ways in and breaks nothing."
+        "**Fix:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya)."
+        " Tested on a copy of the graph: closes all 3 ways in, breaks nothing."
     )
 
 
-def test_do_when_no_fix_can_be_applied_as_is() -> None:
+def test_fix_when_no_fix_can_be_applied_as_is() -> None:
     vetoed = [
         c.model_copy(update={"recommended": False, "needs_closer_look": c.id == "B"})
         for c in intern().candidates
     ]
     assert do_line(intern().model_copy(update={"candidates": vetoed}), "blocked") == (
-        "**Do:** `B` passes Theseus's checks but needs a closer look first; then reply `/theseus apply <ID>`."
+        "**Fix:** `B` passes but needs a closer look first. Then reply `/theseus apply <ID>`."
     )
     failing = [c.model_copy(update={"verdict": "fail", "recommended": False}) for c in intern().candidates]
     assert do_line(intern().model_copy(update={"candidates": failing}), "blocked").startswith(
-        "**Do:** ask the author to change the PR. No fix Theseus tested passes every check"
+        "**Fix:** ask the author to change the PR. None of the fixes Theseus tested passes every check"
     )
 
 
-def test_do_without_fixes_says_one_plain_thing() -> None:
+def test_fix_without_fixes_says_one_plain_thing() -> None:
     bare = intern().model_copy(update={"candidates": []})
-    assert do_line(bare, "blocked") == "**Do:** ask the author to grant only what the PR says it needs."
-    assert do_line(code_pr(), "blocked") == "**Do:** ask the author why the change needs this access."
+    assert do_line(bare, "blocked") == "**Fix:** ask the author to grant only what the PR asked for."
+    assert do_line(code_pr(), "blocked") == "**Fix:** ask the author why the change needs this access."
     asked = bare.model_copy(
         update={
             "opened": bare.opened[:1],
@@ -528,14 +519,9 @@ def test_do_without_fixes_says_one_plain_thing() -> None:
             ),
         }
     )
-    assert do_line(asked, "blocked").startswith("**Do:** the PR asks for this access on purpose.")
-    assert (
-        do_line(needs_a_look(), "look")
-        == "**Do:** read **What Theseus could not check** below before you merge."
-    )
-    assert do_line(AnalysisResult(mode="pr"), "clear") == (
-        "**Do:** nothing. Theseus found no new access to sensitive data."
-    )
+    assert do_line(asked, "blocked").startswith("**Fix:** the PR asks for this on purpose.")
+    assert do_line(needs_a_look(), "look") == "**Fix:** check what Theseus couldn't, below, before you merge."
+    assert do_line(AnalysisResult(mode="pr"), "clear") == "**Fix:** nothing to fix."
 
 
 def test_the_checkov_line_says_why_it_can_pass() -> None:
@@ -596,11 +582,11 @@ def test_the_card_draws_every_opened_path_as_one_diagram() -> None:
             '  n4["prod-db-credentials<br/>secret"]',
             '  n5["customer-db<br/>database"]',
             '  n6["demo-company-files/invoices/<br/>storage location"]',
-            '  n1 -->|"is a member of, added here"| n2',
-            '  n2 -->|"switch into"| n3',
-            '  n3 -->|"read"| n4',
-            '  n4 -->|"unlocks"| n5',
-            '  n3 -->|"read"| n6',
+            '  n1 -->|"is in · new"| n2',
+            '  n2 -->|"can become"| n3',
+            '  n3 -->|"can read"| n4',
+            '  n4 -->|"opens"| n5',
+            '  n3 -->|"can read"| n6',
             "  classDef sensitive fill:#ffebe9,stroke:#cf222e,color:#1f2328",
             "  class n4,n5,n6 sensitive",
             "  linkStyle 0 stroke:#cf222e,stroke-width:3px",
@@ -622,7 +608,7 @@ def test_the_fold_lists_the_steps_of_at_most_three_paths_the_most_sensitive_firs
     extra = path(5, "secret:payments-api-key", "regulated", ("CAN", "secret:payments-api-key", "E3"))
     picked = pick_diagrams([*result.opened, extra])
     assert [p.id for p in picked] == ["P1", "P2", "P5"]  # the database before the secret that unlocks it
-    section = folded(render(result.model_copy(update={"opened": [*result.opened, extra]})), "The path")
+    section = folded(render(result.model_copy(update={"opened": [*result.opened, extra]})), "Step by step")
     assert section.count("How **priya-intern** reaches") == 3 and "```mermaid" not in section
 
 
@@ -644,7 +630,7 @@ def test_every_step_links_to_its_line_at_the_head_commit() -> None:
     comment = render(intern())
     links = re.findall(r"\]\((https://[^)]+)\)", comment)
     assert links and all(link.startswith(BLOB) for link in links)
-    assert f"{BLOB}terraform/people.tf#L20" in folded(comment, "The path")
+    assert f"{BLOB}terraform/people.tf#L20" in folded(comment, "Step by step")
 
 
 def test_a_step_with_unknown_evidence_says_so_and_has_no_link() -> None:
@@ -724,8 +710,10 @@ def test_a_vetoed_pass_needs_a_closer_look_and_nothing_passing_is_said_plainly()
 
 def test_unknowns_and_what_theseus_checked_are_folded() -> None:
     comment = render(intern())
-    assert "- aws\\_kms\\_key.main: key policy conditions are not modeled" in folded(comment, "What Theseus")
-    inside = folded(comment, "What Theseus checked")
+    assert "- aws\\_kms\\_key.main: key policy conditions are not modeled" in folded(
+        comment, "What Theseus couldn"
+    )
+    inside = folded(comment, "Details")
     assert "**What the change does:** Adds `aws_iam_user_group_membership.priya_support`." in inside
     assert "Opens 3 dangerous paths, closes 0." in inside
     assert "| 1 | `explain_path` | P1: 5 hops to db:customer-db | 12 |" in inside
@@ -748,7 +736,7 @@ def test_the_falkordb_line_says_where_the_graph_lives_and_how_big_it_is() -> Non
     )
     assert falkordb_line(sized, None).startswith("Built in FalkorDB: 70 nodes")
     comment = render_comment(sized, REPO, SHA, CHECKOV, falkordb="4.22.0")
-    assert "Built in FalkorDB 4.22.0" in folded(comment, "What Theseus checked")
+    assert "Built in FalkorDB 4.22.0" in folded(comment, "Details")
     assert falkordb_line(intern(), "4.22.0") is None  # no size recorded
 
 
@@ -831,7 +819,7 @@ def test_a_huge_result_stays_under_github_s_limit() -> None:
 def test_spec_05_s_intern_example_renders_through_the_stub() -> None:
     comment = render(result_from_expected(INTERN_EXPECTED))
     assert comment.startswith(MARKER + "\n## 🔴 Merge blocked")
-    assert card(comment).count("```mermaid") == 1 and "```mermaid" not in folded(comment, "The path")
+    assert card(comment).count("```mermaid") == 1 and "```mermaid" not in folded(comment, "Step by step")
     assert len(fix_rows(comment)) == 4
     assert f"{BLOB}terraform/roles.tf#L31" in comment
 
@@ -844,7 +832,7 @@ def test_finding_and_scan_results_render() -> None:
     for result in (finding, scan):
         comment = render(result)
         assert comment.startswith(MARKER)
-        assert "**Do:**" not in comment and "Checkov" not in comment
+        assert "**Fix:**" not in comment and "Checkov" not in comment
 
 
 SNAPSHOT_CASES = {
@@ -890,7 +878,7 @@ def test_every_fixture_renders(expected: Path) -> None:
 def test_the_card_links_to_the_review_page_and_never_prints_an_unsafe_link() -> None:
     url = "https://guest-box.example.ts.net/reviews/owner/theseus/42?k=0123abcd"
     comment = render_comment(intern(), REPO, SHA, CHECKOV, graph_url=url)
-    assert f"**[Open the graph Theseus checked →]({url})**" in card(comment)
+    assert f"**[See it on a graph →]({url})**" in card(comment)
     for bad in ("javascript:alert(1)", "https://x.example/a)(b", "http://x.example/r"):
-        assert "Open the graph" not in render_comment(intern(), REPO, SHA, CHECKOV, graph_url=bad)
-    assert "Open the graph" not in render(intern())
+        assert "See it on a graph" not in render_comment(intern(), REPO, SHA, CHECKOV, graph_url=bad)
+    assert "See it on a graph" not in render(intern())

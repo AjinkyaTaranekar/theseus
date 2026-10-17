@@ -17,6 +17,7 @@ from redis.exceptions import RedisError
 
 from theseus.contracts.engine import (
     CallRow,
+    EdgeFlow,
     FlowResult,
     FlowRow,
     GrantRow,
@@ -24,7 +25,7 @@ from theseus.contracts.engine import (
     WorkflowUse,
 )
 from theseus.contracts.result import ChokePoint, EdgeRow, GraphRows, NodeRow
-from theseus.contracts.schema import MAX_PATH_EDGES, PATH_TYPES, RESOURCE
+from theseus.contracts.schema import EDGE_TYPES, MAX_PATH_EDGES, PATH_TYPES, RESOURCE
 from theseus.errors import GraphError
 from theseus.graph import queries
 
@@ -123,10 +124,15 @@ class MemoryStore:
         return sorted(found)
 
     def max_flow(self, graph: str, sources: list[str], sinks: list[str], rows: list[FlowRow]) -> FlowResult:
-        raise GraphError("MemoryStore has no max flow yet; task E4 adds it")
+        from theseus.graph.algos import edmonds_karp
+
+        self._rows(graph)
+        return edmonds_karp(sources, sinks, rows)
 
     def betweenness(self, graph: str) -> list[ChokePoint]:
-        raise GraphError("MemoryStore has no betweenness yet; task FM4 adds it")
+        from theseus.graph.algos import brandes
+
+        return brandes(self._rows(graph))
 
     def workflows_using(self, graph: str, action: str) -> list[WorkflowUse]:
         rows = self._rows(graph)
@@ -211,10 +217,14 @@ GraphView = dict[str, list[dict[str, Any]]]
 
 def _view(nodes: list[tuple[Any, dict[str, Any]]], edges: list[tuple[Any, ...]]) -> GraphView:
     """A graph as JSON-ready nodes and edges, as stored, sorted by ID and by (src, type, dst): each node's
-    labels and properties, each edge's endpoints, type and properties with its evidence as a list."""
+    labels and properties, each edge's endpoints, type and properties with its evidence as a list. Only the
+    schema's edge types: the FLOW edges the engine writes before a max-flow call are working state, never
+    shown (03-graph.md)."""
     out_nodes = [{"labels": sorted(labels), **props} for labels, props in nodes]
     out_edges = []
     for src, edge_type, dst, props in edges:
+        if edge_type not in EDGE_TYPES:
+            continue
         edge = {"src": src, "type": edge_type, "dst": dst, **props}
         if isinstance(edge.get("evidence"), str):
             edge["evidence"] = json.loads(edge["evidence"])
@@ -315,10 +325,30 @@ class FalkorStore:
         return sorted([list(row[0]) for row in self._query(graph, queries.Q_PATHS, {"actor": actor})])
 
     def max_flow(self, graph: str, sources: list[str], sinks: list[str], rows: list[FlowRow]) -> FlowResult:
-        raise GraphError("FalkorStore runs max flow from task E4")
+        self._query(graph, queries.Q_SET_FLOW, {"rows": [r.model_dump() for r in rows]})
+        result = self._query(graph, queries.Q_MAXFLOW, {"sources": sources, "sinks": sinks})
+        if len(result) != 1:
+            raise GraphError("max flow returned no unique result")
+        value, eids, flows = result[0]
+        if len(eids) != len(flows):
+            raise GraphError("max flow returned mismatched edges and flows")
+        return FlowResult(
+            value=value,
+            flows=sorted(
+                (EdgeFlow(eids=sorted(ids), flow=flow) for ids, flow in zip(eids, flows, strict=True)),
+                key=lambda f: f.eids,
+            ),
+        )
 
     def betweenness(self, graph: str) -> list[ChokePoint]:
-        raise GraphError("FalkorStore runs betweenness from task FM4")
+        known = {row[0] for row in self._query(graph, queries.Q_REL_TYPES)}
+        types = sorted(known & PATH_SET)
+        if not types:
+            return []
+        return [
+            ChokePoint(id=node_id, score=float(score))
+            for node_id, score in self._query(graph, queries.Q_BETWEENNESS, {"types": types})
+        ]
 
     def workflows_using(self, graph: str, action: str) -> list[WorkflowUse]:
         found = self._query(graph, queries.Q_WORKFLOWS_USING, {"action": action})

@@ -1,12 +1,12 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**priya-intern**, a user, could read **customer-db**, a data store with data of unknown sensitivity (1 of 3 new ways in).
+**This PR would let priya-intern read customer-db**, which holds data of unknown sensitivity.
 
-**Says:** stub.\
-**Needs:** read **demo-app-logs/** · **Grants too:** **customer-db**, **demo-company-files/invoices/** and **prod-db-credentials**\
-**Why:** **priya-intern** is a member of **support-engineers** → can switch into **prod-support** → can read **prod-db-credentials** → unlocks **customer-db**.\
-**Do:** reply `/theseus apply B` to commit fix B (Candidate B). Theseus tested it on a copy of the graph: it closes all 3 ways in and breaks nothing.
+**The PR says:** stub.\
+**It asked for:** read **demo-app-logs/** · **It would get:** **customer-db**, **demo-company-files/invoices/** and **prod-db-credentials**\
+**How:** **priya-intern** is in **support-engineers** → can become **prod-support** → can read **prod-db-credentials** → opens **customer-db**.\
+**Fix:** reply `/theseus apply B` to commit fix B (Candidate B). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -16,17 +16,17 @@ flowchart LR
   n4["prod-db-credentials<br/>data store"]
   n5["customer-db<br/>data store"]
   n6["demo-company-files/invoices/<br/>data store"]
-  n1 -->|"is a member of"| n2
-  n2 -->|"switch into"| n3
-  n3 -->|"read"| n4
-  n4 -->|"unlocks"| n5
-  n3 -->|"read"| n6
+  n1 -->|"is in"| n2
+  n2 -->|"can become"| n3
+  n3 -->|"can read"| n4
+  n4 -->|"opens"| n5
+  n3 -->|"can read"| n6
 ```
 
-<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+<sub>Red arrow: added by this PR · Shaded: sensitive data</sub>
 
 <details>
-<summary><b>The path, step by step</b> (3 ways in, with links to each line)</summary>
+<summary><b>Step by step</b> (3 ways in, each linked to its line)</summary>
 
 **What's at risk**
 
@@ -78,7 +78,7 @@ Reply `/theseus apply B` to commit a fix.
 </details>
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
@@ -104,8 +104,8 @@ Models: not recorded.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

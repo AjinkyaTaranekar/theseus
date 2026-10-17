@@ -1,24 +1,24 @@
 <!-- theseus:pr-comment -->
 ## 🔴 Merge blocked
 
-**Anyone on the internet** could read **demo-company-files/invoices/**, a data store with data of unknown sensitivity.
+**This PR would let anyone on the internet read demo-company-files/invoices/**, which holds data of unknown sensitivity.
 
-**Says:** stub.\
-**Needs:** read **demo-company-files/public/** · **Grants too:** **demo-company-files/invoices/**\
-**Why:** **anyone on the internet** can read **demo-company-files/invoices/**.\
-**Do:** reply `/theseus apply S` to commit fix S (Candidate S). Theseus tested it on a copy of the graph: it closes all 1 way in and breaks nothing.
+**The PR says:** stub.\
+**It asked for:** read **demo-company-files/public/** · **It would get:** **demo-company-files/invoices/**\
+**How:** **anyone on the internet** can read **demo-company-files/invoices/**.\
+**Fix:** reply `/theseus apply S` to commit fix S (Candidate S). Tested on a copy of the graph: closes all 1 way in, breaks nothing.
 
 ```mermaid
 flowchart LR
   n1["anyone on the internet<br/>entry point"]
   n2["demo-company-files/invoices/<br/>data store"]
-  n1 -->|"read"| n2
+  n1 -->|"can read"| n2
 ```
 
-<sub>Shaded: sensitive data. Thick red arrow: what this PR adds or changes. Each step links to its line under <b>The path, step by step</b>.</sub>
+<sub>Red arrow: added by this PR · Shaded: sensitive data</sub>
 
 <details>
-<summary><b>The path, step by step</b> (1 way in, with links to each line)</summary>
+<summary><b>Step by step</b> (1 way in, each linked to its line)</summary>
 
 **What's at risk**
 
@@ -49,7 +49,7 @@ Reply `/theseus apply S` to commit a fix.
 </details>
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time, so it cannot see a path that crosses several.
 
@@ -75,8 +75,8 @@ Models: not recorded.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

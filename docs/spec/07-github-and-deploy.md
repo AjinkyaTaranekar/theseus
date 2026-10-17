@@ -152,11 +152,22 @@ may bypass it through the PR in an emergency, and GitHub records that.
 
 ## The review page
 
-The card ends with **Open the graph Theseus checked →**, a link to
-`https://<DOMAIN>/reviews/<owner>/<repo>/<number>?k=<signature>`. The page (`theseus/web/review.html`) draws
-the PR's head and base graphs with Cytoscape.js (cdnjs, a pinned version with SRI): the opened paths
-highlighted, the hop the PR adds in red, each node's class and who set it, and each arrow's evidence linked to
-its line. "Before it" shows the base graph and the paths the PR closes.
+The card ends with **See it on a graph →**, a link to
+`https://<DOMAIN>/reviews/<owner>/<repo>/<number>?k=<signature>`. The page (`theseus/web/review.html`) is
+written for someone outside security:
+
+- **The finding in one sentence:** "This PR would let priya-intern read and change customer-db", what that data
+  holds, and what the PR asked for instead.
+- **The ways in, left to right:** one row per opened path, each node an icon tile (its kind and short name),
+  each arrow its plain verb. The link the PR adds is in the accent colour with its file and line, and each
+  exposed target carries a tag: "Customer data", "Business data", or "Key to customer-db" for a secret.
+  **Today** draws the same picture before the change: the new link dashed ("not there today") and everything
+  past it greyed ("Out of reach today"). **If merged** is the default.
+- **Whole graph:** every access link in the PR's graph, in lanes the way access flows (who acts, groups,
+  roles, secrets, data), at a readable size; internal resources no path reaches are left out, with a count.
+  Cytoscape.js loads only for this view (cdnjs, a pinned version with SRI).
+- **Step by step:** each way in, each step linked to its line, the new one marked; ways in that exist today
+  without the PR are folded below.
 
 - **Everything comes from FalkorDB.** After each review of the PR's current head, the backend keeps the result in
   the store (`theseus__docs`, one document per PR) before it posts the comment, so the link works at once. The

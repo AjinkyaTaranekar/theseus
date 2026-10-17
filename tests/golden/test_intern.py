@@ -51,3 +51,17 @@ def test_a_pr_that_asks_for_the_database_still_opens_it_and_needs_an_owner() -> 
         "Your PR asks for customer-db, a database. "
         "Access to sensitive data needs an owner's approval in theseus.yaml."
     )
+
+
+def test_the_intern_opens_no_path_from_staging_and_the_old_preview_paths_are_not_flagged() -> None:
+    """The preview workflow reaches prod data on `main` too, but this PR did not open that: only what a change
+    opens is flagged, so the intern PR carries no staging-to-prod flag."""
+    result = analyze("intern")
+    assert result.staging_to_prod == []
+    assert any(p.actor.endswith("docs-site/preview.yml") for p in result.unchanged)
+
+
+def test_the_intern_pr_lists_its_choke_point_roles() -> None:
+    result = analyze("intern")
+    ids = [c.id for c in result.choke_points]
+    assert ids and ids[:1] == ["role:prod-support"] and all(i.startswith("role:") for i in ids)
