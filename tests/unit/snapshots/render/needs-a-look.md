@@ -25,8 +25,6 @@ Coverage: not recorded.
 
 Timings: not recorded.
 
-Models: not recorded.
-
 </details>
 
 <details>

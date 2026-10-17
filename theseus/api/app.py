@@ -38,7 +38,7 @@ from theseus.contracts.engine import Deps, GraphStore
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult, PatchOp
 from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
-from theseus.errors import GraphError, IngestError, PatchError
+from theseus.errors import GraphError, IngestError, PatchError, TheseusError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world, load_world_from_files
@@ -103,19 +103,39 @@ def build_try(store: GraphStore, settings: Settings, recordings: Path = RECORDIN
     """The engine behind `/try/{preset}` (task S4): `analyze_fixture` on the preset's fixture folder in this
     store, with the models replayed whatever mode the server runs in, so a visit costs no LLM or Jev call. One
     run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once. The
-    recordings are read on the first visit, so missing ones fail that visit and never the server's startup."""
+    recordings are read on the first visit, so missing ones fail that visit and never the server's startup.
+
+    A run takes tens of seconds against FalkorDB Cloud, so each preset's result is kept: its fixtures and
+    recordings change only with a deploy, which restarts the server, so a kept answer is the one a new run
+    would give, and a visitor gets it at once."""
     replay = settings.model_copy(update={"theseus_mode": "replay"})
     lock = threading.Lock()
     models: list[tuple[ReplayedIntent, ReplayedJev]] = []
+    kept: dict[str, AnalysisResult] = {}
 
     def run(preset: str) -> AnalysisResult:
         with lock:
+            if preset in kept:
+                return kept[preset]
             if not models:
                 models.append((ReplayedIntent(recordings), ReplayedJev(replay, recordings)))
             llm, jev = models[0]
-            return analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
+            result = analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
+            kept[preset] = result
+            return result
 
     return run
+
+
+def warm_try(run: routes.Try) -> None:
+    """Runs every preset once, so the first visitor after a deploy doesn't wait. A failure is logged and
+    left for that preset's first visit to report."""
+    for preset in sorted(routes.presets()):
+        try:
+            run(preset)
+            log.info("try: %s is ready", preset)
+        except TheseusError as e:
+            log.warning("try: %s could not be computed ahead: %s", preset, e)
 
 
 def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
@@ -222,6 +242,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         )
         app.state.status_feeds = lambda: status.fetch_feeds(STATUS_FEEDS)
         app.state.try_preset = build_try(app.state.store, settings)
+        if connect is connect_falkordb:  # a real server: compute the Try presets before anyone asks
+            threading.Thread(target=warm_try, args=(app.state.try_preset,), daemon=True).start()
         app.state.try_limiter = routes.RateLimit()
         yield
 

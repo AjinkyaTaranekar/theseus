@@ -19,10 +19,11 @@ from urllib.parse import quote
 from theseus.agent.labels import severity
 from theseus.agent.render import verdict
 from theseus.config import Settings
-from theseus.contracts.incident import IncidentReport
+from theseus.contracts.incident import Incident, IncidentReport
 from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import PATH_TYPES
+from theseus.engine.incident import blast
 from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
 
@@ -38,6 +39,7 @@ class ReviewStore(Protocol):
     def put_doc(self, key: str, text: str) -> None: ...
     def get_doc(self, key: str) -> str | None: ...
     def docs(self, prefix: str) -> list[str]: ...
+    def read_docs(self, prefix: str) -> dict[str, str]: ...
     def list_graphs(self) -> list[str]: ...
 
 
@@ -257,16 +259,24 @@ def outage_terms(basis: OutageBasis) -> dict[str, Any]:
     here: dict[tuple[str, str], set[str]] = {}
     for tag in basis.tags:
         here.setdefault((tag.provider, tag.service), set()).add(tag.node)
+    services = []
+    for t in basis.terms:
+        row: dict[str, Any] = {
+            "provider": t.provider,
+            "service": t.service,
+            "name": t.name,
+            "here": len(here.get((t.provider, t.service), set())),
+        }
+        if row["here"]:
+            # What a full outage of it would do here, so the page can rank the services by it.
+            found = blast(basis, Incident(provider=t.provider, service=t.service))
+            row["down"] = sum(1 for m in found.matched if m.state == "down")
+            row["affected"] = len(found.affected)
+            row["breaks"] = sum(1 for b in found.broken if b.state == "broken")
+            row["dependencies"] = found.dependencies
+        services.append(row)
     return {
-        "services": [
-            {
-                "provider": t.provider,
-                "service": t.service,
-                "name": t.name,
-                "here": len(here.get((t.provider, t.service), set())),
-            }
-            for t in basis.terms
-        ],
+        "services": services,
         "regions": [{"code": r.code, "name": r.name} for r in basis.regions],
         "world_regions": sorted({t.region for t in basis.tags if t.region}),
     }
@@ -340,6 +350,17 @@ def mark_contained(store: ReviewStore, finding_id: str, pr: str, pr_number: int,
     store.put_doc(finding_key(finding_id), json.dumps(doc, sort_keys=True))
 
 
+def _load_all(store: ReviewStore, prefix: str) -> list[dict[str, Any]]:
+    """Every document under `prefix`, read in one query, in key order; one that can't be read is skipped."""
+    found = []
+    for doc_key, text in store.read_docs(prefix).items():
+        try:
+            found.append(json.loads(text))
+        except ValueError as e:
+            log.warning("%s cannot be read back: %s", doc_key, e)
+    return found
+
+
 def _load(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
     text = store.get_doc(doc_key)
     if text is None:
@@ -366,6 +387,7 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
             {"actor": p.actor, "target": p.target, "sensitivity": p.sensitivity} for p in result.opened
         ],
         "beyond_intent": len(result.use_beyond_intent),
+        "closed": [{"actor": p.actor, "target": p.target} for p in result.closed],
         # The fix that passes, the one a reviewer would commit; the others are named on the PR.
         "fixes": [
             {"id": c.id, "verdict": c.verdict, "title": c.title}
@@ -446,25 +468,18 @@ def dashboard_data(store: ReviewStore, settings: Settings, repo: str) -> dict[st
         if raw and raw.get("tags"):
             outage = outage_terms(OutageBasis.model_validate(raw))
             outage["live"] = _load(store, incidents_key(repo))
-    rows = []
-    for doc_key in store.docs(f"review:{repo}#"):
-        doc = _load(store, doc_key)
-        if doc is not None:
-            rows.append(_review_row(settings, repo, doc))
+    rows = [_review_row(settings, repo, doc) for doc in _load_all(store, f"review:{repo}#")]
     rows.sort(key=lambda r: (r["updated_at"], r["number"]), reverse=True)
-    findings = []
-    for doc_key in store.docs("finding:"):
-        doc = _load(store, doc_key)
-        if doc is not None and doc.get("repo") == repo:
-            findings.append(_finding_row(settings, doc))
+    findings = [_finding_row(settings, d) for d in _load_all(store, "finding:") if d.get("repo") == repo]
     findings.sort(key=lambda f: (-(f["urgency"] or 0), f["id"]))
     graphs = store.list_graphs()
     main_graph = None
     if posture is not None:
         name = (posture["scan"].get("graphs") or {}).get("main")
         if name and name in graphs:
-            view = store.view(name)
-            main_graph = {"name": name, "nodes": len(view["nodes"]), "edges": len(view["edges"])}
+            # The size the scan built; reading the whole graph back just to count it took seconds.
+            size = posture["scan"].get("coverage") or {}
+            main_graph = {"name": name, "nodes": size.get("nodes", 0), "edges": size.get("edges", 0)}
     return {
         "repo": repo,
         "org": repo.split("/", 1)[0],
@@ -483,12 +498,10 @@ def _summary(store: ReviewStore, settings: Settings, repo: str) -> dict[str, Any
     """One repo's row on the organisation dashboard, from its kept posture and reviews."""
     posture = _load(store, posture_key(repo))
     verdicts = {"blocked": 0, "look": 0, "clear": 0}
-    for doc_key in store.docs(f"review:{repo}#"):
-        doc = _load(store, doc_key)
-        if doc is not None:
-            level = (doc.get("verdict") or {}).get("level")
-            if level in verdicts:
-                verdicts[level] += 1
+    for doc in _load_all(store, f"review:{repo}#"):
+        level = (doc.get("verdict") or {}).get("level")
+        if level in verdicts:
+            verdicts[level] += 1
     row: dict[str, Any] = {
         "repo": repo,
         "url": dashboard_url(settings, repo),

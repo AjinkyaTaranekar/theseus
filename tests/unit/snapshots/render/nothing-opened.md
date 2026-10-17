@@ -1,7 +1,7 @@
 <!-- theseus:pr-comment -->
 ## 🟢 No new access to sensitive data
 
-**No new access to sensitive data.**
+**Theseus traced every path to sensitive data in this commit: none of them is new.**
 
 **The PR says:** let Priya read the app logs.\
 **It asked for:** **priya-intern** to read **demo-app-logs/**\
