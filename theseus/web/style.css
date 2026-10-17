@@ -68,3 +68,4 @@ footer { max-width: 960px; margin: 0 auto; padding: 0 16px 32px; color: var(--mu
   h1 { font-size: 22px; }
   .card { padding: 14px; }
 }
+.explain { color: var(--muted); font-size: 13.5px; margin: -6px 0 12px; max-width: 72ch; }

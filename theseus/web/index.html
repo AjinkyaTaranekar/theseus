@@ -42,24 +42,28 @@
 
     <section class="card">
       <h2>Paths this change opens</h2>
+      <p class="explain">Each is a chain of permissions from someone to sensitive data that the PR creates. Every step names the Terraform line behind it.</p>
       <div id="paths"></div>
       <p id="paths-empty" class="empty" hidden>This change opens no path to sensitive data.</p>
     </section>
 
     <section class="card">
       <h2>Fixes</h2>
+      <p class="explain">Each fix was applied to a copy of the graph in FalkorDB and analyzed again. Only a fix that closes every new path and breaks nothing passes.</p>
       <div id="fixes"></div>
       <p id="fixes-empty" class="empty" hidden>No fix has been proposed for this change.</p>
     </section>
 
     <section class="card">
       <h2>What Theseus did</h2>
+      <p class="explain">The tools the fix agent called, in order. The engine checked every answer before it counted.</p>
       <div id="trace"></div>
       <p id="trace-empty" class="empty" hidden>No tool calls were recorded for this run.</p>
     </section>
 
     <section class="card">
       <h2>What it covered</h2>
+      <p class="explain">What Theseus read, and what it left out because it carries no access Theseus models.</p>
       <div id="coverage"></div>
     </section>
   </div>
