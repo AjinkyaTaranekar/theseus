@@ -16,7 +16,7 @@ throwaway checks only (rule 8). G tasks are the gates: both of us run a beat end
 | G2 | Comment, four tested fixes, /theseus apply B, the commit, the re-run and the green check, on a fresh demo/ branch; record a backup clip | G1, E4, E6, A7, A9 | The check turns green after the apply; the clip is saved | This is the minimum winning demo, together with Beat 3's trace |
 | G3 | Finding to containment PR and rotate issue; scan to the U fix; the code PR flagged; record backup clips | G2, FM4, FM6, C3, C4 | All three run live; the clips are saved |  |
 | S6 | Final video from the script, built from the gate clips and fresh takes | G3, P4 | Uploaded | About three minutes |
-| S7 | Make the repo public, tag the submitted commit, and submit the form naming Track 01 | S5, S6 | Submitted |  |
+| S7 | Make the repo public, tag the submitted commit, and submit the form naming Track 01 | S5, S6 | Submitted | On the commit you tag, run `pytest -q` and `pytest -q -m falkordb` and make the README's Results numbers match; check that no `AI_USE.md` row says review pending (#150) |
 | S8 | Blog post for the side prize | S6 | Published after submission |  |
 
 Humans also own every `fixtures/*/expected.json` (F5) and `bench/cases/*/expected.json` (S2): an agent may draft the values, but a human reviews and saves each file, and an agent never writes or edits one.

@@ -210,10 +210,10 @@ demo PRs. How it is set up and deployed: [deploy/README.md](deploy/README.md).
 
 ## Results
 
-On a fresh clone of `main`, `pytest -q` gives 2,015 passed and 30 skipped (the FalkorDB tests), and
-`pytest -q -m falkordb` against a local FalkorDB 4.22.0 gives 30 passed. The golden tests compare paths,
-requirements, the cut, verdicts and the rotate list with each scenario's hand-written `expected.json`. The Try-it
-presets, on that clone, with FalkorDB in Docker on an Apple laptop:
+On a fresh clone of `main`, `pytest -q` gives 2,052 passed and 33 skipped (the FalkorDB tests; without Node,
+two more skip), and `pytest -q -m falkordb` against a local FalkorDB 4.22.0 gives 33 passed. The golden tests
+compare paths, requirements, the cut, verdicts and the rotate list with each scenario's hand-written
+`expected.json`. The Try-it presets, on that clone, with FalkorDB in Docker on an Apple laptop:
 
 | Preset | Opened dangerous paths | Max flow | Fix verdicts | Engine time |
 | --- | --- | --- | --- | --- |
