@@ -2,7 +2,7 @@
 # Deploy to a host that runs the API from a venv behind Tailscale Funnel (guest-box), and report success only
 # once it answers publicly. deploy.sh is the same for a host with Docker Compose and Caddy.
 #
-#   deploy/deploy-funnel.sh dev@100.104.51.40       or   THESEUS_VM=dev@100.104.51.40 deploy/deploy-funnel.sh
+#   deploy/deploy-funnel.sh dev@<host-ip>       or   THESEUS_VM=dev@<host-ip> deploy/deploy-funnel.sh
 #
 # 1. Before anything changes: check the ref, reach the host, and read DOMAIN (THESEUS_DOMAIN, or the host's .env).
 #    If any of these fails, stop: nothing on the host has changed.

@@ -332,7 +332,7 @@ For a host with Docker and public ports 80 and 443. guest-box, where we run toda
 
 **guest-box**, a container (Ubuntu 24.04, arm64, 4 cores, 22 GB) on an Oracle ARM host, runs the API; FalkorDB
 is on FalkorDB Cloud. It has no Docker, no systemd and no public port, and is reached over our tailnet
-(`ssh dev@100.104.51.40`). **Tailscale Funnel** publishes the API at `https://guest-box.tail27b7c5.ts.net`, with
+(`ssh dev@<host-ip>`). **Tailscale Funnel** publishes the API at `https://guest-box.tail27b7c5.ts.net`, with
 Tailscale's certificate: the only public way in, which GitHub's webhooks and the Action's `THESEUS_URL` use. The
 API runs from a venv on `127.0.0.1:8000` under `deploy/run.sh`, which restarts it when it exits;
 `deploy/deploy-funnel.sh` deploys a commit and rolls back if the public `/health` never answers. Secrets live in
