@@ -10,10 +10,6 @@ resource "aws_iam_group" "contractors" {
   name = "contractors"
 }
 
-resource "aws_iam_user_group_membership" "casey_contractors" {
-  user   = "casey-contractor"
-  groups = ["contractors"]
-}
 
 resource "aws_iam_group_policy" "contractors_assume" {
   name  = "assume-platform-admin"
