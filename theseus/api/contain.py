@@ -86,8 +86,8 @@ def pr_body(finding_id: str, result: AnalysisResult, k: Candidate, page: str | N
         )
         + "The role now trusts only the workflows a requirement needs, as `terraform-apply` already does.",
         "",
-        f"**Checked on a copy of main's graph:** {k.reason or 'it passed'} "
-        "Theseus reviews this PR like any other before it can merge.",
+        f"**Verification:** fix {k.id}, verdict `{k.verdict}` on a copy of main's graph. "
+        f"Paths left: {len(k.paths_left)}. Requirements broken: {len(k.requirements_broken)}.",
     ]
     if result.rotate:
         parts += [

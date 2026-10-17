@@ -844,6 +844,23 @@ def dashboard_reviews(
         raise HTTPException(502, "the graph store did not answer") from e
 
 
+@router.get("/dashboard/{owner}/{name}/graph")
+def dashboard_graph(
+    owner: str, name: str, settings: SettingsDep, gh: GitHubDep, store: StoreDep, k: str | None = None
+) -> dict[str, Any]:
+    """`main`'s whole graph, read from FalkorDB now, for the dashboard's Graph view. Loaded only when that
+    view opens, so the other views stay light however large the graph is."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    try:
+        graph = reviews.main_graph(store, repo)
+    except GraphError as e:
+        log.error("%s: cannot read main's graph: %s", repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if graph is None:
+        raise HTTPException(404, "main has no graph yet")
+    return graph
+
+
 def _org(settings: Settings, gh: GitHub, owner: str, k: str | None) -> str:
     """The owner, when the link is signed for its organisation dashboard and Theseus acts on one of its
     repos; a 404 otherwise."""

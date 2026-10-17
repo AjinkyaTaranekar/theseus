@@ -476,3 +476,13 @@ def review_page(
             rows.append(row)
         matched += 1
     return {"repo": repo, "total": matched, "offset": offset, "limit": limit, "reviews": rows}
+
+
+def main_graph(store: ReviewStore, repo: str) -> dict[str, Any] | None:
+    """`main`'s graph as FalkorDB holds it now, `{name, nodes, edges}`, or None before its first scan or once
+    the graph is gone."""
+    posture = _load(store, posture_key(repo))
+    name = ((posture or {}).get("scan") or {}).get("graphs", {}).get("main")
+    if not name or name not in store.list_graphs():
+        return None
+    return {"name": name, **store.view(name)}

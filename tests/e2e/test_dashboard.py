@@ -307,3 +307,15 @@ def test_the_organisation_adds_up_its_repositories(
     assert client.get(f"/org/someone/data?k={other}").status_code == 404
     repo = dashboard(client, settings).json()
     assert repo["org"] == "demo-org" and repo["org_url"].startswith("https://theseus.example/org/demo-org?k=")
+
+
+def test_the_graph_view_reads_main_s_whole_graph_from_the_store(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    assert client.get(f"/dashboard/{REPO}/graph?k={k}").status_code == 404  # before the first scan
+    assert send(client).status_code == 200
+    graph = client.get(f"/dashboard/{REPO}/graph?k={k}").json()
+    assert graph == {"name": graph["name"], **store.view(graph["name"])} and graph["nodes"] and graph["edges"]
+    assert {"FLOW"}.isdisjoint({e["type"] for e in graph["edges"]})
+    assert client.get(f"/dashboard/{REPO}/graph?k=wrong").status_code == 404

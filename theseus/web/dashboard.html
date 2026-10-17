@@ -6,6 +6,7 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="referrer" content="no-referrer">
 <meta name="color-scheme" content="dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%227%22 fill=%22#000%22/%3E%3Cg fill=%22none%22 stroke=%22#686d76%22 stroke-width=%221.2%22 stroke-linejoin=%22round%22%3E%3Cpolygon points=%2216,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10%22/%3E%3Cpolygon points=%2216,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5%22/%3E%3Cpath d=%22M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10%22/%3E%3C/g%3E%3Cg fill=%22#9a9fa8%22%3E%3Ccircle cx=%2216%22 cy=%224%22 r=%221.4%22/%3E%3Ccircle cx=%2226.39%22 cy=%2210%22 r=%221.4%22/%3E%3Ccircle cx=%2226.39%22 cy=%2222%22 r=%221.4%22/%3E%3Ccircle cx=%2216%22 cy=%2228%22 r=%221.4%22/%3E%3Ccircle cx=%225.61%22 cy=%2210%22 r=%221.4%22/%3E%3C/g%3E%3Cpath d=%22M5.61 22L5.61 10L16 16%22 fill=%22none%22 stroke=%22#6e9fff%22 stroke-width=%222.4%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3Ccircle cx=%225.61%22 cy=%2222%22 r=%222%22 fill=%22#6e9fff%22/%3E%3Ccircle cx=%2216%22 cy=%2216%22 r=%223.2%22 fill=%22#f2495c%22/%3E%3C/svg%3E">
 <title>Theseus dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,6 +132,16 @@
   .tick.done { background: var(--green); border-color: var(--green); color: #000; }
   code.cmd { display: block; font: 12px/1.5 var(--mono); background: #000; border: 1px solid var(--border); border-radius: 4px; padding: 6px 8px; margin-top: 4px; overflow-wrap: anywhere; color: var(--text-2); }
   .message { padding: 80px 20px; color: var(--text-2); font-size: 15px; }
+  .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 4px; overflow: hidden; }
+  .seg button { border: 0; background: transparent; color: var(--text-2); font: 500 13px/1 var(--font); padding: 9px 12px; cursor: pointer; }
+  .seg button[aria-pressed="true"] { background: var(--primary-bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--primary); }
+  #cy { height: 640px; background-color: #000; background-image: radial-gradient(#16181c 1px, transparent 1px); background-size: 16px 16px; }
+  .graphwrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
+  .graphwrap aside { border-left: 1px solid var(--border); padding: 12px; min-width: 0; }
+  .graphwrap aside h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+  .key { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
+  .key i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1.5px solid; }
+  @media (max-width: 980px) { .graphwrap { grid-template-columns: 1fr; } .graphwrap aside { border-left: 0; border-top: 1px solid var(--border); } }
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
   @media (max-width: 1280px) { .s4 { grid-column: span 8; } .s6 { grid-column: span 12; } }
   @media (max-width: 980px) {
@@ -141,14 +152,28 @@
     .s4, .s6, .s8 { grid-column: span 12; } .s12, .s16 { grid-column: span 24; }
     .fresh { display: none; }
   }
-  @media (max-width: 640px) { .s4, .s6, .s8 { grid-column: span 24; } main { padding: 14px 12px 32px; } .top { padding: 0 12px; } }
+  @media (max-width: 640px) {
+    .s4, .s6, .s8 { grid-column: span 24; }
+    main { padding: 14px 12px 32px; }
+    .top { height: auto; flex-wrap: wrap; padding: 8px 12px; row-gap: 8px; }
+    .search { order: 3; width: 100%; margin-left: 0; }
+    #refresh { margin-left: auto; }
+    .side ul { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 6px 8px; }
+    .side ul::-webkit-scrollbar { display: none; }
+    .side a.nav { white-space: nowrap; }
+    .pagehead h1 { font-size: 18px; }
+    .pagehead .tools { margin-left: 0; flex-wrap: wrap; }
+    #cy { height: 440px; }
+    .stat .v { font-size: 26px; }
+    .gauge { grid-template-columns: minmax(90px, 40%) 1fr max-content; }
+  }
 </style>
 </head>
 <body>
 <a class="skip" href="#content">Skip to content</a>
 <div class="app">
   <nav class="side" aria-label="Sections">
-    <div class="brand"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l8.5 5v10L12 22l-8.5-5V7z" fill="none" stroke="#6e9fff" stroke-width="1.8"/><circle cx="12" cy="12" r="2.6" fill="#6e9fff"/></svg><span>Theseus</span></div>
+    <div class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="#686d76" stroke-width="1.2" stroke-linejoin="round"><polygon points="16,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10"/><polygon points="16,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5"/><path d="M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10"/></g><g fill="#9a9fa8"><circle cx="16" cy="4" r="1.4"/><circle cx="26.39" cy="10" r="1.4"/><circle cx="26.39" cy="22" r="1.4"/><circle cx="16" cy="28" r="1.4"/><circle cx="5.61" cy="10" r="1.4"/></g><path d="M5.61 22L5.61 10L16 16" fill="none" stroke="#6e9fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.61" cy="22" r="2" fill="#6e9fff"/><circle cx="16" cy="16" r="3.2" fill="#f2495c"/></svg><span>Theseus</span></div>
     <ul id="nav"></ul>
     <div class="side-foot" id="sidefoot"></div>
   </nav>
@@ -196,7 +221,22 @@ const ICONS = {
   weak: "M12 3l10 18H2zM12 10v4M12 17h.01",
   cost: "M12 2v20M17 6H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
   setup: "M4 6h16M4 12h16M4 18h16M8 4v4M16 10v4M10 16v4",
+  graph: "M6 6m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M18 6m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M12 18m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M8 7.5l3 8M16 7.5l-3 8M8.5 6h7",
 };
+const CYTOSCAPE = { src: "https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js",
+  integrity: "sha512-EY3U1MWdgKx0P1dqTE4inlKz2cpXtWpsR1YUyD855Hs6RL/A0cyvrKh60EpE8wDZ814cTe1KgRK+sG0Rn792vQ==" };
+const ACCESS_TYPES = new Set(["MEMBER_OF", "CAN_ASSUME", "TRUSTS", "RUNS_AS", "CAN", "UNLOCKS"]);
+const LANES = ["Who acts", "Groups", "Roles", "Secrets", "Data"];
+const VERBS = { MEMBER_OF: "is in", CAN_ASSUME: "can become", TRUSTS: "can log in as", RUNS_AS: "runs as", CAN: "can", UNLOCKS: "opens" };
+function loadCytoscape() {
+  if (typeof cytoscape !== "undefined") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = el("script", null, { src: CYTOSCAPE.src, integrity: CYTOSCAPE.integrity, crossorigin: "anonymous", referrerpolicy: "no-referrer" });
+    s.onload = resolve;
+    s.onerror = reject;
+    document.head.append(s);
+  });
+}
 
 const $ = (id) => document.getElementById(id);
 function el(tag, text, attrs) {
@@ -651,6 +691,123 @@ function repoViews(d) {
     $("view").append(stats, grid(bp, sp), grid(tp));
   };
 
+  views.graph = () => {
+    head("Graph", posture ? `main's access graph, read from FalkorDB now. Red links are on a path to sensitive data nothing requires; a yellow border is a single point of failure. Click a node to focus on it.` : "main hasn't been scanned yet.");
+    if (!posture) return;
+    const seg = el("div", null, { class: "seg", role: "group", "aria-label": "What to show" });
+    const modes = [["risky", "Risky paths"], ["access", "Access graph"], ["all", "Everything"]];
+    for (const [id, label] of modes) seg.append(el("button", label, { type: "button", "data-mode": id, "aria-pressed": id === "access" ? "true" : "false" }));
+    const fit = el("button", "Fit", { class: "btn", type: "button" });
+    $("tools").append(seg, fit);
+    const [gp, gb] = panel("main", "s24", { flush: true, hint: d.main_graph ? `${d.main_graph.name} · ${d.main_graph.nodes} nodes · ${d.main_graph.edges} edges` : "" });
+    const wrap = el("div", null, { class: "graphwrap" });
+    const canvas = el("div", null, { id: "cy", role: "img", "aria-label": "main's access graph" });
+    const side = el("aside", null, { "aria-live": "polite" });
+    side.append(el("p", "Click a node to see what it is, who reaches it and what depends on it.", { class: "sub" }));
+    wrap.append(canvas, side);
+    const key = el("div", null, { class: "key" });
+    for (const [label, color] of [["On a risky path", TONES.red], ["Single point of failure", TONES.yellow], ["Sensitive data", "#7a2a35"], ["Other", "#33363c"]]) {
+      const i = el("i"); i.style.borderColor = color; key.append(add(el("span"), i, document.createTextNode(label)));
+    }
+    gb.append(wrap, key);
+    $("view").append(grid(gp));
+    let graph = null, cy = null;
+    const routeOf = (x) => (x.steps.length ? [x.steps[0].from, ...x.steps.map((s) => s.to)] : [x.actor]);
+    const hotNodes = new Set(dangerous.flatMap(routeOf));
+    const hotEdges = new Set(dangerous.flatMap((x) => x.steps.map((s) => `${s.from}|${s.type}|${s.to}`)));
+    const spof = new Map((p ? p.single_points : []).map((s) => [s.id, s]));
+    const nodeInfo = (id) => (graph ? graph.byId.get(id) : null) || info(id);
+    const sensitive = (id) => ["regulated", "confidential"].includes((nodeInfo(id) || {}).sensitivity);
+    function lane(id) {
+      const prefix = id.split(":")[0];
+      if (["user", "entry", "workflow", "workload", "action"].includes(prefix)) return 0;
+      if (prefix === "group") return 1;
+      if (prefix === "role") return 2;
+      const cat = ((nodeInfo(id) || {}).category || "").toLowerCase();
+      return cat === "secret" || cat === "encryptionkey" ? 3 : 4;
+    }
+    function details(id) {
+      const n = nodeInfo(id) || {};
+      side.replaceChildren(el("h3", nameOf(id)), el("div", `${kindOf(id, n)} · ${id}`, { class: "sub mono" }));
+      const kv = el("dl", null, { class: "kv", style: "margin-top:10px" });
+      const row = (k, v) => add(kv, el("dt", k), v instanceof Node ? add(el("dd"), v) : el("dd", v));
+      if (n.sensitivity) row("Class", classBadge(n.sensitivity));
+      const reachers = (p ? p.reach : []).filter((r) => r.targets.includes(id)).map((r) => nameOf(r.actor));
+      if (reachers.length) row("Reached by", list(reachers));
+      const own = (p ? p.reach : []).find((r) => r.actor === id);
+      if (own) row("Can reach", chips(own.targets, nodeInfo, (t) => !risky.has(`${id}|${t}`)));
+      const s = spof.get(id);
+      if (s) row("If it goes", `${plural(s.breaks.length, "dependency", "dependencies")} break for ${list([...new Set(s.breaks.map((b) => nameOf(b.principal)))])}`);
+      const out = graph.links.filter((e) => e.src === id).map((e) => `${VERBS[e.type] || e.type}${e.type === "CAN" ? ` ${(e.grants || []).join(" and ")}` : ""} ${nameOf(e.dst)}`);
+      const inc = graph.links.filter((e) => e.dst === id).map((e) => `${nameOf(e.src)} ${VERBS[e.type] || e.type}${e.type === "CAN" ? ` ${(e.grants || []).join(" and ")}` : ""} it`);
+      if (out.length) row("Links out", add(el("div"), ...out.slice(0, 8).map((x) => el("div", x))));
+      if (inc.length) row("Links in", add(el("div"), ...inc.slice(0, 8).map((x) => el("div", x))));
+      side.append(kv);
+    }
+    function draw(mode) {
+      for (const b of seg.querySelectorAll("button")) b.setAttribute("aria-pressed", b.dataset.mode === mode ? "true" : "false");
+      const access = graph.edges.filter((e) => ACCESS_TYPES.has(e.type));
+      const linked = new Set(access.flatMap((e) => [e.src, e.dst]));
+      const shown = (id) => mode === "all" || (mode === "risky" ? hotNodes.has(id) : lane(id) < 4 || sensitive(id) || hotNodes.has(id));
+      const nodes = graph.nodes.filter((n) => linked.has(n.id) && shown(n.id));
+      const keep = new Set(nodes.map((n) => n.id));
+      const links = access.filter((e) => keep.has(e.src) && keep.has(e.dst) && (mode !== "risky" || hotEdges.has(`${e.src}|${e.type}|${e.dst}`)));
+      graph.links = links;
+      const cols = LANES.map(() => []);
+      for (const n of nodes) cols[lane(n.id)].push(n.id);
+      const pos = new Map(), preds = new Map();
+      for (const e of links) { if (!preds.has(e.dst)) preds.set(e.dst, []); preds.get(e.dst).push(e.src); }
+      cols.forEach((ids, c) => {
+        const weight = (id) => { const from = (preds.get(id) || []).filter((s) => pos.has(s)); return from.length ? from.reduce((sum, s) => sum + pos.get(s).y, 0) / from.length : Infinity; };
+        ids.sort((a, b) => (c === 0 ? 0 : weight(a) - weight(b)) || a.localeCompare(b));
+        ids.forEach((id, i) => pos.set(id, { x: c * 260, y: i * 60 }));
+      });
+      const tallest = Math.max(1, ...cols.map((ids) => ids.length));
+      cols.forEach((ids) => { const shift = ((tallest - ids.length) * 60) / 2; ids.forEach((id) => { pos.get(id).y += shift; }); });
+      if (cy) cy.destroy();
+      cy = cytoscape({
+        container: canvas,
+        elements: [
+          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label: label.toUpperCase(), lane: 1 }, position: { x: i * 260, y: -60 } })),
+          ...nodes.map((n) => ({ data: { id: n.id, label: `${kindOf(n.id, n)}\n${nameOf(n.id).length > 22 ? nameOf(n.id).slice(0, 21) + "…" : nameOf(n.id)}`, hot: hotNodes.has(n.id) ? 1 : 0, spof: spof.has(n.id) ? 1 : 0, sens: sensitive(n.id) ? 1 : 0 }, position: pos.get(n.id) })),
+          ...links.map((e, i) => ({ data: { id: `e${i}`, source: e.src, target: e.dst, hot: hotEdges.has(`${e.src}|${e.type}|${e.dst}`) ? 1 : 0 } })),
+        ],
+        style: [
+          { selector: "node", style: { shape: "round-rectangle", width: 160, height: 40, "background-color": "#0b0c0e", "border-width": 1, "border-color": "#33363c", label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "font-size": 11, "font-family": "Inter, system-ui, sans-serif", color: "#b9bdc5", "text-max-width": 150 } },
+          { selector: "node[sens = 1]", style: { "border-color": "#7a2a35", "border-width": 1.5 } },
+          { selector: "node[hot = 1]", style: { "border-color": TONES.red, "border-width": 2, color: "#e8e9ec" } },
+          { selector: "node[spof = 1]", style: { "border-color": TONES.yellow, "border-width": 2.5, "border-style": "double" } },
+          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 11, "font-weight": 600, color: "#8f949d", width: 160, height: 20 } },
+          { selector: "edge", style: { width: 1, "line-color": "#33363c", "target-arrow-color": "#33363c", "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.7 } },
+          { selector: "edge[hot = 1]", style: { width: 2.2, "line-color": TONES.red, "target-arrow-color": TONES.red, "z-index": 10 } },
+          { selector: ".faded", style: { opacity: 0.12 } },
+          { selector: "node:selected", style: { "border-color": TONES.blue, "border-width": 3 } },
+        ],
+        layout: { name: "preset", padding: 30, fit: true },
+        wheelSensitivity: 0.25, minZoom: 0.2, maxZoom: 2.5, boxSelectionEnabled: false, autoungrabify: true,
+      });
+      cy.on("tap", "node", (evt) => {
+        const node = evt.target;
+        if (node.data("lane")) return;
+        const near = node.closedNeighborhood();
+        cy.elements().addClass("faded");
+        near.removeClass("faded");
+        cy.nodes("[lane = 1]").removeClass("faded");
+        details(node.id());
+      });
+      cy.on("tap", (evt) => { if (evt.target === cy) { cy.elements().removeClass("faded"); } });
+      $("live").textContent = `${nodes.length} nodes and ${links.length} links shown`;
+    }
+    seg.addEventListener("click", (evt) => { const b = evt.target.closest("button"); if (b && graph) draw(b.dataset.mode); });
+    fit.addEventListener("click", () => cy && cy.fit(undefined, 30));
+    canvas.append(el("div", "Loading the graph from FalkorDB…", { class: "empty" }));
+    Promise.all([fetchJson(`${BASE}/graph`), loadCytoscape()]).then(([g]) => {
+      canvas.replaceChildren();
+      graph = { ...g, byId: new Map(g.nodes.map((n) => [n.id, n])), links: [] };
+      draw(graph.nodes.length > 400 ? "risky" : "access");
+    }).catch(() => { canvas.replaceChildren(el("div", "The graph could not be loaded.", { class: "empty" })); });
+  };
+
   views.setup = () => {
     head("Setup", "What Theseus can see is connected for this repository, and how each part runs.");
     const [sp, sb] = panel("Connection", "s12");
@@ -675,6 +832,7 @@ function repoViews(d) {
     { id: "findings", label: "Findings", icon: "findings", count: d.findings.length, bad: true },
     { id: "access", label: "Who reaches what", icon: "access", count: dangerous.length, bad: true },
     { id: "weak", label: "Weak points", icon: "weak" },
+    { id: "graph", label: "Graph", icon: "graph" },
     { id: "cost", label: "Cost", icon: "cost" },
     { id: "setup", label: "Setup", icon: "setup" },
   ], [{ label: d.org, href: d.org_url }, { label: d.repo.split("/")[1] }], posture ? `main@${posture.sha.slice(0, 7)} · ${ago(posture.updated_at)}` : null);
@@ -689,7 +847,7 @@ function orgViews(d) {
   const scanned = d.repos.filter((r) => r.scanned);
   const views = {};
   const repoTable = (page) => table("Repositories", [
-    { label: "Repository", value: (r) => r.repo, cell: (r) => add(el("div"), r.url ? el("a", r.repo.split("/")[1], { href: r.url }) : el("span", r.repo), el("div", r.scanned ? `main@${r.sha.slice(0, 7)} · ${ago(r.updated_at)}` : "not scanned yet", { class: "sub mono" })) },
+    { label: "Repository", value: (r) => r.repo, cell: (r) => add(el("div"), r.url ? el("a", r.repo.split("/")[1], { href: r.url }) : el("span", r.repo), el("div", r.scanned ? `main@${r.sha.slice(0, 7)} · ${ago(r.updated_at)}` : "not scanned yet", { class: "sub mono", style: "white-space:nowrap" })) },
     { label: "Dangerous paths", value: (r) => r.dangerous || 0, num: true, cell: (r) => el("span", r.scanned ? String(r.dangerous) : "–", { class: r.dangerous ? "tone-red" : "" }) },
     { label: "Customer data", value: (r) => r.regulated || 0, num: true, cell: (r) => (r.scanned ? String(r.regulated) : "–") },
     { label: "Blocked PRs", value: (r) => r.reviews.blocked, num: true, cell: (r) => `${r.reviews.blocked}/${r.reviews.blocked + r.reviews.look + r.reviews.clear}` },
@@ -712,7 +870,7 @@ function orgViews(d) {
       statPanel("Customer data", t.regulated, "paths to regulated data", t.regulated ? "red" : "green", null),
       statPanel("Pull requests", `${t.blocked}/${t.reviewed}`, "blocked from merging", t.blocked ? "orange" : "green", null),
       statPanel("Advisories", t.findings, "affect a workflow on main", t.findings ? "red" : "green", daily("findings")),
-      statPanel("Graph size", (t.nodes + t.edges).toLocaleString(), `${t.nodes.toLocaleString()} nodes, ${t.edges.toLocaleString()} edges in FalkorDB`, "blue", null),
+      statPanel("Graph size", t.nodes.toLocaleString(), `nodes and ${t.edges.toLocaleString()} edges in FalkorDB`, "blue", null),
       statPanel("Monthly cost", usd(t.monthly_usd), "estimated at list price", "blue", daily("monthly_usd")),
     );
     const [rp, rb] = panel("Repositories", "s24", { flush: true, hint: "riskiest first; open one for its own dashboard" });
