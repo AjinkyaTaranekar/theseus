@@ -96,9 +96,31 @@ def test_run_finding_matches_the_answer_key(deps: Deps) -> None:
     assert result.mode == "finding"
     assert result.finding is not None and result.finding["id"] == "GHSA-demo-0001"
     assert result.finding["workflows"] == [PREVIEW, LINT]
-    # Candidate K and `recommended` belong to FM6.
-    keys = ["scenario", "mode", "min_cut", "rotate", "staging_to_prod"]
+    keys = ["scenario", "mode", "min_cut", "candidates", "rotate", "staging_to_prod"]
     assert compare(project(result), expected(SCENARIO), keys) == []
+
+
+def test_k_pins_the_deploy_role_to_the_workflow_that_needs_it_and_breaks_nothing(deps: Deps) -> None:
+    """FM6: the cut is preview.yml's trust in github-deploy. K keeps only deploy.yml's subjects, as
+    terraform-apply is already pinned; R4, R5 and R17 (deploy.yml's own access) still hold."""
+    result = run_finding(world(SCENARIO, "base"), advisory(), deps)
+    [k] = result.candidates
+    assert (k.id, k.verdict, k.source, k.proposed_by) == ("K", "pass", "rule", "theseus")
+    assert [(op.op, op.args) for op in k.ops] == [
+        (
+            "set_oidc_sub",
+            {
+                "role": "github-deploy",
+                "patterns": [
+                    "repo:demo-org/infra:environment:production",
+                    "repo:demo-org/infra:ref:refs/heads/main",
+                ],
+            },
+        )
+    ]
+    assert k.paths_left == [] and k.new_paths == [] and k.requirements_broken == []
+    required = {r.id: r.status for r in result.requirements}
+    assert {required[r] for r in ("R4", "R5", "R17")} == {"satisfied"}
 
 
 def test_run_finding_lists_the_blast_radius_with_its_evidence(deps: Deps) -> None:

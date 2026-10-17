@@ -15,10 +15,13 @@ from fastapi.testclient import TestClient
 from tests.golden.conftest import deps_for, world
 from theseus.api import reviews, routes
 from theseus.api.app import create_app
+from theseus.api.contain import Contained
 from theseus.api.github import GitHub
 from theseus.config import Settings
 from theseus.contracts.posture import PostureReport
+from theseus.contracts.result import AnalysisResult
 from theseus.engine.pipeline import run_posture
+from theseus.errors import GitHubError
 from theseus.graph.store import MemoryStore
 
 TOKEN = "theseus-token-not-real"
@@ -52,8 +55,28 @@ def client(settings: Settings, store: MemoryStore) -> Iterator[TestClient]:
     app.dependency_overrides[routes.get_store] = lambda: store
     app.dependency_overrides[routes.get_github] = lambda: GitHub(settings)
     app.dependency_overrides[routes.get_posture] = lambda: posture
+    contained: list[str] = []
+
+    def contain(
+        gh: GitHub, repo: str, sha: str, finding: AnalysisResult, page: str | None
+    ) -> Contained | None:
+        finding_id = (finding.finding or {})["id"]
+        contained.append(finding_id)
+        if finding_id == "GHSA-broken":
+            raise GitHubError("POST /repos/demo-org/theseus/pulls: 422 Validation Failed")
+        pr = f"https://github.com/{REPO}/pull/201"
+        return Contained(
+            finding=finding_id,
+            pr=pr,
+            pr_number=201,
+            issue=f"https://github.com/{REPO}/issues/301",
+            opened=True,
+        )
+
+    app.dependency_overrides[routes.get_containment] = lambda: contain
     with TestClient(app) as c:
         c.asked = asked  # type: ignore[attr-defined]
+        c.contained = contained  # type: ignore[attr-defined]
         yield c
 
 
@@ -180,3 +203,44 @@ def test_a_finding_s_urgency_is_shown_as_jev_s_probability(
     store.put_doc(key, json.dumps(doc))
     [finding] = dashboard(client, settings).json()["findings"]
     assert finding["urgency"] == 0.93
+
+
+def test_a_finding_s_containment_pr_and_rotate_issue_show_on_the_dashboard(
+    client: TestClient, settings: Settings
+) -> None:
+    body = send(client).json()
+    assert client.contained == ["GHSA-demo-0001"]  # type: ignore[attr-defined]
+    assert body["contained"] == [
+        {
+            "finding": "GHSA-demo-0001",
+            "pr": f"https://github.com/{REPO}/pull/201",
+            "issue": f"https://github.com/{REPO}/issues/301",
+            "opened": True,
+        }
+    ]
+    [finding] = dashboard(client, settings).json()["findings"]
+    assert finding["containment"]["pr_number"] == 201 and finding["fix"] == {
+        "id": "K",
+        "verdict": "pass",
+        "title": "Trust the role only from the workflows that need it",
+    }
+
+
+def test_a_containment_that_fails_leaves_the_posture_kept_and_says_why(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    broken = {**ADVISORY, "id": "GHSA-broken"}
+    routes_posture = client.app.dependency_overrides[routes.get_posture]()  # type: ignore[attr-defined]
+
+    def both(gh: GitHub, repo: str, sha: str, plan: dict[str, Any]) -> PostureReport:
+        report = routes_posture(gh, repo, sha, plan)
+        extra = report.findings[0].model_copy(
+            update={"finding": {**report.findings[0].finding, "id": broken["id"]}}
+        )
+        return report.model_copy(update={"findings": [*report.findings, extra]})
+
+    client.app.dependency_overrides[routes.get_posture] = lambda: both  # type: ignore[attr-defined]
+    body = send(client).json()
+    assert [f["finding"] for f in body["contained"]] == ["GHSA-demo-0001"]
+    assert body["containment_failed"][0]["finding"] == "GHSA-broken"
+    assert store.get_doc(reviews.posture_key(REPO)) is not None

@@ -356,6 +356,16 @@ function render(data) {
     row("Could reach", reaches);
     row("Cut it off at", el("dd", f.cut.length ? f.cut.map((c) => `${nameOf(c.src)} → ${nameOf(c.dst)}`).join("; ") : "no single cut", { class: "" }));
     row("Rotate", el("dd", f.rotate.length ? list(f.rotate.map(nameOf)) : "nothing"));
+    const fixDd = el("dd");
+    if (f.fix) fixDd.append(el("span", `${f.fix.id} ${f.fix.verdict}`, { class: `badge ${f.fix.verdict}`, style: "margin-right:8px" }), document.createTextNode(f.fix.title));
+    else fixDd.textContent = "No fix could be checked.";
+    row("Fix", fixDd);
+    if (f.containment) {
+      const links = el("dd");
+      links.append(el("a", `Containment PR #${f.containment.pr_number} →`, { class: "open", href: f.containment.pr }));
+      if (f.containment.issue) links.append(document.createTextNode("  "), el("a", "Rotate issue →", { class: "open", href: f.containment.issue }));
+      row("Opened", links);
+    }
     card.append(dl);
     if (f.url) card.append(add(el("div", null, { style: "margin-top:12px" }), el("a", "Open finding →", { class: "open", href: f.url })));
     $("finding-list").append(card);

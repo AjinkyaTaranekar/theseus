@@ -26,7 +26,7 @@ from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
 from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
-from theseus.api import routes, webhooks
+from theseus.api import contain, routes, webhooks
 from theseus.api.github import GitHub
 from theseus.cli import analyze_fixture, load_advisories
 from theseus.config import Settings, get_settings
@@ -207,6 +207,9 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.posture = build_posture(app.state.store, jev, settings)
         app.state.results = webhooks.Results()
         app.state.render = build_render()
+        app.state.contain = lambda gh, repo, sha, result, page: contain.contain(
+            gh, app.state.render, repo, sha, result, page
+        )
         app.state.try_preset = build_try(app.state.store, settings)
         app.state.try_limiter = routes.RateLimit()
         yield

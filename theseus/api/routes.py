@@ -192,6 +192,20 @@ def get_posture(request: Request) -> PostureRun:
 
 
 PostureDep = Annotated[PostureRun, Depends(get_posture)]
+
+# A finding's containment (FM6): (gh, repo, main's commit, the finding, its page) to where its PR and rotate
+# issue are, or None when nothing passes. `api/app.py` builds it with the IaC renderer; tests replace it.
+Containment = Callable[[GitHub, str, str, AnalysisResult, str | None], Any]
+
+
+def get_containment(request: Request) -> Containment:
+    contain = getattr(request.app.state, "contain", None)
+    if contain is None:
+        raise HTTPException(503, "containment is not ready")
+    return contain
+
+
+ContainmentDep = Annotated[Containment, Depends(get_containment)]
 SHA = re.compile(r"^[0-9a-f]{40}$")
 # What started a posture run: the workflow's event, or a person at the command line.
 TRIGGERS = frozenset({"push", "schedule", "workflow_dispatch", "cli"})
@@ -718,6 +732,7 @@ def posture(
     gh: GitHubDep,
     run: PostureDep,
     store: StoreDep,
+    contain: ContainmentDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> dict[str, Any]:
     """The posture of `main` (O1 to O3), sent by the Theseus main workflow on a push to `main`, nightly and on
@@ -745,6 +760,20 @@ def posture(
     except GraphError as e:
         log.error("%s: cannot keep the posture: %s", req.repo, e)
         raise HTTPException(502, "the graph store did not answer") from e
+    contained, failed = [], []
+    for finding in report.findings:
+        finding_id = str((finding.finding or {}).get("id", ""))
+        try:
+            done = contain(gh, req.repo, req.sha, finding, reviews.finding_url(settings, finding_id))
+        except TheseusError as e:  # one finding's PR failing leaves the posture and the others in place
+            log.error("%s: containment of %s failed: %s", req.repo, finding_id, e)
+            failed.append({"finding": finding_id, "error": str(e)})
+            continue
+        if done is not None:
+            reviews.mark_contained(store, finding_id, done.pr, done.pr_number, done.issue)
+            contained.append(
+                {"finding": finding_id, "pr": done.pr, "issue": done.issue, "opened": done.opened}
+            )
     url = reviews.dashboard_url(settings, req.repo)
     if url:
         response.headers["X-Theseus-Page"] = url
@@ -757,6 +786,8 @@ def posture(
         "single_points": len(report.posture.single_points),
         "monthly_usd": report.posture.cost.monthly_usd,
         "findings": sorted((f.finding or {}).get("id", "") for f in report.findings),
+        "contained": contained,
+        "containment_failed": failed,
         "dashboard": url,
     }
 

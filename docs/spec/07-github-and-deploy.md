@@ -259,6 +259,9 @@ by hand; that is not a candidate, just a new head that the Action analyzes again
 
 ## Finding and scan outputs (tasks FM6, C3)
 
+- **When:** a posture run of `main` (O1) opens both for each finding whose candidate K passes, once: a later
+  run finds the open PR and issue by branch and title and opens nothing new. The finding's dashboard card links
+  them. `api/contain.py`.
 - **Containment PR:** branch `theseus/contain-<finding-id>` from `main`, label `demo`, title and commit subject
   `fix: Contain <finding-id>`; it changes `demo-infra/terraform/ci.tf` only. The body holds the blast radius,
   the cut, the verification and the rotate list.

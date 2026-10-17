@@ -204,6 +204,16 @@ def save_posture(
     log.info("%s: kept the posture of %s (%s)", repo, sha[:7], trigger)
 
 
+def mark_contained(store: ReviewStore, finding_id: str, pr: str, pr_number: int, issue: str | None) -> None:
+    """Records on the finding's document where its containment PR and rotate issue are."""
+    doc = _load(store, finding_key(finding_id))
+    if doc is None:
+        log.warning("finding %s: no document to record its containment on", finding_id)
+        return
+    doc["containment"] = {"pr": pr, "pr_number": pr_number, "issue": issue}
+    store.put_doc(finding_key(finding_id), json.dumps(doc, sort_keys=True))
+
+
 def _load(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
     text = store.get_doc(doc_key)
     if text is None:
@@ -253,6 +263,11 @@ def _finding_row(settings: Settings, doc: dict[str, Any]) -> dict[str, Any]:
         "rotate": result.rotate,
         "cut": [{"src": e.src, "type": e.type, "dst": e.dst} for e in cut],
         "updated_at": doc.get("updated_at") or "",
+        "containment": doc.get("containment"),
+        "fix": next(
+            ({"id": c.id, "verdict": c.verdict, "title": c.title} for c in result.candidates if c.id == "K"),
+            None,
+        ),
         "url": finding_url(settings, doc["id"]),
     }
 
