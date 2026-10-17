@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from tests.golden.conftest import deps_for, world
 from theseus.contracts.engine import GraphState, World
 from theseus.contracts.posture import CostLine
@@ -152,3 +154,27 @@ def test_a_posture_run_raises_a_finding_for_an_advisory_that_affects_main() -> N
     assert [(f.finding or {})["id"] for f in report.findings] == ["GHSA-demo-0001"]
     assert report.scan.mode == "scan" and report.scan.choke_points
     assert report.posture.single_points
+
+
+@pytest.mark.parametrize(
+    "scenario", ["intern", "public-bucket", "compromised-action", "unused-grant", "code-pr"]
+)
+def test_the_forgotten_database_is_a_cleanup_candidate_without_changing_required_access(
+    scenario: str,
+) -> None:
+    report = run_posture(world(scenario, "base"), deps_for(scenario), [])
+    found = report.posture
+    assert found.unreached == ["db:orders-migration-db"]
+    assert [(saving.id, saving.monthly_usd) for saving in found.cost.savings] == [
+        ("db:orders-migration-db", 58.95)
+    ]
+    assert found.cost.savings_usd == 58.95
+    assert found.cost.monthly_usd == 116.24
+    assert found.nodes["db:orders-migration-db"].sensitivity == "regulated"
+    assert len(found.single_points) == 10
+    assert all(point.id != "db:orders-migration-db" for point in found.single_points)
+    assert len(report.scan.unchanged) == 6
+    assert {r.id: r.status for r in report.scan.requirements} == {f"R{i}": "satisfied" for i in range(1, 18)}
+    assert [(grant.workload, grant.resource) for grant in report.scan.unused_grants] == [
+        ("workload:support-portal", "secret:prod-db-credentials")
+    ]

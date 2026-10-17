@@ -155,6 +155,20 @@ def test_a_dashboard_before_any_scan_says_what_is_missing(client: TestClient, se
     assert [step["done"] for step in data["onboarding"]] == [False, False, False, False]
 
 
+def test_the_dashboard_reports_the_forgotten_database_and_its_estimated_saving(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    data = dashboard(client, settings).json()
+    posture = data["posture"]["posture"]
+    assert posture["unreached"] == ["db:orders-migration-db"]
+    [saving] = posture["cost"]["savings"]
+    assert saving["id"] == "db:orders-migration-db"
+    assert saving["monthly_usd"] == posture["cost"]["savings_usd"] == 58.95
+    assert posture["cost"]["monthly_usd"] == 116.24
+    assert "billed by use" in posture["cost"]["note"]
+
+
 @pytest.mark.parametrize("k", ["", "0123456789abcdef0123456789abcdef"])
 def test_a_dashboard_without_the_right_signature_is_a_404(
     client: TestClient, settings: Settings, k: str
