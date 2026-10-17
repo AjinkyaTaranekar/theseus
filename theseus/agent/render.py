@@ -159,6 +159,10 @@ def verdict(result: AnalysisResult) -> Verdict:
             heading="🟡 Needs a look",
             title=f"Needs a look: Theseus could not check {n}",
         )
+    if pr and result.closed:
+        # A PR that only takes access away: its good news leads.
+        closes = f"Closes {_plural(len(result.closed), 'way')} to sensitive data"
+        return Verdict(level="clear", conclusion="success", heading=f"🟢 {closes}", title=closes)
     clear = "No new access to sensitive data"
     return Verdict(level="clear", conclusion="success", heading=f"🟢 {clear}", title=clear)
 
@@ -223,7 +227,14 @@ def consequence(result: AnalysisResult) -> Md:
         n = len(result.unknowns)
         listed = "It's listed below." if n == 1 else "They're listed below."
         return Md(f"**Theseus couldn't check {_plural(n, 'part')} of this change.** {listed}")
-    return Md("**No new access to sensitive data.**")
+    if result.closed and pr:
+        actors = sorted({p.actor for p in result.closed})
+        targets = [p.target for p in sorted(result.closed, key=_rank)]
+        targets = list(dict.fromkeys(targets))
+        who = _names([escape(words.name(a)) for a in actors[:3]], max(0, len(actors) - 3))
+        what = _names([escape(words.name(t)) for t in targets[:3]], max(0, len(targets) - 3))
+        return Md(f"**Once merged, {who} can no longer reach {what}.** It opens nothing new.")
+    return Md("**Theseus traced every path to sensitive data in this commit: none of them is new.**")
 
 
 def says_line(result: AnalysisResult) -> Md | None:
@@ -307,11 +318,11 @@ def best_fix(result: AnalysisResult) -> Candidate | None:
 
 
 def tested_line(result: AnalysisResult) -> str:
-    return (
-        f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
-        if result.opened
-        else "breaks nothing"
-    )
+    if not result.opened:
+        return "breaks nothing"
+    if len(result.opened) == 1:
+        return "closes the only way in, breaks nothing"
+    return f"closes all {len(result.opened)} ways in, breaks nothing"
 
 
 def do_line(result: AnalysisResult, level: str, suggested: str | None = None) -> Md:
@@ -659,9 +670,10 @@ def timings_line(result: AnalysisResult) -> Md:
     return Md(f"Took {s[0]}: engine {s[1]}, LLM {s[2]}, Jev {s[3]}.")
 
 
-def versions_line(result: AnalysisResult) -> Md:
+def versions_line(result: AnalysisResult) -> Md | None:
+    """The models behind the review, or None when they were not recorded: nothing to say then."""
     if not result.models:
-        return Md("Models: not recorded.")
+        return None
     keys = [k for k in MODEL_NAMES if k in result.models] + sorted(set(result.models) - set(MODEL_NAMES))
     named = [f"{MODEL_NAMES.get(k, escape(k))} {code(result.models[k])}" for k in keys]
     return Md(f"Models: {', '.join(named)}.")

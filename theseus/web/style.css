@@ -1,22 +1,17 @@
+/* The product's palette: pure black, as the dashboard and review pages. */
 :root {
-  --bg: #ffffff; --panel: #f6f8fa; --text: #1f2328; --muted: #59636e; --line: #d1d9e0;
-  --accent: #0969da; --danger: #cf222e; --danger-bg: #ffebe9; --warn: #9a6700; --warn-bg: #fff8c5;
-  --ok: #1a7f37; --ok-bg: #dafbe1;
-}
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0d1117; --panel: #151b23; --text: #e6edf3; --muted: #9198a1; --line: #3d444d;
-    --accent: #4493f8; --danger: #f85149; --danger-bg: #3c1618; --warn: #d29922; --warn-bg: #3a2a07;
-    --ok: #3fb950; --ok-bg: #12301b;
-  }
+  color-scheme: dark;
+  --bg: #000000; --panel: #0b0c0e; --text: #e8e9ec; --muted: #8f949d; --line: #202226;
+  --accent: #6e9fff; --danger: #f2495c; --danger-bg: rgba(242, 73, 92, .15); --warn: #fade2a;
+  --warn-bg: rgba(250, 222, 42, .12); --ok: #73bf69; --ok-bg: rgba(115, 191, 105, .14);
 }
 * { box-sizing: border-box; }
 body {
   margin: 0; background: var(--bg); color: var(--text);
-  font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
 }
 header { display: flex; align-items: center; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
-.brand { font-weight: 700; }
+.brand { font-weight: 700; display: inline-flex; align-items: center; gap: 8px; }
 .tag { color: var(--muted); }
 main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
 h1 { font-size: 26px; line-height: 1.25; margin: 0 0 8px; }

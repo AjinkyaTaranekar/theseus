@@ -210,26 +210,39 @@ class Llm:
         model: str,
         ms: int,
     ) -> LlmReply:
-        _check_finish_reason(response.get("finish_reason"), purpose, key)
-        calls = response.get("tool_calls") or []
-        forced = tool_choice.get("function", {}).get("name") if isinstance(tool_choice, dict) else None
-        if forced and not any(c["name"] == forced for c in calls):
-            raise ModelError(f"{purpose} ({key}): the model did not call {forced}")
-        call = next((c for c in calls if c["name"] == forced), calls[0] if calls else None)
-        arguments: dict[str, Any] = {}
-        if call is not None:
-            try:
-                parsed = json.loads(call["arguments"] or "{}")
-            except json.JSONDecodeError as e:
-                raise ModelError(f"{purpose} ({key}): the tool arguments are not JSON: {e}") from e
-            if not isinstance(parsed, dict):
-                raise ModelError(f"{purpose} ({key}): the tool arguments are not an object")
-            arguments = parsed
-        return LlmReply(
-            tool=call["name"] if call else None,
-            arguments=arguments,
-            content=response.get("content", ""),
-            model=model,
-            ms=ms,
-            key=key,
-        )
+        return reply_from(purpose, key, tool_choice, response, model, ms)
+
+
+def reply_from(
+    purpose: str,
+    key: str,
+    tool_choice: dict[str, Any] | str | None,
+    response: dict[str, Any],
+    model: str,
+    ms: int,
+) -> LlmReply:
+    """The reply a normalized response gives: the forced tool's call, else the first call, else text.
+    Raises ModelError when the forced tool was not called or its arguments are not a JSON object."""
+    _check_finish_reason(response.get("finish_reason"), purpose, key)
+    calls = response.get("tool_calls") or []
+    forced = tool_choice.get("function", {}).get("name") if isinstance(tool_choice, dict) else None
+    if forced and not any(c["name"] == forced for c in calls):
+        raise ModelError(f"{purpose} ({key}): the model did not call {forced}")
+    call = next((c for c in calls if c["name"] == forced), calls[0] if calls else None)
+    arguments: dict[str, Any] = {}
+    if call is not None:
+        try:
+            parsed = json.loads(call["arguments"] or "{}")
+        except json.JSONDecodeError as e:
+            raise ModelError(f"{purpose} ({key}): the tool arguments are not JSON: {e}") from e
+        if not isinstance(parsed, dict):
+            raise ModelError(f"{purpose} ({key}): the tool arguments are not an object")
+        arguments = parsed
+    return LlmReply(
+        tool=call["name"] if call else None,
+        arguments=arguments,
+        content=response.get("content", ""),
+        model=model,
+        ms=ms,
+        key=key,
+    )
