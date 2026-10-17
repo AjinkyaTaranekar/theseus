@@ -18,7 +18,7 @@ from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from theseus.agent.render import code
+from theseus.agent.render import code, escape
 from theseus.api import reviews
 from theseus.api.github import GitHub
 from theseus.contracts.result import AnalysisResult, Candidate, PatchOp
@@ -27,7 +27,7 @@ from theseus.errors import GraphError, PatchError, TheseusError
 
 log = logging.getLogger(__name__)
 
-APPLY = re.compile(r"/theseus apply ([A-Z][0-9]*)")
+APPLY = re.compile(r"/theseus apply(?: ([A-Z][0-9]*))?")
 # GitHub logins: letters, digits and single hyphens, at most 39 characters; an App's bot ends in `[bot]`.
 LOGIN = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})(?:\[bot\])?")
 RESULTS_KEPT = 64
@@ -61,6 +61,7 @@ class Applied:
     commit_sha: str
     branch: str
     paths: list[str]
+    title: str = ""
 
 
 class Results:
@@ -98,10 +99,21 @@ class Results:
 
 
 def apply_command(body: str) -> str | None:
-    """The candidate ID when the comment is exactly `/theseus apply <ID>` (surrounding whitespace aside),
-    else None."""
+    """The candidate ID when the comment is exactly `/theseus apply <ID>`, "" when it is `/theseus apply`
+    alone (the recommended fix), surrounding whitespace aside; else None."""
     found = APPLY.fullmatch(body.strip())
-    return found[1] if found else None
+    return (found[1] or "") if found else None
+
+
+def command_for(candidate_id: str) -> str:
+    """The command as the person wrote it."""
+    return f"/theseus apply {candidate_id}".strip()
+
+
+def recommended(result: AnalysisResult) -> Candidate | None:
+    """The fix `/theseus apply` commits: the recommended one that passes, else the first that passes."""
+    passing = [c for c in result.candidates if c.verdict == "pass"]
+    return next((c for c in passing if c.recommended), passing[0] if passing else None)
 
 
 def latest(
@@ -200,6 +212,13 @@ def apply_fix(
     result = latest(results, store, repo, number, sha)
     if result is None:
         raise NoReview(sha)
+    if not candidate_id:
+        best = recommended(result)
+        if best is None:
+            raise Refused(
+                409, f"No fix passes in the review of {code(sha[:7])}, so there is nothing to apply."
+            )
+        candidate_id = best.id
     candidate = next((c for c in result.candidates if c.id == candidate_id), None)
     if candidate is None or not is_candidate_id(candidate_id):
         raise Refused(404, f"The review of {code(sha[:7])} has no fix {candidate_id}. {_passing(result)}")
@@ -232,7 +251,9 @@ def apply_fix(
         )
     commit = gh.commit_files(repo, branch, sha, changed, commit_message(candidate, result, user))
     log.info("%s#%d: applied fix %s for %s as %s", repo, number, candidate_id, user, commit[:7])
-    return Applied(candidate=candidate_id, commit_sha=commit, branch=branch, paths=sorted(changed))
+    return Applied(
+        candidate=candidate_id, commit_sha=commit, branch=branch, paths=sorted(changed), title=candidate.title
+    )
 
 
 def no_review(sha: str, outcome: str, candidate_id: str, world_root: str) -> str:
@@ -245,14 +266,15 @@ def no_review(sha: str, outcome: str, candidate_id: str, world_root: str) -> str
         )
     return (
         f"Theseus has no review of {code(sha[:7])}, this pull request's head, yet: it is reviewing it now. "
-        f"Comment {code(f'/theseus apply {candidate_id}')} again once the `Theseus` check finishes."
+        f"Comment {code(command_for(candidate_id))} again once the `Theseus` check finishes."
     )
 
 
 def applied_reply(applied: Applied) -> str:
     files = ", ".join(str(code(p)) for p in applied.paths)
     return (
-        f"Committed fix {applied.candidate} to {code(applied.branch)} as {code(applied.commit_sha[:7])} "
+        f"Committed the fix ({escape(applied.title)}) to {code(applied.branch)}"
+        f" as {code(applied.commit_sha[:7])} "
         f"({files}). Theseus reviews the new head now; the comment and the `Theseus` check update when it "
         "finishes."
     )

@@ -295,28 +295,55 @@ def why_line(result: AnalysisResult, repo: str, head_sha: str, world_root: str) 
     return None
 
 
-def do_line(result: AnalysisResult, level: str) -> Md:
-    """The one thing to do next."""
+def _lead(text: str) -> str:
+    """A title as part of a sentence: its first letter lowered, the rest as written."""
+    return text[:1].lower() + text[1:]
+
+
+def best_fix(result: AnalysisResult) -> Candidate | None:
+    """The fix to offer: the recommended one that passes, else the first that passes, else None."""
+    passing = [c for c in result.candidates if c.verdict == "pass"]
+    return next((c for c in passing if c.recommended), passing[0] if passing else None)
+
+
+def tested_line(result: AnalysisResult) -> str:
+    return (
+        f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
+        if result.opened
+        else "breaks nothing"
+    )
+
+
+def do_line(result: AnalysisResult, level: str, suggested: str | None = None) -> Md:
+    """The one thing to do next. `suggested` links the line where Theseus suggested the fix, when it did."""
     if level == "clear":
         return Md("**Fix:** nothing to fix.")
     if level == "look":
         return Md("**Fix:** check what Theseus couldn't, below, before you merge.")
     passing = [c for c in result.candidates if c.verdict == "pass"]
     recommended = next((c for c in passing if c.recommended), None)
-    if recommended is not None:
-        tested = (
-            f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
-            if result.opened
-            else "breaks nothing"
-        )
+    best = best_fix(result)
+    if suggested is not None and best is not None:
         return Md(
-            f"**Fix:** reply {code(f'/theseus apply {recommended.id}')} to commit fix {recommended.id}"
-            f" ({escape(recommended.title)}). Tested on a copy of the graph: {tested}."
+            f"**Fix:** commit Theseus's suggestion on {suggested} ({_lead(escape(best.title))}),"
+            f" tested on a copy of the graph: {tested_line(result)}. Edit it first if you like;"
+            " Theseus reviews whatever you push."
+        )
+    if recommended is not None:
+        tested = tested_line(result)
+        return Md(
+            f"**Fix:** reply {code('/theseus apply')} to commit the fix"
+            f" ({_lead(escape(recommended.title))}). Tested on a copy of the graph: {tested}."
         )
     if passing:
-        ids = _names([code(c.id) for c in passing])
-        verb = "passes but needs" if len(passing) == 1 else "pass but need"
-        return Md(f"**Fix:** {ids} {verb} a closer look first. Then reply {code('/theseus apply <ID>')}.")
+        if len(passing) == 1:
+            return Md(
+                f"**Fix:** one fix passes but needs a closer look first. Then reply {code('/theseus apply')}."
+            )
+        ids = _names([f"{code(c.id)} ({_lead(escape(c.title))})" for c in passing])
+        return Md(
+            f"**Fix:** {ids} pass but need a closer look first. Then reply {code('/theseus apply <ID>')}."
+        )
     if result.candidates:
         return Md(
             "**Fix:** ask the author to change the PR. None of the fixes Theseus tested passes every check."
@@ -333,7 +360,14 @@ def do_line(result: AnalysisResult, level: str) -> Md:
     return Md("**Fix:** ask the author why the change needs this access.")
 
 
-def card_lines(result: AnalysisResult, repo: str, head_sha: str, world_root: str, level: str) -> list[Md]:
+def card_lines(
+    result: AnalysisResult,
+    repo: str,
+    head_sha: str,
+    world_root: str,
+    level: str,
+    suggested: str | None = None,
+) -> list[Md]:
     """The lines under the consequence: says, needs and grants, why, do. Outside PR mode, only why."""
     if result.mode != "pr":
         return [line for line in (why_line(result, repo, head_sha, world_root),) if line]
@@ -341,7 +375,7 @@ def card_lines(result: AnalysisResult, repo: str, head_sha: str, world_root: str
         says_line(result),
         needs_and_grants(result),
         why_line(result, repo, head_sha, world_root),
-        do_line(result, level),
+        do_line(result, level, suggested),
     ]
     return [line for line in lines if line]
 
@@ -534,6 +568,19 @@ def cut_sentence(result: AnalysisResult, repo: str, head_sha: str, world_root: s
     return Md(f"{len(edges)} changes close every path: {'; '.join(edges)}.")
 
 
+def _why_not(c: Candidate) -> str:
+    """Why a fix doesn't pass, in a few words."""
+    if c.requirements_broken:
+        return f"breaks {', '.join(c.requirements_broken)}"
+    if c.paths_left:
+        return f"leaves {_plural(len(c.paths_left), 'way')} in"
+    if c.new_paths:
+        return f"opens {_plural(len(c.new_paths), 'new way')} in"
+    if c.calls_broken:
+        return "breaks a code call"
+    return "couldn't be checked" if c.verdict == "unknown" else c.verdict
+
+
 def _fix_row(c: Candidate) -> list[Md]:
     who = "rule" if c.source == "rule" else escape(c.proposed_by)
     paths = []
@@ -543,7 +590,6 @@ def _fix_row(c: Candidate) -> list[Md]:
         paths.append(f"{len(c.new_paths)} new")
     verdict_cell = f"{c.verdict}, needs a closer look" if c.needs_closer_look else c.verdict
     cells = [
-        c.id,
         f"{escape(c.title)} ({who})",
         ", ".join(paths) or "all closed",
         f"breaks {escape(', '.join(c.requirements_broken))}" if c.requirements_broken else "kept",
@@ -559,12 +605,15 @@ def apply_hint(candidates: list[Candidate]) -> Md | None:
     if not passing:
         return None
     recommended = next((c for c in passing if c.recommended), None)
+    if len(passing) == 1:
+        return Md(f"Reply {code('/theseus apply')} to commit it.")
+    named = _names([f"{code(c.id)} ({_lead(escape(c.title))})" for c in passing if c is not recommended])
     if recommended is None:
-        ids = _names([code(c.id) for c in passing])
-        return Md(f"Reply {code('/theseus apply <ID>')} with a fix that passes: {ids}.")
-    others = [code(c.id) for c in passing if c is not recommended]
-    also = f" {_names(others)} also {'passes' if len(others) == 1 else 'pass'}." if others else ""
-    return Md(f"Reply {code(f'/theseus apply {recommended.id}')} to commit a fix.{also}")
+        return Md(f"Reply {code('/theseus apply <ID>')} with a fix that passes: {named}.")
+    return Md(
+        f"Reply {code('/theseus apply')} to commit the recommended fix, or {code('/theseus apply <ID>')}"
+        f" for {named}."
+    )
 
 
 def _path_row(p: PathRecord) -> dict[str, Md]:
@@ -651,6 +700,7 @@ def _context(
     scale: int,
     falkordb: str | None,
     graph_url: str | None,
+    suggestion: tuple[str, int] | None = None,
 ) -> dict[str, Any]:
     caps = {k: max(1, v // scale) for k, v in CAPS.items()}
     status = verdict(result)
@@ -658,6 +708,14 @@ def _context(
     risks, risks_more = at_risk(result)
     pr = result.mode == "pr"
     passing = any(c.verdict == "pass" for c in result.candidates)
+    suggested = None
+    if suggestion is not None:
+        path, line = suggestion
+        name = f"{path.rsplit('/', 1)[-1]}:{line}"
+        url = f"https://github.com/{quote(repo)}/blob/{quote(head_sha)}/{quote(path)}#L{line}"
+        suggested = f"[{name}]({url})"
+    shown = [c for c in result.candidates if c.verdict == "pass"] if passing else result.candidates
+    others = [c for c in result.candidates if c not in shown]
     return {
         "marker": Md(MARKER),
         "status": status,
@@ -665,7 +723,7 @@ def _context(
         "headline": None if pr else result.headline,
         "consequence": consequence(result) if pr or result.opened or result.use_beyond_intent else None,
         "suspicious": bool(result.intent and result.intent.suspicious),
-        "lines": Md(_BREAK.join(card_lines(result, repo, head_sha, world_root, status.level))),
+        "lines": Md(_BREAK.join(card_lines(result, repo, head_sha, world_root, status.level, suggested))),
         "risks": risks,
         "risks_more": risks_more,
         "checkov": checkov_line(checkov, bool(result.opened)) if pr else None,
@@ -682,7 +740,17 @@ def _context(
             for p in pick_diagrams(result.opened)
         ],
         "cut": cut_sentence(result, repo, head_sha, world_root) if result.opened else None,
-        "fixes": [_fix_row(c) for c in result.candidates],
+        "fixes": [_fix_row(c) for c in shown],
+        "fixes_tried": len(result.candidates),
+        "other_fixes": Md(
+            f"Theseus also tried {len(others)} other {'fix' if len(others) == 1 else 'fixes'} that "
+            + ("doesn't" if len(others) == 1 else "don't")
+            + " pass: "
+            + _names([f"{_lead(escape(c.title))} ({_why_not(c)})" for c in others])
+            + "."
+        )
+        if others
+        else None,
         "nothing_passes": bool(result.candidates) and not passing,
         "apply_hint": apply_hint(result.candidates),
         "unknowns": result.unknowns[: caps["unknowns"]],
@@ -710,13 +778,17 @@ def render_comment(
     world_root: str = "demo-infra",
     falkordb: str | None = None,
     graph_url: str | None = None,
+    suggestion: tuple[str, int] | None = None,
 ) -> str:
     """The whole PR comment, marker first. `falkordb` is the version the graphs were built in; `graph_url`
-    is the review's page. Long lists are cut short, so the comment fits GitHub's limit."""
+    is the review's page; `suggestion` is the repo path and line where Theseus suggested the fix. Long lists
+    are cut short, so the comment fits GitHub's limit."""
     template = _ENV.get_template("comment.md")
     scale = 1
     while True:
-        context = _context(result, repo, head_sha, checkov, world_root, scale, falkordb, graph_url)
+        context = _context(
+            result, repo, head_sha, checkov, world_root, scale, falkordb, graph_url, suggestion
+        )
         comment = template.render(**context)
         if len(comment) < MAX_CHARS or scale >= 64:
             return comment

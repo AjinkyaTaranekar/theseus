@@ -65,3 +65,23 @@ jobs:
             -H "X-Theseus-Token: $THESEUS_TOKEN" \
             --data-binary @request.json -o response.json
           jq -r '"main at \(.sha[0:7]): \(.dangerous) dangerous paths, \(.unused_grants) unused grants, \(.findings | length) findings"' response.json
+
+      # Nightly and on demand, also read AWS Health and GitHub's status page, and keep each open incident's
+      # blast radius on main for the dashboard's Incidents view. A push to main only rebuilds the graph.
+      - name: Check the providers' status feeds
+        if: github.event_name != 'push'
+        env:
+          THESEUS_URL: ${{ vars.THESEUS_URL }}
+          THESEUS_TOKEN: ${{ secrets.THESEUS_TOKEN }}
+          REPO: ${{ github.repository }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          jq -n --arg repo "$REPO" --arg trigger "$TRIGGER" '{repo: $repo, trigger: $trigger}' > check.json
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST "${THESEUS_URL%/}/incidents/check" \
+            -H "Content-Type: application/json" \
+            -H "X-Theseus-Token: $THESEUS_TOKEN" \
+            --data-binary @check.json -o incidents.json
+          jq -r '"status feeds: \(.incidents) open incident(s), \(.reaching_main) reaching main"' incidents.json
+          jq -r '.headlines[]' incidents.json

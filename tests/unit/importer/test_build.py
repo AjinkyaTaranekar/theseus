@@ -53,12 +53,12 @@ def test_real_fixture_counts_and_only_new_membership() -> None:
     worlds = [fixture(side) for side in ["base", "head"]]
     base, head = [build_rows(world, {}, adapters) for world, adapters in worlds]
     for label, count in [
-        ("User", 4),
-        ("Group", 3),
-        ("Role", 11),
-        ("Workload", 6),
-        ("Resource", 19),
-        ("Requirement", 17),
+        ("User", 5),
+        ("Group", 4),
+        ("Role", 14),
+        ("Workload", 8),
+        ("Resource", 22),
+        ("Requirement", 21),
     ]:
         assert sum(label in n.labels for n in base.nodes) == count
     before = {(e.type, e.src, e.dst) for e in base.edges}
@@ -80,8 +80,8 @@ def test_real_fixture_counts_and_only_new_membership() -> None:
     )
     nodes = {n.id for n in head.nodes}
     assert all(e.src in nodes and e.dst in nodes for e in head.edges)
-    assert len([e for e in head.edges if e.type == "FOR"]) == 17
-    assert len([e for e in head.edges if e.type == "NEEDS"]) == 17
+    assert len([e for e in head.edges if e.type == "FOR"]) == 21
+    assert len([e for e in head.edges if e.type == "NEEDS"]) == 21
     for e in head.edges:
         if e.type in {"FOR", "NEEDS"}:
             ev = e.evidence[0]
@@ -282,9 +282,9 @@ def test_real_ci_gives_every_requirement_its_principal(scenario: str, side: str)
     world, adapters = fixture(side, scenario, ci=GithubAdapter())
     rows = build_rows(world, {}, adapters)
     nodes = {node.id for node in rows.nodes}
-    assert sum("Requirement" in node.labels for node in rows.nodes) == 17
-    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 17
-    assert len([edge for edge in rows.edges if edge.type == "NEEDS"]) == 17
+    assert sum("Requirement" in node.labels for node in rows.nodes) == 21
+    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 21
+    assert len([edge for edge in rows.edges if edge.type == "NEEDS"]) == 21
     assert WORKFLOW in nodes
     assert all(edge.src in nodes and edge.dst in nodes for edge in rows.edges)
     assert not [message for message in rows.unknowns if "missing FOR endpoint" in message]
@@ -298,8 +298,8 @@ def test_without_workflow_files_requirements_stay_and_report_the_missing_workflo
     world.ci_files = {}
     rows = build_rows(world, {}, adapters)
     nodes = {node.id for node in rows.nodes}
-    assert sum("Requirement" in node.labels for node in rows.nodes) == 17
-    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 14
+    assert sum("Requirement" in node.labels for node in rows.nodes) == 21
+    assert len([edge for edge in rows.edges if edge.type == "FOR"]) == 18
     assert WORKFLOW not in nodes
     assert {
         message

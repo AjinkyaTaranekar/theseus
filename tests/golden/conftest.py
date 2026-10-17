@@ -24,7 +24,11 @@ from theseus.importer.world import load_world
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "fixtures"
 # A2 recorded Jev on the demo's resource names; every resource the pipeline asks about is in it.
-RECORDED = ROOT / "recordings/jev/sensitivity-38b5f02e4cbd.json"
+# A2 recorded Jev on the demo's resource names; the gaps legacy.tf planted were recorded on their own.
+RECORDED = [
+    ROOT / "recordings/jev/sensitivity-38b5f02e4cbd.json",
+    ROOT / "recordings/jev/sensitivity-4f9306d7b906.json",
+]
 
 
 class RecordedJev:
@@ -32,7 +36,11 @@ class RecordedJev:
     is replayed by Jev itself: those recordings are keyed by the PR text alone."""
 
     def __init__(self) -> None:
-        answers = json.loads(RECORDED.read_text(encoding="utf-8"))["answers"]
+        answers = {
+            k: v
+            for path in RECORDED
+            for k, v in json.loads(path.read_text(encoding="utf-8"))["answers"].items()
+        }
         self.answers = {k: JevAnswer.model_validate(v) for k, v in answers.items()}
         self.jev = Jev(get_settings().model_copy(update={"theseus_mode": "replay"}))
 

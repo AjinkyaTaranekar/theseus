@@ -20,6 +20,8 @@ from theseus.contracts.posture import (
     CostLine,
     CostSummary,
     Dependency,
+    DependencyRoutes,
+    OutageMap,
     Posture,
     Reach,
     Saving,
@@ -28,6 +30,7 @@ from theseus.contracts.posture import (
 from theseus.contracts.result import EdgeRow, NodeInfo, NodeRow, PathRecord, Requirement
 from theseus.contracts.schema import PATH_TYPES, RESOURCE
 from theseus.engine.analyze import analyze
+from theseus.engine.incident import outage_basis
 from theseus.engine.intent_effect import RANK
 
 log = logging.getLogger(__name__)
@@ -235,9 +238,11 @@ def posture(
     requirements: list[Requirement],
     actors: list[str],
     cost: list[CostLine],
+    outages: list[OutageMap] | None = None,
 ) -> Posture:
     """The posture of a loaded graph: reach for these actors, single points of failure for every code call
-    and config requirement, articulation points, unreached data, and the cost with its savings."""
+    and config requirement, articulation points, unreached data, the cost with its savings, and the basis an
+    outage is answered from (the adapters' `outages` and each dependency's routes)."""
     nodes = {n.id: n for n in state.rows.nodes}
     deps = dependencies(state, requirements)
     principals = sorted(set(actors) | {d.principal for d in deps if d.principal in nodes})
@@ -259,4 +264,11 @@ def posture(
         for n in sorted(named)
         if n in nodes
     }
-    return found.model_copy(update={"nodes": info})
+    routes = [
+        DependencyRoutes(
+            dependency=d, routes=sorted(p.route for p in _routes(analysis.paths.get(d.principal, []), d))
+        )
+        for d in deps
+    ]
+    outage = outage_basis(state, routes, outages or [], cost)
+    return found.model_copy(update={"nodes": info, "outage": outage})

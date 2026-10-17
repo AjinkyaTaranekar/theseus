@@ -338,6 +338,40 @@ One log group per workload, 365 days' retention, CloudWatch's default encryption
 
 70 modeled resources across `people.tf` to `logs.tf`.
 
+### `legacy.tf`
+
+Access and resources from before the platform team's IAM review, each a gap Theseus should find on `main` (see
+"The gaps planted in `legacy.tf`" below). A new file, so no line any `expected.json` cites moves.
+
+| Address | Name | What it says |
+| --- | --- | --- |
+| `aws_iam_user.casey` | `casey-contractor` | |
+| `aws_iam_group.contractors` | `contractors` | |
+| `aws_iam_user_group_membership.casey_contractors` | | `casey-contractor` in `contractors` |
+| `aws_iam_group_policy.contractors_assume` | `assume-platform-admin` | Sid `AssumePlatformAdmin`: `sts:AssumeRole` on `role/platform-admin` |
+| `aws_iam_role.platform_admin` | `platform-admin` | Trust Sid `TrustAccountPrincipals`, as `prod-support` |
+| `aws_iam_role_policy.platform_admin` | `platform-admin-break-glass` | Sid `ReadAllSecrets`: `secretsmanager:GetSecretValue` on `secret:*`. Sid `ReadCompanyFiles`: `s3:GetObject` on `demo-company-files/*` |
+| `aws_iam_role.backup_runner` | `backup-runner` | Trust Sid `GitHubActionsOIDC`, `StringLike` sub `repo:demo-org/infra:*` |
+| `aws_iam_role_policy.backup_runner` | `backup-runner` | Sid `BackupSecrets`: `secretsmanager:GetSecretValue` on `secret:*`. Sid `BackupCompanyFiles`: `s3:GetObject`, `s3:ListBucket` on `demo-company-files` and `demo-company-files/*` |
+| `aws_iam_role.shared_lambda` | `shared-lambda` | Trusts the service `lambda.amazonaws.com` |
+| `aws_iam_role_policy.shared_lambda` | `shared-lambda` | Sid `ReadSmtpSecret`: `secretsmanager:GetSecretValue` on `secret:smtp-credentials-*`. Sid `ReadInvoices`: `s3:GetObject` on `demo-company-files/invoices/*`. Sid `ReadPaymentsKey`: `secretsmanager:GetSecretValue` on `secret:payments-api-key-*` |
+| `aws_secretsmanager_secret.smtp` | `smtp-credentials` | |
+| `aws_lambda_function.invoice_mailer` | `invoice-mailer` | Role `shared-lambda`; env `INVOICES_BUCKET = "demo-company-files"`, `SMTP_SECRET = "smtp-credentials"`; code `services/invoice_mailer` |
+| `aws_lambda_function.receipt_renderer` | `receipt-renderer` | Role `shared-lambda`; the same env; code `services/receipt_renderer` |
+| `aws_db_instance.reports_replica` | `reports-replica` | `db.t4g.medium`, 100 GB, single-AZ; nothing grants access to it |
+| `aws_secretsmanager_secret.legacy_reports` | `legacy-reports-password` | |
+
+### The gaps planted in `legacy.tf`
+
+| Gap | Where | What Theseus should report on `main` |
+| --- | --- | --- |
+| Privilege escalation | `casey-contractor` → `contractors` → can become `platform-admin` → every secret | `casey-contractor` reaches `prod-db-credentials` and `customer-db`; dangerous paths |
+| Broad OIDC trust and a wildcard grant | `backup-runner` trusts any workflow in `demo-org/infra`; it reads `secret:*` | `infra/snapshot.yml` reaches every secret; with GHSA-demo-0002, a finding that rotates all four |
+| One role for two services | `invoice-mailer` and `receipt-renderer` run as `shared-lambda` | `role:shared-lambda` is a single point of failure for both |
+| A grant no code uses | `shared-lambda` can read `payments-api-key`; neither function's code does | two unused grants, and candidate U to remove them |
+| A hub role | `platform-admin` joins the contractors to every secret | an articulation point |
+| A left-over database | `reports-replica`: nothing reaches it and no code calls it | unreached; about $59 a month to save |
+
 ## Terraform that Theseus skips (task C1)
 
 These make the account look real. The importer skips every type it does not model and counts it in the result's
@@ -349,15 +383,15 @@ These make the account look real. The importer skips every type it does not mode
 | `network.tf` | `aws_vpc.main`; `aws_default_security_group.main` with no rules, so nothing can use it; four `aws_subnet` (two private, two public); `aws_internet_gateway.main`; `aws_route_table.public` and two associations; `aws_security_group.app` and `.db`; `aws_vpc_security_group_egress_rule.app_https` (443 out from the app group); `aws_vpc_security_group_ingress_rule.db_from_app` (5432 from the app group); `aws_db_subnet_group.main` (`demo-db-subnets`); `aws_vpc_endpoint.s3` |
 | `platform.tf` | `aws_kms_key.queues` (rotation on; its policy lets the orders task roles use it through SQS) and its alias `alias/demo-queues`; `aws_ecr_repository.orders_api` and `.orders_worker` (immutable tags, scan on push); `aws_cloudwatch_event_rule` and `_target` for billing-job (02:00 UTC) and analytics-export (03:00 UTC) with their `aws_lambda_permission`; for every bucket, `demo-company-files` included: `aws_s3_bucket_versioning`, `aws_s3_bucket_server_side_encryption_configuration` (AES256), `aws_s3_bucket_public_access_block` (all four settings on), `aws_s3_bucket_lifecycle_configuration` and `aws_s3_bucket_notification` (to EventBridge); `aws_db_parameter_group.postgres16` (`demo-postgres16`, logs DDL and slow statements); `aws_route53_zone.internal` (`internal.demo.test`) with records for billing-api and orders-api; `aws_apigatewayv2_api.billing_internal` |
 
-In total the world has 122 resources across 16 AWS services (counting the VPC types as EC2): 70 modeled and 52
-skipped.
+In total the world has 137 resources across 16 AWS services (counting the VPC types as EC2): 85 modeled
+(15 of them in `legacy.tf`) and 52 skipped.
 
 ## Services (task C1)
 
 Real-looking code, a few modules per service, 40 to 150 lines a module. No tests inside `demo-infra/`. The code
 reader (task C2) must turn exactly these calls into edges. Line numbers come from the files once C1 merges. A
 workload's calls to one resource are one `CALLS` edge whose `grants` hold every access and whose evidence holds
-every call's line (spec 04 section 7). On `main` that is 10 `CALLS` and 3 `REQUESTS`; 5 calls are counted as
+every call's line (spec 04 section 7). On `main` that is 14 `CALLS` and 3 `REQUESTS`; 5 calls are counted as
 skipped (the queue's send, receive and delete, the topic's publish, and the payment provider).
 
 | File | Functions and what they call | Edges the code reader makes |
@@ -378,6 +412,8 @@ skipped (the queue's send, receive and delete, the topic's publish, and the paym
 | `support_portal/clients.py` | `BILLING_API_URL`, `ORDERS_API_URL` from the environment; `get_invoice` and `get_customer` → `httpx.get(f"{BILLING_API_URL}/...")`; `get_order` → `httpx.get(f"{ORDERS_API_URL}/orders/{order_id}")` | `REQUESTS` to `workload:billing-api` and `workload:orders-api`. No call to any secret |
 | `support_portal/views.py` | `ticket_context`, `refund_page`. The refund confirmation text has the typo "recieved" | none |
 | `analytics_export/handler.py` | `handler(event, context)`: `export.dump_orders`, `export.write_raw`, `export.read_raw`, `export.aggregate`, `export.write_curated` | none of its own |
+| `invoice_mailer/handler.py` | `INVOICES_BUCKET`, `SMTP_SECRET` from the environment; `handler`: `_sm.get_secret_value(SecretId=SMTP_SECRET)`, then for each SNS record `_s3.get_object(Bucket=INVOICES_BUCKET, Key=f"invoices/{...}.pdf")` and an SMTP send | `CALLS` read to `secret:smtp-credentials`; `CALLS` read to `s3://demo-company-files/invoices/` |
+| `receipt_renderer/handler.py` | The same two variables; `handler`: `_s3.get_object(...)` on the invoice, `_sm.get_secret_value(SecretId=SMTP_SECRET)` for the footer | `CALLS` read to `s3://demo-company-files/invoices/`; `CALLS` read to `secret:smtp-credentials` |
 | `analytics_export/export.py` | `_ddb.scan(TableName=ORDERS_TABLE, ...)`; `_s3.put_object(Bucket=LAKE_BUCKET, Key=f"raw/orders/{day}.jsonl")`; `_s3.get_object(...)` on the same key; `_s3.put_object(Bucket=LAKE_BUCKET, Key=f"curated/daily_sales/{day}.csv")` | `CALLS` read to `dynamodb:demo-orders`; write and read to `s3://demo-data-lake/raw/`; write to `s3://demo-data-lake/curated/` |
 
 ## Workflows in `demo-infra/workflows/demo-org/`
@@ -391,6 +427,7 @@ these never run, and the fictional `demo-thirdparty/file-diff` Action is never f
 | `infra/ci.yml` | `pull_request` | none | `actions/checkout@v4`, `hashicorp/setup-terraform@v3`, `actions/setup-python@v5`; `terraform fmt -check`, `terraform validate`, `ruff check services` | none (no ID token) |
 | `docs-site/preview.yml` | `pull_request` | `write` (copied from infra, never used) | `actions/checkout@v4`, `demo-thirdparty/file-diff@v3` to list changed pages, then a build | `repo:demo-org/docs-site:pull_request` |
 | `website/lint.yml` | `pull_request` | none | `actions/checkout@v4`, `demo-thirdparty/file-diff@v3` | none |
+| `infra/snapshot.yml` | `push` to `main` | `write` | `actions/checkout@v4`, `aws-actions/configure-aws-credentials@v4` with `role/backup-runner`, `demo-thirdparty/s3-sync@v1` to copy company files to the backup bucket | `repo:demo-org/infra:ref:refs/heads/main` |
 
 ## `theseus.yaml` (world root)
 
@@ -440,6 +477,10 @@ requirements:
   - {id: R15, principal: user:alex-analyst, access: read, resource: "s3://demo-data-lake/curated/"}
   - {id: R16, principal: user:jordan-platform, access: read, resource: "s3://demo-app-logs/"}
   - {id: R17, principal: workflow:demo-org/infra/deploy.yml, access: write, resource: "s3://demo-terraform-state/"}
+  - {id: R18, principal: workload:invoice-mailer, access: read, resource: "s3://demo-company-files/invoices/"}
+  - {id: R19, principal: workload:invoice-mailer, access: read, resource: "secret:smtp-credentials"}
+  - {id: R20, principal: workload:receipt-renderer, access: read, resource: "s3://demo-company-files/invoices/"}
+  - {id: R21, principal: workload:receipt-renderer, access: read, resource: "secret:smtp-credentials"}
 ```
 
 ## What `main` looks like
