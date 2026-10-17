@@ -96,7 +96,7 @@ def test_run_finding_matches_the_answer_key(deps: Deps) -> None:
     assert result.mode == "finding"
     assert result.finding is not None and result.finding["id"] == "GHSA-demo-0001"
     assert result.finding["workflows"] == [PREVIEW, LINT]
-    keys = ["scenario", "mode", "min_cut", "candidates", "rotate", "staging_to_prod"]
+    keys = ["scenario", "mode", "min_cut", "candidates", "recommended", "rotate", "staging_to_prod"]
     assert compare(project(result), expected(SCENARIO), keys) == []
 
 

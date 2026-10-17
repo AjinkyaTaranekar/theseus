@@ -313,8 +313,10 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
                     category=by_id[node_id].category, sensitivity=by_id[node_id].sensitivity
                 )
     candidates = contain(state, cut, requirements, workflows, deps)
+    scores, risk_ms = finding_breakage(candidates, requirements, advisory, state, deps)
+    candidates = rank(candidates, scores)
     urgency, urgency_ms = finding_urgency(advisory, workflows, found.dangerous, state, deps)
-    jev_ms += urgency_ms
+    jev_ms += risk_ms + urgency_ms
     total_ms = int((time.perf_counter() - start) * 1000)
     return AnalysisResult(
         scenario=scenario_of(world),
@@ -438,6 +440,29 @@ def _scan(world: World, deps: Deps) -> tuple[AnalysisResult, GraphState]:
         nodes=dict(sorted(nodes.items())),
     )
     return result, state
+
+
+def finding_breakage(
+    candidates: list[Candidate],
+    requirements: list[Requirement],
+    advisory: dict[str, Any],
+    state: GraphState,
+    deps: Deps,
+) -> tuple[dict[str, float], int]:
+    """Jev's chance that each containment fix breaks something the engine cannot see, and the milliseconds it
+    took, as `breakage_scores` gives them for a PR or a scan.
+
+    Like urgency, it never blocks containment: an incident needs the blast radius and the rotate list more
+    than it needs advice. A Jev that fails leaves no scores, so the fix keeps the engine's ranking, and the
+    reason is logged. Jev can still veto when it answers, and never approves."""
+    start = time.perf_counter()
+    try:
+        return breakage_scores(candidates, requirements, state, deps)
+    except ModelError:
+        log.warning(
+            "breakage unavailable for %s; its fix is ranked without a veto", advisory["id"], exc_info=True
+        )
+        return {}, int((time.perf_counter() - start) * 1000)
 
 
 def finding_urgency(
