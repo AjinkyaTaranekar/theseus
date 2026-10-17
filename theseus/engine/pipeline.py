@@ -1,8 +1,9 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
 PR mode reports all requirements, protects approved ones in a combined cut for actors with opened paths,
-verifies applicable rule fixes on graph copies, and flags new code calls to sensitive data no owner approved.
-Scan mode lists the grants the code never uses and verifies candidate U, which removes them.
+verifies applicable rule fixes on graph copies, has the fix agent design candidate B, and flags new code
+calls to sensitive data no owner approved. Scan mode lists the grants the code never uses and verifies
+candidate U, which removes them.
 The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
@@ -14,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from theseus.agent.fixer import AgentFix, design_fix
 from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
 from theseus.contracts.adapters import IacResource
@@ -46,6 +48,7 @@ from theseus.errors import IngestError, ModelError, PatchError
 from theseus.graph.algos import choke_points
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
+from theseus.mcp.tools import ToolContext, default_engine
 
 log = logging.getLogger(__name__)
 
@@ -205,6 +208,11 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
                     deps.adapters,
                 )
             )
+    statuses = {status.id: status.status for status in after.requirements}
+    fix = agent_fix(base_state, head_state, found.opened, cut, requirements, enforced, who, statuses, deps)
+    if fix is not None:
+        candidates.append(fix.candidate)
+        llm_ms += fix.llm_ms
     scores, risk_ms = breakage_scores(candidates, enforced, head_state, deps)
     candidates = rank(candidates, scores)
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
@@ -219,6 +227,8 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     for node_id in sorted({n for use in uses for n in (use.workload, use.resource, *use.unlocks)}):
         node = head_rows[node_id]
         head_nodes[node_id] = NodeInfo(category=node.category, sensitivity=node.sensitivity)
+    if fix is not None:
+        head_evidence.update(fix.evidence)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms = base_jev + head_jev + risk_ms
@@ -240,12 +250,45 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         staging_to_prod=staging_to_prod(Analysis(dangerous=found.opened), head_state),
         choke_points=choke_points(deps.store, head_state),
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
+        tool_trace=fix.trace if fix is not None else [],
         timings=Timings(
             engine_ms=total_ms - jev_ms - llm_ms, llm_ms=llm_ms, jev_ms=jev_ms, total_ms=total_ms
         ),
         coverage=coverage(head, head_state.rows, deps),
         nodes=dict(sorted({**base_nodes, **head_nodes}.items())),
     )
+
+
+def agent_fix(
+    base: GraphState,
+    head: GraphState,
+    opened: list[PathRecord],
+    cut: MinCut | None,
+    requirements: list[Requirement],
+    enforced: list[Requirement],
+    who: list[str],
+    statuses: dict[str, str],
+    deps: Deps,
+) -> AgentFix | None:
+    """Candidate B from the fix agent (A7), verified by the engine on its own graph copy, for a PR that opened
+    a dangerous path. None without an LLM or an opened path, and when the model gives no fix: the rule fixes
+    still stand, and the log says why."""
+    if deps.llm is None or not opened:
+        return None
+    context = ToolContext(
+        store=deps.store,
+        states={state.name: state for state in (base, head)},
+        requirements=enforced,
+        actors=who,
+        adapters=deps.adapters,
+        engine=default_engine(),
+        fix_actors=sorted({path.actor for path in opened}),
+    )
+    try:
+        return design_fix(deps.llm, context, head, base, opened, cut, requirements, statuses)
+    except ModelError:
+        log.warning("the fix agent gave no candidate B; the rule fixes stand alone", exc_info=True)
+        return None
 
 
 def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisResult:
