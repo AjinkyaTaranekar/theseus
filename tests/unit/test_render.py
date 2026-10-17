@@ -38,6 +38,7 @@ from theseus.agent.render import (
     verdict,
     why_line,
 )
+from theseus.agent.render import tested_line as fix_tested_line
 from theseus.api.stub import result_from_expected
 from theseus.contracts.result import (
     AnalysisResult,
@@ -380,7 +381,27 @@ def test_the_consequence_of_code_reading_beyond_intent_and_of_the_other_verdicts
     assert (
         consequence(needs_a_look()) == "**Theseus couldn't check 1 part of this change.** It's listed below."
     )
-    assert consequence(AnalysisResult(mode="pr")) == "**No new access to sensitive data.**"
+    assert consequence(AnalysisResult(mode="pr")) == (
+        "**Theseus traced every path to sensitive data in this commit: none of them is new.**"
+    )
+
+
+def test_a_pr_that_only_closes_paths_leads_with_what_it_closes() -> None:
+    closing = AnalysisResult(mode="pr", closed=intern().opened, nodes=NODES)
+    found = verdict(closing)
+    assert (found.level, found.heading) == (
+        "clear",
+        f"🟢 Closes {len(closing.closed)} ways to sensitive data",
+    )
+    assert consequence(closing).startswith("**Once merged, priya-intern can no longer reach customer-db")
+    one = AnalysisResult(mode="pr", closed=intern().opened[:1], nodes=NODES)
+    assert verdict(one).title == "Closes 1 way to sensitive data"
+
+
+def test_one_way_in_reads_as_the_only_way_in() -> None:
+    assert fix_tested_line(intern().model_copy(update={"opened": intern().opened[:1]})) == (
+        "closes the only way in, breaks nothing"
+    )
 
 
 # What the PR says, asked for and would get ------------------------------------------------------------------
@@ -755,7 +776,7 @@ def test_unknowns_and_what_theseus_checked_are_folded() -> None:
     ) in inside
     assert "Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s." in inside
     assert "Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`." in inside
-    assert "Models: not recorded." in render(intern().model_copy(update={"models": {}}))
+    assert "Models:" not in render(intern().model_copy(update={"models": {}}))  # nothing to say then
 
 
 def test_the_falkordb_line_says_where_the_graph_lives_and_how_big_it_is() -> None:

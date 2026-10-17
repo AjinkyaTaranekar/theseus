@@ -19,10 +19,11 @@ from urllib.parse import quote
 from theseus.agent.labels import severity
 from theseus.agent.render import verdict
 from theseus.config import Settings
-from theseus.contracts.incident import IncidentReport
+from theseus.contracts.incident import Incident, IncidentReport
 from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import PATH_TYPES
+from theseus.engine.incident import blast
 from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
 
@@ -257,16 +258,24 @@ def outage_terms(basis: OutageBasis) -> dict[str, Any]:
     here: dict[tuple[str, str], set[str]] = {}
     for tag in basis.tags:
         here.setdefault((tag.provider, tag.service), set()).add(tag.node)
+    services = []
+    for t in basis.terms:
+        row: dict[str, Any] = {
+            "provider": t.provider,
+            "service": t.service,
+            "name": t.name,
+            "here": len(here.get((t.provider, t.service), set())),
+        }
+        if row["here"]:
+            # What a full outage of it would do here, so the page can rank the services by it.
+            found = blast(basis, Incident(provider=t.provider, service=t.service))
+            row["down"] = sum(1 for m in found.matched if m.state == "down")
+            row["affected"] = len(found.affected)
+            row["breaks"] = sum(1 for b in found.broken if b.state == "broken")
+            row["dependencies"] = found.dependencies
+        services.append(row)
     return {
-        "services": [
-            {
-                "provider": t.provider,
-                "service": t.service,
-                "name": t.name,
-                "here": len(here.get((t.provider, t.service), set())),
-            }
-            for t in basis.terms
-        ],
+        "services": services,
         "regions": [{"code": r.code, "name": r.name} for r in basis.regions],
         "world_regions": sorted({t.region for t in basis.tags if t.region}),
     }
@@ -366,6 +375,7 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
             {"actor": p.actor, "target": p.target, "sensitivity": p.sensitivity} for p in result.opened
         ],
         "beyond_intent": len(result.use_beyond_intent),
+        "closed": [{"actor": p.actor, "target": p.target} for p in result.closed],
         # The fix that passes, the one a reviewer would commit; the others are named on the PR.
         "fixes": [
             {"id": c.id, "verdict": c.verdict, "title": c.title}

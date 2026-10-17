@@ -250,7 +250,7 @@ def posture(
     gone = unreached(state, analysis.paths)
     found = Posture(
         reach=reach(analysis.paths, actors, nodes, requirements),
-        dependencies=len(deps),
+        dependencies=len({(d.principal, d.access, d.resource) for d in deps}),
         single_points=single_points(deps, analysis.paths),
         articulation=articulation_points(state.rows.nodes, state.rows.edges),
         unreached=gone,
