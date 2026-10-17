@@ -902,16 +902,16 @@ def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:
 def test_labels_change_only_theseus_s_own_and_are_created_with_their_colour(
     gh: GitHub, fake: FakeGitHub
 ) -> None:
-    from theseus.agent.labels import LABELS, SEVERITY, VERDICT
+    from theseus.agent.labels import MANAGED, SEVERITY, VERDICT
 
     fake.pr_labels = ["demo", "theseus: S6", "someone's label"]
     fake.repo_labels = {
         n: {"name": n} for n in ("demo", "theseus: S6", "someone's label", "theseus: blocked")
     }
-    gh.set_labels(REPO, 7, [SEVERITY[1], VERDICT["blocked"]], LABELS)
-    assert sorted(fake.pr_labels) == ["demo", "someone's label", "theseus: S1", "theseus: blocked"]
-    assert fake.repo_labels["theseus: S1"] == {
-        "name": "theseus: S1",
+    gh.set_labels(REPO, 7, [SEVERITY[1], VERDICT["blocked"]], MANAGED)  # the old S6 goes too
+    assert sorted(fake.pr_labels) == ["demo", "someone's label", "theseus: S1 high", "theseus: blocked"]
+    assert fake.repo_labels["theseus: S1 high"] == {
+        "name": "theseus: S1 high",
         "color": SEVERITY[1].color,
         "description": SEVERITY[1].description,
     }
@@ -921,11 +921,11 @@ def test_labels_change_only_theseus_s_own_and_are_created_with_their_colour(
 def test_labels_already_right_cost_one_request(gh: GitHub, fake: FakeGitHub) -> None:
     from theseus.agent.labels import LABELS, SEVERITY
 
-    fake.pr_labels = ["theseus: S6"]
+    fake.pr_labels = ["theseus: S6 none"]
     gh.installation_token(REPO)
     before = fake.calls
     gh.set_labels(REPO, 7, [SEVERITY[6]], LABELS)
-    assert fake.calls - before == 1 and fake.pr_labels == ["theseus: S6"]
+    assert fake.calls - before == 1 and fake.pr_labels == ["theseus: S6 none"]
 
 
 def test_a_label_theseus_does_not_manage_is_refused_before_any_request(gh: GitHub, fake: FakeGitHub) -> None:

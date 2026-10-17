@@ -243,7 +243,7 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
     assert note["title"] == "Opens 3 new ways to sensitive data"
     # Labels for the PR list: severity, verdict, the class reached, and the gap between says and grants.
     assert repo.labels == [
-        "theseus: S1",
+        "theseus: S1 high",
         "theseus: blocked",
         "theseus: grants more than it says",
         "theseus: regulated data",

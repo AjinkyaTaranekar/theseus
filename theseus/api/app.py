@@ -77,7 +77,8 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
             root = Path(tmp) / settings.theseus_world_root / f"pr{number}"
             base = load_world_from_files(base_files, base_plan, adapters, root / "base")
             head = load_world_from_files(head_files, head_plan, adapters, root / "head")
-            result = run_pr(base, head, pr.get("title") or "", pr.get("body") or "", deps)
+            body = contain.purpose_text(pr.get("body") or "")
+            result = run_pr(base, head, pr.get("title") or "", body, deps)
         return result.model_copy(update={"repo": repo, "pr_number": number})
 
     return review

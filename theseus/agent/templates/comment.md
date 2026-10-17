@@ -155,7 +155,7 @@ and {{ trace_more }} more not shown.
 {% endfor %}
 {% if unchanged_more %}
 
-and {{ unchanged_more }} more not shown.
+and {{ unchanged_more }} more: every path is on the graph page.
 {% endif %}
 
 {% endif %}
