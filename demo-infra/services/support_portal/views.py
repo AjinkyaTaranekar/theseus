@@ -16,7 +16,7 @@ REFUND_PAGE = """<!doctype html>
 <head><meta charset="utf-8"><title>Refund {refund_id}</title></head>
 <body>
   <h1>Refund {refund_id}</h1>
-  <p>We have recieved your refund request for {amount} {currency}.</p>
+  <p>We have received your refund request for {amount} {currency}.</p>
   <p>It will reach the original payment method within 5 to 10 working days.</p>
 </body>
 </html>

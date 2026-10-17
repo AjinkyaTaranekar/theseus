@@ -11,13 +11,14 @@ import logging
 import re
 from typing import Any
 
-from support_portal import views
+from support_portal import export, views
 
 log = logging.getLogger()
 log.setLevel(logging.INFO)
 
 TICKET_CONTEXT = re.compile(r"^/tickets/(?P<id>[\w-]+)/context$")
 REFUND_PAGE = re.compile(r"^/refunds/(?P<id>[\w-]+)$")
+ADMIN_EXPORT = "/admin/export"
 
 
 def _json(status: int, body: dict[str, Any]) -> dict[str, Any]:
@@ -41,6 +42,9 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
 
     if match := REFUND_PAGE.match(path):
         return _html(200, views.refund_page(match["id"], params.get("amount", ""), params.get("currency", "EUR")))
+
+    if path == ADMIN_EXPORT:
+        return _json(200, {"customers": export.export_customers()})
 
     log.info("no route for %s %s", method, path)
     return _json(404, {"error": "no such route"})
