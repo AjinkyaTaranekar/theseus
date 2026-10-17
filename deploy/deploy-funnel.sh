@@ -46,6 +46,8 @@ if [[ "$mode" == domain ]]; then sed -n 's/^DOMAIN=//p' .env | tr -d '\r' | tail
 
 healthy() { curl -sf -m 5 http://127.0.0.1:8000/health >/dev/null; }
 install_and_restart() {
+  # A venv that is missing, or replaced by something else (a stray symlink once was), is built again first.
+  if [[ ! -x .venv/bin/pip ]]; then rm -rf .venv && python3.12 -m venv .venv || return 1; fi
   .venv/bin/pip install -q . && bash deploy/run.sh restart >/dev/null || return 1
   for _ in $(seq 1 "$tries"); do healthy && return 0; sleep 2; done
   return 1
