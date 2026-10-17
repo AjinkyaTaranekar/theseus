@@ -106,7 +106,7 @@ resource "aws_s3_bucket_policy" "company_files_public" {
       Effect    = "Allow"
       Principal = "*"
       Action    = "s3:GetObject"
-      Resource  = "arn:aws:s3:::demo-company-files/*"
+      Resource  = ["arn:aws:s3:::demo-company-files/public/*"]
     }]
   })
 }
