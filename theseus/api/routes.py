@@ -574,6 +574,31 @@ def review_data(
     return {**data, "dashboard": reviews.dashboard_url(settings, repo)}
 
 
+@router.get("/reviews/{owner}/{name}/{number}/fixes/{fix_id}")
+def review_fix(
+    owner: str,
+    name: str,
+    number: int,
+    fix_id: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+) -> dict[str, Any]:
+    """One fix and the graph copy the engine verified it on, read from the store when its view opens."""
+    repo = _reviewed(settings, gh, owner, name, number, k)
+    if not is_candidate_id(fix_id):
+        raise HTTPException(404, "no such fix")
+    try:
+        fix = reviews.fix_graph(store, reviews.key(repo, number), fix_id)
+    except GraphError as e:
+        log.error("%s#%d: cannot read fix %s: %s", repo, number, fix_id, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if fix is None:
+        raise HTTPException(404, "no such fix")
+    return fix
+
+
 # The Try-it page (S4) ---------------------------------------------------------------------------------------
 
 WEB = Path(__file__).resolve().parents[1] / "web"
