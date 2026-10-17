@@ -184,7 +184,7 @@ const CATEGORIES = { objectstorage: "storage", filestorage: "file share", blocks
 // What the data is, for people outside security.
 const HOLDS = { regulated: "personal, payment or health data", confidential: "business data",
                 internal: "internal data", public: "public data" };
-const TAGS = { regulated: "Customer data", confidential: "Business data" };
+const TAGS = { regulated: "Regulated data", confidential: "Confidential data" };
 const VERBS = { MEMBER_OF: "is in", CAN_ASSUME: "can become", TRUSTS: "can log in as", RUNS_AS: "runs as",
                 UNLOCKS: "opens", USES: "uses", CALLS: "calls", REQUESTS: "calls", HAS_ENV: "is configured with",
                 RUNS_IN: "runs in" };
@@ -501,8 +501,13 @@ function render(data) {
     if (first) {
       const a = at(first.step.from), b = at(first.step.to);
       const ev = (r.evidence || {})[first.step.evidence];
-      const where = ev && ev.line ? ` · ${ev.file.split("/").pop()}:${ev.line}` : "";
-      const text = finding ? (before ? "Cut" : `Cut here to contain it${where}`) : before ? "This PR adds it" : `Added by this PR${where}`;
+      const use = codeUse[0];
+      const where = codeMode
+        ? (use && use.file ? ` · ${use.file.split("/").pop()}:${use.line}` : "")
+        : ev && ev.line ? ` · ${ev.file.split("/").pop()}:${ev.line}` : "";
+      const text = finding ? (before ? "Cut" : `Cut here to contain it${where}`)
+        : codeMode ? (before ? "No code takes this route" : `Its code now takes this route${where}`)
+        : before ? "This PR adds it" : `Added by this PR${where}`;
       const tag = el("div", text, { class: finding ? `tag${before ? " quiet" : " ok"}` : `tag${before ? " quiet" : ""}` });
       tag.style.left = `${a.x + W / 2}px`; tag.style.top = `${Math.min(a.y, b.y) - 27}px`;
       canvas.append(tag);

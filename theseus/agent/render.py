@@ -233,7 +233,7 @@ def consequence(result: AnalysisResult) -> Md:
         targets = list(dict.fromkeys(targets))
         who = _names([escape(words.name(a)) for a in actors[:3]], max(0, len(actors) - 3))
         what = _names([escape(words.name(t)) for t in targets[:3]], max(0, len(targets) - 3))
-        return Md(f"**Once merged, {who} can no longer reach {what}.** Nothing it opens is new.")
+        return Md(f"**Once merged, {who} can no longer reach {what}.** It opens nothing new.")
     return Md("**Theseus traced every path to sensitive data in this commit: none of them is new.**")
 
 
