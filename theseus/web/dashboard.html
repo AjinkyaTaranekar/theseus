@@ -95,11 +95,11 @@
   .tablewrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   thead th { text-align: left; font-weight: 500; color: var(--muted); padding: 0 12px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-  thead th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
-  thead th button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
-  thead th button::after { content: "↕"; opacity: .35; font-size: 11px; }
-  thead th[aria-sort="ascending"] button::after { content: "↑"; opacity: 1; color: var(--text); }
-  thead th[aria-sort="descending"] button::after { content: "↓"; opacity: 1; color: var(--text); }
+  thead th button:not(.tip) { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
+  thead th button:not(.tip):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  thead th button:not(.tip)::after { content: "↕"; opacity: .35; font-size: 11px; }
+  thead th[aria-sort="ascending"] button:not(.tip)::after { content: "↑"; opacity: 1; color: var(--text); }
+  thead th[aria-sort="descending"] button:not(.tip)::after { content: "↓"; opacity: 1; color: var(--text); }
   tbody td { padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; overflow-wrap: anywhere; }
   tbody tr:hover td { background: var(--panel-2); }
   tbody tr:last-child td { border-bottom: 0; }
@@ -172,6 +172,8 @@
               border: 1px solid var(--border-2); border-radius: 6px; padding: 9px 11px; font: 400 12.5px/1.5 var(--font);
               box-shadow: 0 8px 24px rgba(0, 0, 0, .65); pointer-events: none; }
   #tipfloat[hidden] { display: none; }
+  .thc { display: inline-flex; align-items: center; white-space: nowrap; }
+  th.num .thc { justify-content: flex-end; }
   .todo { margin: 6px 0 0; color: var(--text); font-size: 13.5px; display: flex; gap: 8px; align-items: baseline; max-width: 920px; }
   .todo b { color: var(--primary); font-weight: 600; white-space: nowrap; }
   /* Start here: the few things worth doing first, each with its proof one click away. */
@@ -231,7 +233,7 @@
   .lead { font-size: 15px; line-height: 1.55; color: var(--text); margin: 0; }
   .lead b { font-weight: 600; }
   .cutbox { border: 1px solid rgba(115, 191, 105, .45); background: var(--green-bg); border-radius: 4px; padding: 10px 12px; }
-  .cutbox h4 { margin: 0 0 6px; color: var(--green); font-size: 13px; }
+  .cutbox h4 { margin: 0 0 6px; color: var(--green); font-size: 13px; text-transform: none; letter-spacing: 0; }
   @media (max-width: 1280px) { .s4 { grid-column: span 8; } .s6 { grid-column: span 12; } }
   @media (max-width: 980px) {
     .app { grid-template-columns: minmax(0, 1fr); }
@@ -513,14 +515,16 @@ function table(caption, columns, rows, opts) {
     if (o.detail) tr.append(el("th", null, { scope: "col", class: "toggle", "aria-label": "Show details" }));
     columns.forEach((c, i) => {
       const th = el("th", null, { scope: "col", class: c.num ? "num" : "" });
+      const cellHead = el("span", null, { class: "thc" });
       if (c.value) {
         const b = el("button", c.label, { type: "button" });
         b.addEventListener("click", () => { state.desc = state.sort === i ? !state.desc : true; state.sort = i; state.page = 0; draw(); });
-        th.append(b);
+        cellHead.append(b);
         if (state.sort === i) th.setAttribute("aria-sort", state.desc ? "descending" : "ascending");
-      } else th.textContent = c.label;
+      } else cellHead.append(document.createTextNode(c.label));
       const help = c.tip === false ? null : tip(c.label, c.tip);
-      if (help) th.append(help);
+      if (help) cellHead.append(help);
+      th.append(cellHead);
       tr.append(th);
     });
     t.append(add(el("thead"), tr));
@@ -615,6 +619,7 @@ function route(views, fallback) {
     if (a.getAttribute("href") === `#${view}`) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   }
   TABLES = [];
+  if ($("dlg").open) $("dlg").close();
   $("tools").replaceChildren();
   $("view").replaceChildren();
   views[view]();
@@ -749,7 +754,7 @@ function toneOf(id, i) {
 // nodes: [{id, tone, focus}], edges: [{src, dst, label, href, tone}] where tone is hot, warm, cool or "".
 function mini(nodes, edges, opts) {
   const o = Object.assign({ label: "A graph", infoOf: () => ({}) }, opts || {});
-  const COL = 200, ROW = 64, W = 150, H = 40, PAD = 18;
+  const COL = 236, ROW = 62, W = 150, H = 40, PAD = 18;
   const ids = nodes.map((n) => n.id);
   const into = new Map(ids.map((id) => [id, []]));
   for (const e of edges) if (into.has(e.dst) && into.has(e.src)) into.get(e.dst).push(e.src);
@@ -852,7 +857,11 @@ function compromiseFigure(c, infoOf) {
   const cls = el("div", null, { class: "classes" });
   for (const [level, n] of Object.entries(c.classes || {})) cls.append(badge(`${n} ${CLASS[level] ? CLASS[level][0].toLowerCase() : level}`, CLASS[level] ? CLASS[level][1] : "b-grey"));
   if (!c.sensitive) {
-    box.append(el("p", `If ${name} were compromised, it could reach ${plural(c.targets, "resource")}, none of them sensitive.`, { class: "lead" }));
+    box.append(el("p", c.targets ? `If ${name} were compromised, it could reach ${plural(c.targets, "resource")}, none of them sensitive: logs, queues and other internal data. Here is how.` : `${name} has no valid path to any resource: compromising it alone reaches nothing.`, { class: "lead" }));
+    if (c.reaches.length) {
+      box.append(pathsGraph(c.reaches.slice(0, 12).map((r) => r.steps), (s) => s.proof, infoOf, c.node));
+      box.append(el("h4", "Each hop and the line behind it"), add(el("div", null, { style: "display:grid;gap:8px" }), ...c.reaches.slice(0, 12).map((r) => add(el("details"), el("summary", nameOf(r.target), { class: "mono", style: "cursor:pointer" }), hopList(r.steps, (s) => s.proof)))));
+    }
     return box;
   }
   const lead = el("p", null, { class: "lead" });
@@ -1027,6 +1036,9 @@ function repoViews(d) {
         } else if ((r.closed || []).length) {
           what.append(el("div", `Closes ${plural(r.closed.length, "dangerous path")}: ${list([...new Set(r.closed.map((o) => nameOf(o.actor)))])} can no longer reach`, { class: "sub tone-green" }));
           what.append(chips([...new Set(r.closed.map((o) => o.target))], () => ({})));
+        } else if (r.impact && (r.impact.headline || (r.impact.most_affected || []).length)) {
+          what.append(el("div", r.impact.headline || "What this change touches:", { class: "sub" }));
+          if ((r.impact.most_affected || []).length) what.append(chips(r.impact.most_affected.slice(0, 5), () => ({})));
         } else what.textContent = r.headline || "Nothing new reaches sensitive data.";
         if (r.beyond_intent) what.append(el("div", `Its code now reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
         const fixes = el("td");
@@ -1183,13 +1195,13 @@ function repoViews(d) {
       more.append(add(el("div", null, { style: "margin-top:8px" }), ...own.map((s) => el("div", `${nameOf(s.id)}: if it goes, ${nameOf(s.breaks[0].principal)} loses ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`, { class: "sub" }))));
       sb.append(more);
     }
-    const [ap, ab] = panel("Articulation points", "s12", { flush: true, tip: true, hint: "removing one splits the access graph" });
+    const [ap, ab] = panel("Articulation points", "s24", { flush: true, tip: true, hint: "removing one splits the access graph · open a row for what it connects" });
     ab.append(table("Articulation points", [
       { label: "Node", value: (a) => nameOf(a.id), cell: (a) => add(el("div"), el("div", nameOf(a.id), { class: "mono" }), el("div", kindOf(a.id, info(a.id)), { class: "sub" })) },
       { label: "Cut off", value: (a) => a.cut_off, num: true, cell: (a) => plural(a.cut_off, "node") },
       { label: "Pieces left", value: null, cell: (a) => el("span", a.pieces.join(" · "), { class: "mono sub" }) },
     ], p ? p.articulation : [], { page: 8, sort: 1, detail: hubDetail, empty: "Removing any one node leaves the graph in one piece.", search: (a) => a.id }));
-    const [cp, cb] = panel("Choke points", "s12", { tip: true, hint: "roles the most routes cross" });
+    const [cp, cb] = panel("Choke points", "s24", { tip: true, hint: "roles the most routes cross" });
     const choke = scan ? scan.choke_points : [];
     cb.append(choke.length ? gauge(choke.map((c) => ({ label: nameOf(c.id), title: c.id, value: c.score, text: Number(c.score).toFixed(Number.isInteger(c.score) ? 0 : 1) })), TONES.yellow) : el("div", "No role carries more routes than another.", { class: "empty" }));
     const [up, ub] = panel("Grants no code uses", "s24", { flush: true, tip: TERMS["Unused grants"], hint: "free to remove · open a row for the proof" });
@@ -1199,7 +1211,7 @@ function repoViews(d) {
       { label: "On", value: (u) => nameOf(u.resource), cell: (u) => el("span", nameOf(u.resource), { class: "mono" }) },
       { label: "Fix", value: null, cell: () => (fixU ? badge(`Removing them ${FIX_WORDS[fixU.verdict] || fixU.verdict}`, FIX[fixU.verdict] || "b-grey") : "–") },
     ], scan ? scan.unused_grants : [], { page: 10, detail: grantDetail, empty: "Every grant to sensitive data is used by the code that holds it.", search: (u) => `${u.workload} ${u.resource}` }));
-    $("view").append(grid(sp), grid(ap, cp), grid(up));
+    $("view").append(grid(sp), grid(up), grid(ap), grid(cp));
   };
 
   views.cost = () => {
@@ -1235,7 +1247,7 @@ function repoViews(d) {
 
   views.incidents = () => {
     const o = d.outage;
-    head("Incidents", "What an outage would take down on main, answered from main's graph: what runs on the service, who loses access they need, and which dependencies break.");
+    head("Incidents", "What an outage would take down on main, answered from main's graph before it happens: what runs on the service, who loses access they need, and which dependencies break.", "During an incident, pick the service or paste the status page's headline; Theseus shows what it takes down and who to warn.");
     if (!o) {
       const [ep, eb] = panel("Incidents", "s24");
       eb.append(el("div", "main's newest scan has no outage map yet. Run Actions, Theseus main, Run workflow.", { class: "empty" }));
@@ -1295,7 +1307,7 @@ function repoViews(d) {
     });
     fb.append(feed, add(el("div", null, { style: "margin-top:10px" }), check));
     const out = el("div", null, { "aria-live": "polite" });
-    const [rp, rb] = panel("Outages that would hurt most", "s24", { flush: true, hint: "each service down everywhere, traced on main's graph" });
+    const [rp, rb] = panel("Outages that would hurt most", "s24", { flush: true, tip: "Each service Theseus maps, taken down everywhere at once and traced on main's graph. The ones that break the most come first.", hint: "click Show for its blast radius" });
     rb.append(table("Outages that would hurt most", [
       { label: "Service", value: (s) => s.name, cell: (s) => add(el("div"), el("div", s.name), el("div", PROVIDERS[s.provider] || s.provider, { class: "sub" })) },
       { label: "Runs here", value: (s) => s.here, num: true, cell: (s) => String(s.here) },
@@ -1304,7 +1316,7 @@ function repoViews(d) {
       { label: "Dependencies broken", value: (s) => s.breaks || 0, num: true, cell: (s) => el("span", `${s.breaks || 0}/${s.dependencies || 0}`, { class: s.breaks ? "tone-red" : "" }) },
       { label: "", value: null, cell: (s) => { const b = el("button", "Show", { class: "btn", type: "button", "aria-label": `Show what a ${s.name} outage takes down` }); b.addEventListener("click", () => ask({ provider: s.provider, service: s.service, severity: "down" })); return b; } },
     ], ranked, { page: 8, sort: 4, empty: "Nothing here runs on a service Theseus maps.", search: (s) => `${s.name} ${s.service}` }));
-    $("view").append(grid(ap, fp), out, grid(rp));
+    $("view").append(grid(rp), out, grid(ap, fp));
 
     async function ask(params) {
       const qs = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
@@ -1327,6 +1339,53 @@ function repoViews(d) {
       ask({ provider, service, region: reg.value, severity: sev.value });
     });
 
+    // From what is down to what it takes with it: the engine's broken dependencies and the calls it named.
+    function blastGraph(r, ninfo) {
+      const tone = { down: "red", impaired: "orange", degraded: "yellow" };
+      const nodes = new Map();
+      const put = (id, state) => { if (!nodes.has(id) && nodes.size < 26) nodes.set(id, { id, tone: tone[state] || "" }); };
+      for (const m of r.matched) put(m.id, m.state);
+      for (const a of r.affected) put(a.id, a.state);
+      const edges = new Map();
+      const link = (src, dst, label, hot) => {
+        if (!nodes.has(src)) put(src, "");
+        if (!nodes.has(dst)) put(dst, "");
+        if (nodes.has(src) && nodes.has(dst) && src !== dst && !edges.has(`${src}|${dst}`)) edges.set(`${src}|${dst}`, { src, dst, label, tone: hot ? "hot" : "warm" });
+      };
+      for (const b of r.broken) {
+        const d = b.dependency;
+        for (const v of b.via) {
+          if (v === d.principal) continue;
+          link(v, d.principal, `cuts ${d.access}`, b.state === "broken");
+        }
+      }
+      for (const a of r.affected) {
+        const m = /^calls (\S+), which/.exec(a.why || "");
+        if (m) link(m[1], a.id, "it calls", a.state !== "degraded");
+      }
+      if (!nodes.size) return el("div", "Nothing in this world runs on it, so nothing here goes down.", { class: "empty" });
+      return mini([...nodes.values()], [...edges.values()], { infoOf: ninfo, label: r.headline });
+    }
+    function nowList(r) {
+      const inc = r.incident, ol = el("ol", null, { class: "start" });
+      const item = (what, sub, acts) => ol.append(add(el("li"), el("div", what, { class: "what" }), add(el("div", null, { class: "acts" }), el("span", sub || "", { class: "sub" }), ...(acts || []))));
+      const status = inc.url || (inc.provider === "github" ? "https://www.githubstatus.com" : "https://health.aws.amazon.com/health/status");
+      item("Confirm it on the provider's status page.", `${PROVIDERS[inc.provider] || inc.provider} · ${inc.service}${inc.region ? ` · ${inc.region}` : ""}`, [el("a", "Status page ↗", { href: status, target: "_blank", rel: "noopener" })]);
+      const down = r.matched.filter((m) => m.state === "down");
+      const runs = (id) => ["workload", "workflow", "role", "user", "group"].includes(id.split(":")[0]);
+      const stops = down.filter((m) => runs(m.id)), gone = down.filter((m) => !runs(m.id));
+      const few = (xs) => `${list(xs.slice(0, 4).map((m) => nameOf(m.id)))}${xs.length > 4 ? ` and ${xs.length - 4} more` : ""}`;
+      if (stops.length) item(`Expect ${few(stops)} to stop.`, "They run on the service that is out.");
+      if (gone.length) item(`Expect ${few(gone)} to be unavailable.`, "They are kept on the service that is out: everything that reads them waits.");
+      const lost = r.affected.filter((a) => a.state === "impaired");
+      if (lost.length) item(`Warn the owners of ${list(lost.slice(0, 4).map((a) => nameOf(a.id)))}${lost.length > 4 ? ` and ${lost.length - 4} more` : ""}.`, "They keep running but lose something they need; each one's reason is in the table below.");
+      const cut = r.broken.filter((b) => b.state === "broken");
+      if (cut.length) item(`${plural(cut.length, "dependency", "dependencies")} have no route left.`, "Where one matters, a second route (another region, a cached copy) keeps it working next time.");
+      const weak = r.matched.filter((m) => m.state === "degraded");
+      if (weak.length) item(`Watch ${list(weak.slice(0, 4).map((m) => nameOf(m.id)))}.`, "Running work carries on; new work may not start until the service recovers.");
+      if (!r.matched.length) item("Nothing here needs action.", r.headline);
+      return ol;
+    }
     function show(r) {
       OUTAGE = r;
       const inc = r.incident, ninfo = (id) => (r.nodes || {})[id] || info(id);
@@ -1373,14 +1432,18 @@ function repoViews(d) {
         { label: "State", value: (b) => (b.state === "broken" ? 0 : 1), cell: (b) => stateBadge(b.state) },
         { label: "Because", value: null, cell: (b) => (b.via.length ? add(el("div"), el("span", b.via.length === 1 && [b.dependency.principal, b.dependency.resource].includes(b.via[0]) ? `${nameOf(b.via[0])} is ${b.state === "broken" ? "down" : "degraded"}` : "every route goes through ", { class: "sub" }), b.via.length === 1 && [b.dependency.principal, b.dependency.resource].includes(b.via[0]) ? null : chips(b.via, ninfo)) : el("span", b.why, { class: "sub" })) },
       ], r.broken, { page: 12, sort: 3, desc: false, empty: "Every dependency keeps a route.", search: (b) => `${b.dependency.principal} ${b.dependency.resource} ${b.via.join(" ")}` }));
-      out.replaceChildren(stats, grid(hp), grid(mp, fp2), grid(bp));
+      const [gp2, gb2] = panel("Blast radius", "s24", { tip: "Red: down. Orange: loses access it needs. Yellow: degraded. The dashes move from what is down to what it takes with it." });
+      gb2.append(blastGraph(r, ninfo));
+      const [dp, db] = panel("What to do now", "s24");
+      db.append(nowList(r));
+      out.replaceChildren(stats, grid(hp), grid(dp), grid(gp2), grid(mp, fp2), grid(bp));
       $("live").textContent = r.headline;
     }
     if (OUTAGE) show(OUTAGE);
   };
 
   views.graph = () => {
-    head("Graph", posture ? `main's access graph, read from FalkorDB now. Red links are on a path to sensitive data nothing requires; a yellow border is a single point of failure. Click a node to focus on it.` : "main hasn't been scanned yet.");
+    head("Graph", posture ? `main's access graph, read from FalkorDB now. Red links are on a path to sensitive data nothing requires, and their dashes move the way access flows; a yellow border is a single point of failure.` : "main hasn't been scanned yet.", posture ? "Click a node to see what it links to, then trace what it could reach if compromised." : null);
     if (!posture) return;
     const seg = el("div", null, { class: "seg", role: "group", "aria-label": "What to show" });
     const modes = [["risky", "Risky paths"], ["access", "Access graph"], ["all", "Everything"]];
@@ -1435,6 +1498,7 @@ function repoViews(d) {
       if (own) row("Can reach", chips(own.targets, nodeInfo, (t) => !risky.has(`${id}|${t}`)));
       const s = spof.get(id);
       if (s) row("If it goes", `${plural(s.breaks.length, "dependency", "dependencies")} break for ${list([...new Set(s.breaks.map((b) => nameOf(b.principal)))])}`);
+      if (lane(id) < 3) row("If compromised", compromiseButton(id, nodeInfo, "Trace what it could reach"));
       const out = graph.links.filter((e) => e.src === id).map((e) => `${VERBS[e.type] || e.type}${e.type === "CAN" ? ` ${(e.grants || []).join(" and ")}` : ""} ${nameOf(e.dst)}`);
       const inc = graph.links.filter((e) => e.dst === id).map((e) => `${nameOf(e.src)} ${VERBS[e.type] || e.type}${e.type === "CAN" ? ` ${(e.grants || []).join(" and ")}` : ""} it`);
       if (out.length) row("Links out", add(el("div"), ...out.slice(0, 8).map((x) => el("div", x))));
@@ -1503,6 +1567,19 @@ function repoViews(d) {
         details(node.id());
       });
       cy.on("tap", (evt) => { if (evt.target === cy) { cy.elements().removeClass("faded"); side.hidden = true; } });
+      // The dashes on risky and outage links move the way access flows; still when motion is reduced.
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        const moving = cy.edges("[hot = 1], [out > 0]");
+        moving.style({ "line-style": "dashed", "line-dash-pattern": [7, 5] });
+        let offset = 0;
+        const tick = () => {
+          if (!cy || cy.destroyed() || !document.body.contains(canvas)) return;
+          offset = (offset + 0.5) % 24;
+          moving.style("line-dash-offset", -offset);
+          requestAnimationFrame(tick);
+        };
+        if (moving.length) requestAnimationFrame(tick);
+      }
       $("live").textContent = `${nodes.length} nodes and ${links.length} links shown`;
     }
     seg.addEventListener("click", (evt) => { const b = evt.target.closest("button"); if (b && graph) draw(b.dataset.mode); });

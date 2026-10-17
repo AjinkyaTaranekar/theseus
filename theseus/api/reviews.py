@@ -469,8 +469,11 @@ def compromise(store: ReviewStore, repo: str, node: str) -> dict[str, Any] | Non
         links = {(s.src, s.type, s.dst) for s in p.steps}
         common = links if common is None else common & links
     cut_proof = {(s.src, s.type, s.dst): proof(s.evidence) for p in risky for s in p.steps}
+    # In the order the first route takes them: the link nearest the node first.
+    order = {(s.src, s.type, s.dst): i for i, s in enumerate(risky[0].steps)} if risky else {}
     cut = [
-        {"from": a, "type": t, "to": b, "proof": cut_proof[(a, t, b)]} for a, t, b in sorted(common or set())
+        {"from": a, "type": t, "to": b, "proof": cut_proof[(a, t, b)]}
+        for a, t, b in sorted(common or set(), key=lambda k: (order.get(k, len(order)), k))
     ]
     classes: dict[str, int] = {}
     for p in risky:
@@ -582,7 +585,7 @@ def _load(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
 
 
 def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str, Any]:
-    result = AnalysisResult.model_validate(doc["result"])
+    result = _kept_result(doc["result"])
     return {
         "number": doc["number"],
         "title": doc.get("title") or "",
@@ -596,6 +599,8 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
         ],
         "beyond_intent": len(result.use_beyond_intent),
         "closed": [{"actor": p.actor, "target": p.target} for p in result.closed],
+        # A clear change still touches something: what it touches and who relies on it, when the engine said.
+        "impact": _impact_summary(doc["result"].get("impact")),
         # The fix that passes, the one a reviewer would commit; the others are named on the PR.
         "fixes": [
             {"id": c.id, "verdict": c.verdict, "title": c.title}
@@ -608,8 +613,31 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
     }
 
 
+def _kept_result(raw: dict[str, Any]) -> AnalysisResult:
+    """A kept result read back, keeping the fields this version knows: a document written by a newer
+    deploy, with a field added since, still lists on the dashboard."""
+    return AnalysisResult.model_validate({k: v for k, v in raw.items() if k in AnalysisResult.model_fields})
+
+
+def _impact_summary(impact: Any) -> dict[str, Any] | None:
+    """The few fields of a change's impact the PR list shows, or None when the result has none."""
+    if not isinstance(impact, dict):
+        return None
+    access = [a for a in impact.get("access") or [] if isinstance(a, dict)]
+    relies = [r for r in impact.get("relies") or [] if isinstance(r, dict)]
+    return {
+        "headline": impact.get("headline") or "",
+        "most_affected": list(impact.get("most_affected") or [])[:8],
+        "gained": sum(1 for a in access if a.get("change") == "gained"),
+        "lost": sum(1 for a in access if a.get("change") == "lost"),
+        "relies_lost": sum(1 for r in relies if r.get("state") == "lost"),
+        "monthly_usd_before": impact.get("monthly_usd_before"),
+        "monthly_usd_after": impact.get("monthly_usd_after"),
+    }
+
+
 def _finding_row(settings: Settings, doc: dict[str, Any]) -> dict[str, Any]:
-    result = AnalysisResult.model_validate(doc["result"])
+    result = _kept_result(doc["result"])
     finding = result.finding or {}
     cut = result.min_cut.cut if result.min_cut is not None else []
     # Jev's urgency is kept as {"p", "source"}; the dashboard ranks and shows the probability.

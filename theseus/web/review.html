@@ -119,6 +119,49 @@
   .way ul.ops { margin: 0 0 4px; padding-left: 18px; }
   .way ul.ops li { margin: 3px 0; }
   .badge[hidden], .dash[hidden] { display: none; }
+  /* The new link's dashes move the way access flows; still when motion is reduced. */
+  path.flow { stroke-dasharray: 8 6; animation: march 1.1s linear infinite; }
+  @keyframes march { to { stroke-dashoffset: -28; } }
+  @media (prefers-reduced-motion: reduce) { path.flow, .mini path.e { animation: none !important; } }
+  /* Tooltips: a small ? beside a term; its text floats above everything. */
+  .tip { display: inline-grid; place-items: center; width: 16px; height: 16px; margin-left: 6px; padding: 0; vertical-align: 1px;
+         border-radius: 50%; border: 1px solid var(--tile-line); background: var(--card-2); color: var(--muted);
+         font: 600 10px/1 var(--font); cursor: help; }
+  .tip:hover, .tip:focus-visible, .tip[aria-expanded="true"] { color: #000; background: var(--primary); border-color: var(--primary); }
+  #tipfloat { position: fixed; z-index: 50; max-width: min(300px, calc(100vw - 24px)); background: #1b1d22; color: var(--text);
+              border: 1px solid var(--tile-line); border-radius: 6px; padding: 9px 11px; font: 400 12.5px/1.5 var(--font);
+              box-shadow: 0 8px 24px rgba(0, 0, 0, .65); pointer-events: none; }
+  #tipfloat[hidden] { display: none; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  /* What a change touches, when it opens nothing new */
+  .facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .fact { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
+  .fact .v { font: 600 22px/1.2 var(--font); }
+  .fact .l { color: var(--muted); font-size: 12.5px; display: flex; align-items: center; }
+  .facts .up { color: var(--accent); } .facts .down { color: var(--ok); }
+  table.list { width: 100%; border-collapse: collapse; font-size: 13.5px; background: var(--card); border: 1px solid var(--line); border-radius: 4px; }
+  table.list th { text-align: left; color: var(--muted); font-weight: 500; padding: 8px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  table.list td { padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  table.list tr:last-child td { border-bottom: 0; }
+  .pill { display: inline-block; font: 600 11px/1 var(--mono); padding: 4px 6px; border-radius: 3px; background: var(--card-2); color: var(--muted); }
+  .pill.gained, .pill.added { background: var(--primary-bg); color: var(--primary); }
+  .pill.lost, .pill.removed { background: var(--accent-bg); color: var(--accent); }
+  .pill.kept { background: var(--ok-bg); color: var(--ok); }
+  .tablescroll { overflow-x: auto; }
+  .mini { overflow-x: auto; }
+  .mini svg { display: block; margin: 0 auto; }
+  .mini .n rect { fill: #0b0c0e; stroke: #3a3d44; stroke-width: 1.2; }
+  .mini .n text { fill: #e8e9ec; font: 500 11.5px var(--font); }
+  .mini .n text.k { fill: #8f949d; font: 400 10px var(--mono); }
+  .mini .n.red rect { stroke: #f2495c; fill: #1a0a0d; } .mini .n.orange rect { stroke: #ff9830; fill: #1a1006; }
+  .mini .n.blue rect { stroke: #6e9fff; fill: #0a1020; } .mini .n.green rect { stroke: #73bf69; fill: #0a160a; }
+  .mini .n.focus rect { stroke-width: 2.4; }
+  .mini path.e { fill: none; stroke: #4a4e57; stroke-width: 1.6; }
+  .mini path.e.hot { stroke: #f2495c; stroke-width: 2; stroke-dasharray: 6 6; animation: march 1.1s linear infinite; }
+  .mini path.e.warm { stroke: #ff9830; stroke-width: 2; stroke-dasharray: 6 6; animation: march 1.1s linear infinite; }
+  .mini path.e.cool { stroke: #6e9fff; stroke-width: 2; stroke-dasharray: 6 6; animation: march 1.4s linear infinite; }
+  .mini text.v { fill: #b9bdc5; font: 10.5px var(--mono); paint-order: stroke; stroke: #000; stroke-width: 4px; }
+  .mini a text.v { fill: #8fb4ff; text-decoration: underline; }
   .skeleton { padding-top: 8px; }
   .skeleton .line, .skeleton .block { border-radius: 4px; background: var(--card-2); }
   .skeleton .line { height: 14px; margin: 14px 0; }
@@ -171,6 +214,7 @@
         <button type="button" id="v-after" aria-pressed="true">If merged</button>
         <button type="button" id="v-full" aria-pressed="false">Whole graph</button>
       </div>
+      <span id="seg-tip"></span>
       <span class="note" id="note"></span>
     </div>
     <div class="stage" id="stage"><div class="canvas" id="canvas"></div></div>
@@ -178,6 +222,11 @@
     <div id="fixgraph" hidden></div>
     <div class="fixops" id="fixops" hidden></div>
   </div>
+
+  <section id="impact-section" hidden>
+    <h2 id="impact-title">Impact of this change</h2>
+    <div id="impact"></div>
+  </section>
 
   <section id="todo-section" hidden>
     <h2>What to do</h2>
@@ -198,6 +247,7 @@
 </main>
 
 <div class="wrap"><footer id="footer"></footer></div>
+<div id="tipfloat" role="presentation" hidden></div>
 
 <script>
 "use strict";
@@ -301,6 +351,95 @@ function byRank(a, b) {
   for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i] ? -1 : 1;
   return 0;
 }
+// Tooltips: a small ? beside a term, its text in a floating box that works with hover, focus and touch.
+let TIP_ID = 0;
+function tip(term, body) {
+  const id = `tip-${++TIP_ID}`;
+  const b = el("button", "?", { type: "button", class: "tip", "aria-label": `What does ${term} mean?`, "aria-describedby": id, "aria-expanded": "false", "data-tip": body });
+  return add(el("span", null, { style: "display:inline-flex" }), b, el("span", body, { id, class: "sr-only" }));
+}
+(function tooltips() {
+  const box = document.getElementById("tipfloat");
+  let pinned = null;
+  function show(btn) {
+    box.textContent = btn.dataset.tip;
+    box.hidden = false;
+    const r = btn.getBoundingClientRect(), w = box.offsetWidth, h = box.offsetHeight;
+    box.style.left = `${Math.max(8, Math.min(window.innerWidth - w - 8, r.left + r.width / 2 - w / 2))}px`;
+    box.style.top = `${r.top - h - 8 >= 8 ? r.top - h - 8 : r.bottom + 8}px`;
+  }
+  function hide() { box.hidden = true; if (pinned) pinned.setAttribute("aria-expanded", "false"); pinned = null; }
+  document.addEventListener("mouseover", (e) => { const b = e.target.closest && e.target.closest(".tip"); if (b && !pinned) show(b); });
+  document.addEventListener("mouseout", (e) => { const b = e.target.closest && e.target.closest(".tip"); if (b && !pinned) box.hidden = true; });
+  document.addEventListener("focusin", (e) => { if (e.target.classList && e.target.classList.contains("tip")) show(e.target); });
+  document.addEventListener("focusout", (e) => { if (e.target.classList && e.target.classList.contains("tip") && !pinned) box.hidden = true; });
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest(".tip");
+    if (!b) { hide(); return; }
+    e.preventDefault(); e.stopPropagation();
+    if (pinned === b) { hide(); return; }
+    hide(); pinned = b; b.setAttribute("aria-expanded", "true"); show(b);
+  }, true);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") hide(); });
+  window.addEventListener("scroll", () => { if (!box.hidden) hide(); }, true);
+})();
+// A few nodes laid out left to right in the direction access flows; the dashes of hot links move.
+function mini(nodes, edges, infoOf, label) {
+  const COL = 236, ROW = 62, W = 150, H = 40, PAD = 18;
+  const ids = nodes.map((n) => n.id);
+  const depth = new Map(ids.map((id) => [id, 0]));
+  for (let pass = 0; pass < ids.length; pass++) {
+    let moved = false;
+    for (const e of edges) {
+      if (!depth.has(e.src) || !depth.has(e.dst)) continue;
+      const d = depth.get(e.src) + 1;
+      if (d > depth.get(e.dst) && d < ids.length) { depth.set(e.dst, d); moved = true; }
+    }
+    if (!moved) break;
+  }
+  const cols = [];
+  for (const n of nodes) { const c = depth.get(n.id); (cols[c] = cols[c] || []).push(n); }
+  const tallest = Math.max(1, ...cols.map((c) => (c ? c.length : 0)));
+  const pos = new Map();
+  cols.forEach((c, ci) => (c || []).forEach((n, ri) => pos.set(n.id, { x: PAD + ci * COL, y: PAD + ri * ROW + ((tallest - c.length) * ROW) / 2 })));
+  const width = PAD * 2 + Math.max(0, cols.length - 1) * COL + W, height = PAD * 2 + (tallest - 1) * ROW + H;
+  const s = svg("svg", { width, height, viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": label || "A graph" });
+  const mark = ++TIP_ID;
+  const defs = svg("defs");
+  for (const [id, color] of [["m", "#4a4e57"], ["mhot", "#f2495c"], ["mwarm", "#ff9830"], ["mcool", "#6e9fff"]]) {
+    const m = svg("marker", { id: `${id}-${mark}`, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 7, markerHeight: 7, orient: "auto-start-reverse" });
+    m.append(svg("path", { d: "M0 0L10 5L0 10z", fill: color }));
+    defs.append(m);
+  }
+  s.append(defs);
+  for (const e of edges) {
+    const a = pos.get(e.src), b = pos.get(e.dst);
+    if (!a || !b) continue;
+    const x1 = a.x + W, y1 = a.y + H / 2, x2 = b.x - 2, y2 = b.y + H / 2, mx = (x1 + x2) / 2;
+    const marker = { hot: "mhot", warm: "mwarm", cool: "mcool" }[e.tone] || "m";
+    s.append(svg("path", { d: `M${x1} ${y1} C${mx} ${y1} ${mx} ${y2} ${x2} ${y2}`, class: `e ${e.tone || ""}`, "marker-end": `url(#${marker}-${mark})` }));
+    if (e.label) {
+      const t = svg("text", { x: mx, y: (y1 + y2) / 2 - 5, "text-anchor": "middle", class: "v" });
+      t.textContent = e.label;
+      if (e.href) { const a2 = svg("a", { href: e.href, target: "_blank", rel: "noopener" }); a2.append(t); s.append(a2); } else s.append(t);
+    }
+  }
+  for (const n of nodes) {
+    const p = pos.get(n.id), info = (infoOf && infoOf(n.id)) || {};
+    const g = svg("g", { class: `n ${n.tone || ""} ${n.focus ? "focus" : ""}`, transform: `translate(${p.x},${p.y})` });
+    const title = svg("title");
+    title.textContent = n.id;
+    g.append(title, svg("rect", { width: W, height: H, rx: 5 }));
+    const k = svg("text", { x: 9, y: 15, class: "k" });
+    k.textContent = n.kind || kindOf(n.id, info);
+    const name = nameOf(n.id);
+    const t = svg("text", { x: 9, y: 31 });
+    t.textContent = name.length > 21 ? `${name.slice(0, 20)}…` : name;
+    g.append(k, t);
+    s.append(g);
+  }
+  return add(el("div", null, { class: "mini" }), s);
+}
 function list(items) {
   if (items.length <= 1) return items.join("");
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
@@ -357,8 +496,12 @@ function render(data) {
   // access was there before; what is new is the code using it.
   const codeUse = r.opened.length ? [] : r.use_beyond_intent || [];
   const codeRoutes = codeUse.flatMap((u) => already.filter((p) => p.actor === u.workload && p.target === u.resource).slice(0, 1));
-  const drawn = opened.length ? opened : codeRoutes;
+  // A change that opens nothing and reads nothing new: the routes that exist today through what it changes.
+  const touchRoutes = !opened.length && !codeRoutes.length && !(r.mode === "finding") ? already.filter((p) => p.steps.some(isNew)).slice(0, 8) : [];
+  const drawn = opened.length ? opened : codeRoutes.length ? codeRoutes : touchRoutes;
   const codeMode = !opened.length && codeRoutes.length > 0;
+  const touchMode = !opened.length && !codeMode && touchRoutes.length > 0;
+  const impact = r.impact && !opened.length && !codeMode && r.mode !== "finding" ? r.impact : null;
   const finding = r.mode === "finding";
   const advisory = r.finding || {};
   const actionId = advisory.action || "";
@@ -420,9 +563,14 @@ function render(data) {
   } else if ((r.unknowns || []).length) {
     title.textContent = "Part of this change couldn't be checked.";
     lede.textContent = r.unknowns.slice(0, 3).join(" · ");
+  } else if (impact && impact.headline) {
+    title.textContent = impact.headline;
+    lede.textContent = `Nothing new reaches sensitive data. Below: what it touches, who relies on it, the access it adds or removes, and the cost.${askedLine}`;
   } else {
     title.textContent = "No new access to sensitive data.";
-    lede.textContent = askedLine.trim();
+    lede.textContent = (touchMode
+      ? `It opens no new way in. ${plural(touchRoutes.length, "route")} that ${touchRoutes.length === 1 ? "exists" : "exist"} today ${touchRoutes.length === 1 ? "passes" : "pass"} through what it changes: drawn below.`
+      : `It opens no new way in, and no route to data passes through what it changes.`) + askedLine;
   }
 
   // The picture: one row per way in, left to right, the way access flows.
@@ -480,9 +628,23 @@ function render(data) {
     if (fix) { drawFix(fix); return; }
     const canvas = $("canvas");
     canvas.replaceChildren();
+    if (impact && (impact.touched || []).length) {
+      canvas.style.width = "auto"; canvas.style.height = "auto"; canvas.style.zoom = "";
+      canvas.append(impactGraph(mode === "before"));
+      $("note").textContent = mode === "before"
+        ? "Today: what this change touches, and who relies on it now."
+        : "If merged: blue links are added, red ones removed; orange is who relies on what it changes.";
+      return;
+    }
     if (!drawn.length) {
-      canvas.style.width = "auto"; canvas.style.height = "auto";
-      canvas.append(el("p", "Nothing new to draw: this PR opens no way in to sensitive data.", { class: "note" }));
+      canvas.style.width = "auto"; canvas.style.height = "auto"; canvas.style.zoom = "";
+      const box = el("div", null, { class: "note", style: "max-width:720px" });
+      const changes = (r.changes || []).map((c) => `${c.action === "create" ? "adds" : c.action === "delete" ? "deletes" : "updates"} ${c.address}`);
+      box.append(el("p", changes.length ? `This change ${list(changes.slice(0, 6))}${changes.length > 6 ? ` and ${changes.length - 6} more` : ""}. No path to data passes through ${changes.length === 1 ? "it" : "them"}, so nothing new is reachable.` : "This change touches no resource Theseus models.", { style: "margin:0 0 10px" }));
+      const b = el("button", "See them in the whole graph", { type: "button", class: "dash" });
+      b.addEventListener("click", () => drawBoard("full"));
+      box.append(b);
+      canvas.append(box);
       $("note").textContent = "";
       return;
     }
@@ -508,6 +670,7 @@ function render(data) {
                                  stroke: hot ? (finding ? "var(--ok)" : "var(--accent)") : "var(--faint)", "stroke-width": hot ? 2.5 : 1.4,
                                  "marker-end": `url(#${hot ? "arrow-new" : "arrow"})` });
       if (fresh && before) path.setAttribute("stroke-dasharray", "5 5");
+      if (hot) path.classList.add("flow");
       layer.append(path);
       const label = svg("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 - 8, "text-anchor": "middle",
                                   class: `edge-label${hot ? " new" : ""}` });
@@ -570,7 +733,9 @@ function render(data) {
     canvas.style.zoom = room > 0 && width > room ? String(room / width) : "";
     const actor = nameOf(drawn[0].actor);
     const use = codeUse[0];
-    $("note").textContent = codeMode
+    $("note").textContent = touchMode
+      ? (before ? "Today: these routes exist, through what this change touches." : "If merged: the same routes, through what it changes. None is new.")
+      : codeMode
       ? (before ? `Today, ${actor} could already take this route, but no code does.`
                 : `If merged: ${actor}'s code takes this route to read ${nameOf(drawn[0].target)}${use && use.file ? `, at ${use.file}:${use.line}` : ""}. The PR doesn't mention it.`)
       : finding
@@ -860,6 +1025,75 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     s.onerror = () => { $("note").textContent = "The graph library didn't load. Try again in a moment."; };
     document.head.append(s);
   }
+
+  // The impact of a change that opens nothing: the touched nodes, their links added or removed, who relies on
+  // them, the access gained and lost for every class, the dependencies kept or lost, and the cost.
+  function impactGraph(before) {
+    const tone = { added: "green", removed: "red", updated: "blue" };
+    const nodes = new Map(), edges = new Map();
+    const put = (id, t, focus) => { if (!nodes.has(id) && nodes.size < 26) nodes.set(id, { id, tone: t || "", focus }); };
+    for (const t of impact.touched || []) put(t.id, tone[t.action], true);
+    for (const e of impact.edges || []) {
+      if (before && e.action === "added") continue;
+      put(e.src); put(e.dst);
+      const ev = (r.evidence || {})[e.evidence];
+      const href = ev && ev.file && ev.file !== "unknown" ? blobOf(ev.file, ev.line) : null;
+      const word = VERBS[e.type] || (e.type === "CAN" ? "can" : e.type.toLowerCase());
+      edges.set(`${e.src}|${e.dst}`, { src: e.src, dst: e.dst, label: before ? word : `${e.action === "added" ? "+" : "−"} ${word}`, href, tone: before ? "" : e.action === "added" ? "cool" : "hot" });
+    }
+    const lostBy = new Set((impact.relies || []).filter((x) => x.state === "lost").map((x) => x.principal));
+    for (const t of impact.touched || []) for (const dep of (t.dependents || []).slice(0, 6)) {
+      put(dep, lostBy.has(dep) ? "orange" : "");
+      if (!edges.has(`${dep}|${t.id}`)) edges.set(`${dep}|${t.id}`, { src: dep, dst: t.id, label: "relies on", tone: lostBy.has(dep) && !before ? "warm" : "" });
+    }
+    return mini([...nodes.values()], [...edges.values()], info, impact.headline || "What this change touches");
+  }
+  function impactSection() {
+    const box = $("impact");
+    const facts = el("div", null, { class: "facts" });
+    const fact = (value, label, help, cls) => facts.append(add(el("div", null, { class: "fact" }), el("div", String(value), { class: `v ${cls || ""}` }), add(el("div", null, { class: "l" }), document.createTextNode(label), help ? tip(label, help) : null)));
+    const access = impact.access || [], relies = impact.relies || [];
+    const gained = access.filter((a) => a.change === "gained").length, lost = access.filter((a) => a.change === "lost").length;
+    const depsLost = relies.filter((x) => x.state === "lost").length, depsKept = relies.filter((x) => x.state === "kept").length;
+    fact((impact.touched || []).length, "touched", "Nodes this change adds, updates or removes.");
+    fact((impact.dependents || []).length, "rely on them", "People and services with a route or a need through what it touches.");
+    fact(`+${gained} / −${lost}`, "access gained / lost", "Who can reach what after the change, for every data class, not only sensitive data.", gained ? "up" : "");
+    fact(`${depsLost} lost · ${depsKept} kept`, "dependencies", "Code calls and theseus.yaml requirements whose routes it changes.", depsLost ? "up" : "");
+    const before = impact.monthly_usd_before, after = impact.monthly_usd_after;
+    if (typeof before === "number" && typeof after === "number") {
+      const delta = after - before;
+      fact(`${delta >= 0 ? "+" : "−"}$${Math.abs(delta).toFixed(2)}`, "a month", `Estimated at list price: $${before.toFixed(2)} before, $${after.toFixed(2)} after.`, delta > 0 ? "up" : delta < 0 ? "down" : "");
+    }
+    box.append(facts);
+    if ((impact.most_affected || []).length) box.append(el("p", `Most affected: ${list(impact.most_affected.slice(0, 6).map(nameOf))}.`, { style: "margin:0 0 14px;color:var(--muted)" }));
+    if (access.length) {
+      const t = el("table", null, { class: "list" });
+      t.append(add(el("thead"), add(el("tr"), ...["Who", "", "What", "Can", "Class"].map((h) => el("th", h)))));
+      const tb = el("tbody");
+      for (const a of access.slice(0, 20)) tb.append(add(el("tr"), el("td", nameOf(a.actor)), add(el("td"), el("span", a.change, { class: `pill ${a.change}` })), el("td", nameOf(a.target)), el("td", access_words(a.grants)), el("td", a.sensitivity || "unclassified")));
+      t.append(tb);
+      box.append(el("h2", "Access it adds or removes"), add(el("div", null, { class: "tablescroll" }), t));
+    }
+    if (relies.length) {
+      const t = el("table", null, { class: "list" });
+      t.append(add(el("thead"), add(el("tr"), ...["Who", "Needs", "On", "From", "After the change"].map((h) => el("th", h)))));
+      const tb = el("tbody");
+      for (const x of relies.slice(0, 20)) tb.append(add(el("tr"), el("td", nameOf(x.principal)), el("td", x.access), el("td", nameOf(x.resource)), el("td", x.source === "code" ? "its code" : "theseus.yaml"), add(el("td"), el("span", x.state, { class: `pill ${x.state}` }), x.via && x.via.length ? el("span", ` via ${list(x.via.slice(0, 3).map(nameOf))}`, { class: "src" }) : null)));
+      t.append(tb);
+      box.append(el("h2", "Dependencies through what it changes", { style: "margin-top:18px" }), add(el("div", null, { class: "tablescroll" }), t));
+    }
+    $("impact-section").hidden = false;
+  }
+  function access_words(grants) { return grants && grants.length ? grants.join(" and ") : "reach"; }
+  function blobOf(file, line) {
+    const root = data.world_root.replace(/^\/+|\/+$/g, "");
+    const path = `${root}/${file}`.split("/").map(encodeURIComponent).join("/");
+    const repo = data.repo.split("/").map(encodeURIComponent).join("/");
+    return `https://github.com/${repo}/blob/${encodeURIComponent(data.head_sha)}/${path}${line ? `#L${line}` : ""}`;
+  }
+  if (impact) impactSection();
+  $("seg-tip").append(tip("the views", "Today: the graph before this PR. If merged: after it, with what the PR adds in red and moving. Whole graph: every access link in the PR's graph, read from FalkorDB."));
+  $("badge").title = { blocked: "The PR opens a new way to sensitive data; the required Theseus check stays red until it doesn't.", look: "Part of the change is outside what Theseus can model; a person should check it.", clear: "Nothing new reaches sensitive data." }[data.verdict.level] || "";
 
   $("v-before").addEventListener("click", () => drawBoard("before"));
   $("v-after").addEventListener("click", () => drawBoard("after"));
