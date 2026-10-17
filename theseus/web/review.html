@@ -441,9 +441,12 @@ function render(data) {
       const where = ev && ev.line ? ` · ${ev.file.split("/").pop()}:${ev.line}` : "";
       const text = finding ? (before ? "Cut" : `Cut here to contain it${where}`) : before ? "This PR adds it" : `Added by this PR${where}`;
       const tag = el("div", text, { class: finding ? `tag${before ? " quiet" : " ok"}` : `tag${before ? " quiet" : ""}` });
-      tag.style.left = `${a.x + W - 30}px`; tag.style.top = `${Math.max(a.y, b.y) + H + 10}px`;
+      tag.style.left = `${a.x + W / 2}px`; tag.style.top = `${Math.min(a.y, b.y) - 27}px`;
       canvas.append(tag);
     }
+    // A long route is scaled down to fit the stage rather than cut off at its right edge.
+    const room = $("stage").clientWidth - 48;
+    canvas.style.zoom = room > 0 && width > room ? String(room / width) : "";
     const actor = nameOf(opened[0].actor);
     $("note").textContent = finding
       ? (before ? "With that one link cut, none of the highlighted data is reachable."
