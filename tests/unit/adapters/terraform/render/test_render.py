@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 from pathlib import Path
 
@@ -278,6 +280,23 @@ def test_role_trust_names_exact_declared_users_and_roles_and_keeps_creation_depe
     assert "depends_on = [aws_iam_role.deploy, aws_iam_user.priya]" in text
     assert ".arn" not in text
     parse_all(result)
+
+
+def test_role_address_hashes_the_op_with_sorted_trust_principals() -> None:
+    principals = ["user:priya-intern", "role:github-deploy"]
+    results = [
+        render(
+            {"terraform/main.tf": SOURCE},
+            [op("add_role", name="new", trust_principals=order, statements=[STATEMENT])],
+        )
+        for order in (principals, sorted(principals))
+    ]
+    assert results[0] == results[1]
+    # The same label the cloud adapter gives the role on the graph copy: a hash of the sorted op.
+    canonical = op("add_role", name="new", trust_principals=sorted(principals), statements=[STATEMENT])
+    payload = json.dumps(canonical.model_dump(), sort_keys=True, separators=(",", ":"))
+    label = "theseus_add_role_" + hashlib.sha256(payload.encode()).hexdigest()[:12]
+    assert f'resource "aws_iam_role" "{label}"' in results[0][GENERATED]
 
 
 def test_nonroot_principal_paths_are_refused_instead_of_disagreeing_with_engine_arns() -> None:
