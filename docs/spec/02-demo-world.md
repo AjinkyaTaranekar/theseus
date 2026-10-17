@@ -115,6 +115,7 @@ flowchart LR
     pay[(payments-api-key)]
     db[(customer-db)]
     ord[(demo-orders)]
+    migration[(orders-migration-db, unreached)]
   end
   sam --> sup[support-engineers] --> ps[prod-support]
   priya -. intern PR .-> sup
@@ -459,7 +460,7 @@ requirements:
 
 ## What `main` looks like
 
-About 70 nodes. Every requirement R1 to R17 is satisfied. Exactly six dangerous paths exist before any PR; they
+71 nodes. Every requirement R1 to R17 is satisfied. Exactly six dangerous paths exist before any PR; they
 appear as "unchanged" in every PR diff and are what scan mode reports.
 
 | Actor | Reaches | Why |
@@ -475,8 +476,9 @@ pairs pass through it, 12 through `github-deploy`).
 
 **One resource is unreached:** `db:orders-migration-db`. No actor has a path to it and no code calls it, so the
 posture lists it under unreached data and the cost estimate offers its line as a saving (about $59 a month at
-list price). The dashboard presents it as a cleanup candidate for a person to confirm: the graph cannot see
-manual connections, backups or recovery plans. It opens no dangerous path and adds no single point of failure.
+list price). This is a cleanup candidate for a person to confirm: the graph cannot see manual connections,
+backups or recovery plans. It opens no dangerous path and adds no single point of failure. The estimate uses
+the adapter's us-east-1 price table, not region-specific billing or observed usage.
 
 These outcomes were checked with a throwaway model before the event; it is not part of the repo. F5 confirms
 them on the real plans.
