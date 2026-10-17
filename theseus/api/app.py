@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,8 +25,10 @@ from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
+from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
 from theseus.api import routes, webhooks
 from theseus.api.github import GitHub
+from theseus.cli import analyze_fixture
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
@@ -90,6 +93,25 @@ def build_render() -> webhooks.Render:
         return adapters_for(config).iac.render(files, ops)
 
     return render
+
+
+def build_try(store: GraphStore, settings: Settings, recordings: Path = RECORDINGS) -> routes.Try:
+    """The engine behind `/try/{preset}` (task S4): `analyze_fixture` on the preset's fixture folder in this
+    store, with the models replayed whatever mode the server runs in, so a visit costs no LLM or Jev call. One
+    run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once. The
+    recordings are read on the first visit, so missing ones fail that visit and never the server's startup."""
+    replay = settings.model_copy(update={"theseus_mode": "replay"})
+    lock = threading.Lock()
+    models: list[tuple[ReplayedIntent, ReplayedJev]] = []
+
+    def run(preset: str) -> AnalysisResult:
+        with lock:
+            if not models:
+                models.append((ReplayedIntent(recordings), ReplayedJev(replay, recordings)))
+            llm, jev = models[0]
+            return analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
+
+    return run
 
 
 def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
@@ -163,6 +185,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.finder = build_finder(app.state.store, jev, settings)
         app.state.results = webhooks.Results()
         app.state.render = build_render()
+        app.state.try_preset = build_try(app.state.store, settings)
+        app.state.try_limiter = routes.RateLimit()
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

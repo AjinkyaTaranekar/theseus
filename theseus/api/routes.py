@@ -1,9 +1,10 @@
 """The analysis routes and the App's webhook (docs/spec/05-contracts.md, "API"; 07-github-and-deploy.md).
 
 A request from the Action runs the real review (A5) and posts it on the PR as the comment and the `Theseus`
-check run. A `{fixture}` request to `/analyze` or `/finding` still answers from that fixture's stub, for the
-Try-it page (S4); `/scan` runs the real scan (C3). `/theseus apply <ID>` and `POST /apply` commit a fix that
-passed (A9, `api/webhooks.py`).
+check run. A `{fixture}` request to `/analyze` or `/finding` still answers from that fixture's stub; `/scan`
+runs the real scan (C3). The Try-it page (S4) runs the real engine on a PR fixture through
+`POST /try/{preset}`, with the models replayed and a rate limit per address. `/theseus apply <ID>` and
+`POST /apply` commit a fix that passed (A9, `api/webhooks.py`).
 """
 
 from __future__ import annotations
@@ -13,14 +14,19 @@ import hmac
 import json
 import logging
 import re
+import threading
+import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
+import yaml
 from falkordb import FalkorDB
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
 from theseus.agent.labels import LABELS, labels_for
@@ -450,6 +456,137 @@ def review_data(
     if data is None:
         raise HTTPException(404, "no such review")
     return data
+
+
+# The Try-it page (S4) ---------------------------------------------------------------------------------------
+
+WEB = Path(__file__).resolve().parents[1] / "web"
+# The only files `/web/` serves: the review page is behind its signed link, never here.
+WEB_FILES = {"app.js": "text/javascript", "style.css": "text/css"}
+PAGE_POLICY = (
+    "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline';"
+    " img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'"
+)
+TRY_LIMIT = 10
+TRY_WINDOW = 60.0
+TRY_CLIENTS = 10_000
+
+# The engine behind `/try/{preset}`: a fixture name to its result. `api/app.py` builds the real one at
+# startup, as the composition root; tests replace it.
+Try = Callable[[str], AnalysisResult]
+_PAGE = Environment(loader=FileSystemLoader(WEB), autoescape=select_autoescape(["html"]))
+
+
+def presets() -> dict[str, str]:
+    """The presets the page offers: each PR fixture's name and what it does, sorted by name. Finding and scan
+    fixtures are not offered: the page draws PR results."""
+    found: dict[str, str] = {}
+    for path in sorted(FIXTURES.glob("*/scenario.yaml")):
+        scenario = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        if scenario.get("mode") == "pr" and FIXTURE_NAME.match(path.parent.name):
+            found[path.parent.name] = " ".join(str(scenario.get("description", "")).split())
+    return found
+
+
+class RateLimit:
+    """At most `limit` requests per `window` seconds for each client, counted in this process. A refused
+    request is not counted. The table is capped at `max_clients`: when it fills, quiet clients go first, then
+    the oldest, so a flood of addresses cannot grow it without bound. `clock` is for tests."""
+
+    def __init__(
+        self,
+        limit: int = TRY_LIMIT,
+        window: float = TRY_WINDOW,
+        clock: Callable[[], float] = time.monotonic,
+        max_clients: int = TRY_CLIENTS,
+    ) -> None:
+        self.limit, self.window, self.clock, self.max_clients = limit, window, clock, max_clients
+        self.hits: dict[str, deque[float]] = {}
+        self._lock = threading.Lock()
+
+    def take(self, client: str) -> int | None:
+        """Counts a request and returns None, or returns the whole seconds until one is allowed."""
+        with self._lock:
+            now = self.clock()
+            seen = self.hits.setdefault(client, deque())
+            while seen and now - seen[0] >= self.window:
+                seen.popleft()
+            if len(seen) >= self.limit:
+                return max(1, int(seen[0] + self.window - now + 0.999))
+            seen.append(now)
+            if len(self.hits) > self.max_clients:
+                self._shrink(now)
+            return None
+
+    def _shrink(self, now: float) -> None:
+        for client in [c for c, seen in self.hits.items() if not seen or now - seen[-1] >= self.window]:
+            del self.hits[client]
+        # Still full: drop the clients that have been quiet longest, never the one being served.
+        extra = len(self.hits) - self.max_clients
+        for client in sorted(self.hits, key=lambda c: self.hits[c][-1])[: max(0, extra)]:
+            del self.hits[client]
+
+
+def client_address(request: Request) -> str:
+    """Who is asking. The API is reached through Tailscale Funnel, which appends the address it saw to
+    X-Forwarded-For, so the last entry is the one to trust: the first is whatever the client wrote. With no
+    header (a direct call) it is the socket's peer."""
+    forwarded = request.headers.get("x-forwarded-for", "").split(",")[-1].strip()
+    return forwarded or (request.client.host if request.client else "unknown")
+
+
+def get_try(request: Request) -> Try:
+    runner = getattr(request.app.state, "try_preset", None)
+    if runner is None:
+        raise HTTPException(503, "the engine is not ready")
+    return runner
+
+
+TryDep = Annotated[Try, Depends(get_try)]
+
+
+def limited(request: Request) -> None:
+    """429 with Retry-After once this address has used its allowance."""
+    limiter = getattr(request.app.state, "try_limiter", None)
+    if limiter is None:
+        raise HTTPException(503, "the engine is not ready")
+    wait = limiter.take(client_address(request))
+    if wait is not None:
+        log.info("try: %s is over %d a minute", client_address(request), limiter.limit)
+        detail = f"{limiter.limit} tries a minute is the limit; try again in {wait} s"
+        raise HTTPException(429, detail, {"Retry-After": str(wait)})
+
+
+@router.get("/", response_class=HTMLResponse)
+def try_page() -> HTMLResponse:
+    """The Try-it page: one button for each preset."""
+    html = _PAGE.get_template("index.html").render(presets=presets())
+    return HTMLResponse(html, headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_POLICY})
+
+
+@router.get("/web/{name}")
+def web_file(name: str) -> FileResponse:
+    """The page's script or style; 404 for any other name."""
+    media = WEB_FILES.get(name)
+    if media is None:
+        raise HTTPException(404, "no such file")
+    return FileResponse(WEB / name, media_type=media, headers={"Cache-Control": "no-cache"})
+
+
+@router.post("/try/{preset}", response_model=AnalysisResult, dependencies=[Depends(limited)])
+def try_preset(preset: str, run: TryDep) -> AnalysisResult:
+    """The real engine on a PR fixture, with the models replayed: what the Action's review would say about it.
+    Rate limited to 10 a minute per address."""
+    if preset not in presets():
+        raise HTTPException(404, f"not a preset: {preset!r}")
+    try:
+        return run(preset)
+    except GraphError as e:
+        log.error("try %s: the graph store did not answer: %s", preset, e)
+        raise HTTPException(503, "the graph store did not answer; try again shortly") from e
+    except TheseusError as e:
+        log.error("try %s: %s", preset, e)
+        raise HTTPException(502, "the engine could not analyze this preset") from e
 
 
 @router.post("/finding", response_model=AnalysisResult)
