@@ -80,7 +80,3 @@ resource "aws_iam_group_policy_attachment" "platform_logs" {
   policy_arn = "arn:aws:iam::111122223333:policy/app-logs-read"
 }
 
-resource "aws_iam_user_group_membership" "priya_support" {
-  user   = "priya-intern"
-  groups = ["support-engineers"]
-}
