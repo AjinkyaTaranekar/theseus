@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from theseus.agent.jev import Jev, JevAnswer
-from theseus.agent.llm import LlmReply
+from theseus.agent.llm import LlmReply, reply_from
 from theseus.config import Settings
 from theseus.errors import ModelError
 
@@ -32,19 +32,20 @@ class ReplayedIntent:
         self.directory = recordings / "llm"
 
     def call(self, purpose: str, messages: list[dict[str, Any]], *args: Any, **kwargs: Any) -> LlmReply:
-        """The recorded reply for this PR text, or ModelError when none was recorded."""
+        """The recorded reply for this PR text, read as `Llm` reads it; ModelError when none was recorded."""
         pr = messages[-1]["content"]
         for path in sorted(self.directory.glob(f"{purpose}-*.json")):
             recording = json.loads(path.read_text(encoding="utf-8"))
             if recording["request"]["messages"][-1]["content"] != pr:
                 continue
-            (call,) = recording["response"]["tool_calls"]
-            return LlmReply(
-                tool=call["name"],
-                arguments=json.loads(call["arguments"]),
-                model=recording["model"],
-                ms=recording["ms"],
-                key=path.stem,
+            request = recording["request"]
+            return reply_from(
+                purpose,
+                path.stem,
+                request.get("tool_choice"),
+                recording["response"],
+                recording["model"],
+                recording["ms"],
             )
         raise ModelError(f"{purpose}: no recording for this PR text in {self.directory}")
 
