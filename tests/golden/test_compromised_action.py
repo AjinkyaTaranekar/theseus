@@ -262,7 +262,10 @@ def test_falkordb_and_memory_agree_on_the_finding(monkeypatch: pytest.MonkeyPatc
         assert result.rotate == ["secret:prod-db-credentials"]
         assert [p.route for p in result.opened] == [p.route for p in memory.opened]
     finally:
-        falkor.delete(f"{name}__base")
+        # The finding also leaves a graph per candidate fix (`<name>__base-fix-k`), so delete by prefix.
+        for graph in falkor.list_graphs():
+            if graph.startswith(f"{name}__"):
+                falkor.delete(graph)
 
 
 @pytest.mark.falkordb

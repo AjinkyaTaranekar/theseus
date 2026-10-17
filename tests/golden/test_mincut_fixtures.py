@@ -154,5 +154,7 @@ def test_real_pr_pipeline_returns_the_same_cut_from_falkordb_and_memory(
         assert result.min_cut is not None and result.min_cut.value == 1_000_000
         assert all(edge.evidence in result.evidence for edge in result.min_cut.cut)
     finally:
-        for side in ["base", "head"]:
-            falkor.delete(prefix + side)
+        # The pipeline also leaves a graph per candidate fix (`<prefix>fix-a`, ...), so delete by prefix.
+        for name in falkor.list_graphs():
+            if name.startswith(prefix):
+                falkor.delete(name)
