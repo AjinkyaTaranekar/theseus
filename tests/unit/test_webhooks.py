@@ -7,9 +7,9 @@ renderer is the real one, built by the app as it is in production.
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import re
+import runpy
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -30,19 +30,12 @@ from theseus.contracts.result import AnalysisResult, Candidate, PatchOp
 from theseus.errors import GitHubError, PatchError
 from theseus.graph.store import MemoryStore
 
-# tools/ is not a package, so CI cannot import it by name: load the commit check from its file.
-_spec = importlib.util.spec_from_file_location(
-    "check_commit_msg", Path(__file__).resolve().parents[2] / "tools" / "check_commit_msg.py"
-)
-assert _spec is not None and _spec.loader is not None
-_check = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_check)
-problems = _check.problems
-
 # The App's settings and client, as tests/unit/test_github.py builds them; `gh` talks to the FakeRepo below.
 key_file, settings, gh = base.key_file, base.settings, base.gh
 
 ROOT = Path(__file__).resolve().parents[2]
+# The rules every commit message must pass (tools/ is scripts, not a package: load it as the other tests do).
+problems = runpy.run_path(str(ROOT / "tools/check_commit_msg.py"))["problems"]
 WORLD = ROOT / "fixtures/intern/head"
 BRANCH = "demo/intern-2"
 NEXT = "c" * 40
