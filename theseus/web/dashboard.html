@@ -136,9 +136,13 @@
   .seg button { border: 0; background: transparent; color: var(--text-2); font: 500 13px/1 var(--font); padding: 9px 12px; cursor: pointer; }
   .seg button[aria-pressed="true"] { background: var(--primary-bg); color: var(--text); box-shadow: inset 0 -2px 0 var(--primary); }
   #cy { height: 640px; background-color: #000; background-image: radial-gradient(#16181c 1px, transparent 1px); background-size: 16px 16px; }
-  .graphwrap { display: grid; grid-template-columns: minmax(0, 1fr) 300px; }
-  .graphwrap aside { border-left: 1px solid var(--border); padding: 12px; min-width: 0; }
-  .graphwrap aside h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; }
+  .graphwrap { position: relative; }
+  .graphwrap aside { position: absolute; top: 12px; right: 12px; width: min(320px, calc(100% - 24px)); max-height: calc(100% - 24px); overflow: auto;
+                     background: rgba(11, 12, 14, .97); border: 1px solid var(--border-2); border-radius: 4px; padding: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .6); }
+  .graphwrap aside[hidden] { display: none; }
+  .graphwrap aside h3 { margin: 0 0 4px; font-size: 15px; overflow-wrap: anywhere; padding-right: 28px; }
+  .graphwrap aside .close { position: absolute; top: 8px; right: 8px; height: 24px; width: 24px; padding: 0; }
+  .graphtip { position: absolute; left: 12px; top: 12px; font-size: 12px; color: var(--muted); background: rgba(0, 0, 0, .7); padding: 4px 8px; border-radius: 3px; pointer-events: none; }
   .key { display: flex; gap: 14px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-2); }
   .key i { display: inline-block; width: 14px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; border: 1.5px solid; }
   @media (max-width: 980px) { .graphwrap { grid-template-columns: 1fr; } .graphwrap aside { border-left: 0; border-top: 1px solid var(--border); } }
@@ -702,9 +706,9 @@ function repoViews(d) {
     const [gp, gb] = panel("main", "s24", { flush: true, hint: d.main_graph ? `${d.main_graph.name} · ${d.main_graph.nodes} nodes · ${d.main_graph.edges} edges` : "" });
     const wrap = el("div", null, { class: "graphwrap" });
     const canvas = el("div", null, { id: "cy", role: "img", "aria-label": "main's access graph" });
-    const side = el("aside", null, { "aria-live": "polite" });
-    side.append(el("p", "Click a node to see what it is, who reaches it and what depends on it.", { class: "sub" }));
-    wrap.append(canvas, side);
+    const side = el("aside", null, { "aria-live": "polite", hidden: "" });
+    const tip = el("div", "Click a node for details · scroll or pinch to zoom · drag to pan", { class: "graphtip" });
+    wrap.append(canvas, tip, side);
     const key = el("div", null, { class: "key" });
     for (const [label, color] of [["On a risky path", TONES.red], ["Single point of failure", TONES.yellow], ["Sensitive data", "#7a2a35"], ["Other", "#33363c"]]) {
       const i = el("i"); i.style.borderColor = color; key.append(add(el("span"), i, document.createTextNode(label)));
@@ -728,7 +732,10 @@ function repoViews(d) {
     }
     function details(id) {
       const n = nodeInfo(id) || {};
-      side.replaceChildren(el("h3", nameOf(id)), el("div", `${kindOf(id, n)} · ${id}`, { class: "sub mono" }));
+      const close = el("button", "×", { class: "btn close", type: "button", "aria-label": "Close the details" });
+      close.addEventListener("click", () => { side.hidden = true; if (cy) cy.elements().removeClass("faded"); });
+      side.replaceChildren(close, el("h3", nameOf(id)), el("div", `${kindOf(id, n)} · ${id}`, { class: "sub mono" }));
+      side.hidden = false;
       const kv = el("dl", null, { class: "kv", style: "margin-top:10px" });
       const row = (k, v) => add(kv, el("dt", k), v instanceof Node ? add(el("dd"), v) : el("dd", v));
       if (n.sensitivity) row("Class", classBadge(n.sensitivity));
@@ -760,24 +767,28 @@ function repoViews(d) {
       cols.forEach((ids, c) => {
         const weight = (id) => { const from = (preds.get(id) || []).filter((s) => pos.has(s)); return from.length ? from.reduce((sum, s) => sum + pos.get(s).y, 0) / from.length : Infinity; };
         ids.sort((a, b) => (c === 0 ? 0 : weight(a) - weight(b)) || a.localeCompare(b));
-        ids.forEach((id, i) => pos.set(id, { x: c * 260, y: i * 60 }));
+        ids.forEach((id, i) => pos.set(id, { x: c * 210, y: i * 56 }));
       });
       const tallest = Math.max(1, ...cols.map((ids) => ids.length));
-      cols.forEach((ids) => { const shift = ((tallest - ids.length) * 60) / 2; ids.forEach((id) => { pos.get(id).y += shift; }); });
+      cols.forEach((ids) => { const shift = ((tallest - ids.length) * 56) / 2; ids.forEach((id) => { pos.get(id).y += shift; }); });
+      // Drawn at a readable size across the panel's width; the canvas grows with the graph, and zoom is there for more.
+      const graphW = (LANES.length - 1) * 210 + 150 + 60, graphH = (tallest - 1) * 56 + 40 + 60 + 60;
+      const scale = Math.min(1, canvas.clientWidth / graphW);
+      canvas.style.height = `${Math.round(Math.min(1800, Math.max(360, graphH * scale)))}px`;
       if (cy) cy.destroy();
       cy = cytoscape({
         container: canvas,
         elements: [
-          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label: label.toUpperCase(), lane: 1 }, position: { x: i * 260, y: -60 } })),
+          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label: label.toUpperCase(), lane: 1 }, position: { x: i * 210, y: -56 } })),
           ...nodes.map((n) => ({ data: { id: n.id, label: `${kindOf(n.id, n)}\n${nameOf(n.id).length > 22 ? nameOf(n.id).slice(0, 21) + "…" : nameOf(n.id)}`, hot: hotNodes.has(n.id) ? 1 : 0, spof: spof.has(n.id) ? 1 : 0, sens: sensitive(n.id) ? 1 : 0 }, position: pos.get(n.id) })),
           ...links.map((e, i) => ({ data: { id: `e${i}`, source: e.src, target: e.dst, hot: hotEdges.has(`${e.src}|${e.type}|${e.dst}`) ? 1 : 0 } })),
         ],
         style: [
-          { selector: "node", style: { shape: "round-rectangle", width: 160, height: 40, "background-color": "#0b0c0e", "border-width": 1, "border-color": "#33363c", label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "font-size": 11, "font-family": "Inter, system-ui, sans-serif", color: "#b9bdc5", "text-max-width": 150 } },
+          { selector: "node", style: { shape: "round-rectangle", width: 150, height: 40, "background-color": "#0b0c0e", "border-width": 1, "border-color": "#33363c", label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "font-size": 11, "font-family": "Inter, system-ui, sans-serif", color: "#b9bdc5", "text-max-width": 140 } },
           { selector: "node[sens = 1]", style: { "border-color": "#7a2a35", "border-width": 1.5 } },
           { selector: "node[hot = 1]", style: { "border-color": TONES.red, "border-width": 2, color: "#e8e9ec" } },
           { selector: "node[spof = 1]", style: { "border-color": TONES.yellow, "border-width": 2.5, "border-style": "double" } },
-          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 11, "font-weight": 600, color: "#8f949d", width: 160, height: 20 } },
+          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 11, "font-weight": 600, color: "#8f949d", width: 150, height: 20 } },
           { selector: "edge", style: { width: 1, "line-color": "#33363c", "target-arrow-color": "#33363c", "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.7 } },
           { selector: "edge[hot = 1]", style: { width: 2.2, "line-color": TONES.red, "target-arrow-color": TONES.red, "z-index": 10 } },
           { selector: ".faded", style: { opacity: 0.12 } },
@@ -795,7 +806,7 @@ function repoViews(d) {
         cy.nodes("[lane = 1]").removeClass("faded");
         details(node.id());
       });
-      cy.on("tap", (evt) => { if (evt.target === cy) { cy.elements().removeClass("faded"); } });
+      cy.on("tap", (evt) => { if (evt.target === cy) { cy.elements().removeClass("faded"); side.hidden = true; } });
       $("live").textContent = `${nodes.length} nodes and ${links.length} links shown`;
     }
     seg.addEventListener("click", (evt) => { const b = evt.target.closest("button"); if (b && graph) draw(b.dataset.mode); });
