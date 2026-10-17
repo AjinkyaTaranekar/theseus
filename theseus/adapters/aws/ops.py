@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from theseus.adapters.aws.kinds import PROVIDER
 from theseus.contracts.result import Contract, PatchOp
@@ -23,57 +23,69 @@ class Condition(Contract):
     value: str | list[str]
 
 
+# Field descriptions go into ops_schema(), the only guide the LLM's fix tool has: some fields take a bare
+# name, others a node ID, and a fix the model cannot write correctly is simply invalid. The examples are
+# not the demo world's names, so they suggest none.
+_USER = "The user's name alone, such as jane; not a node ID or an ARN."
+_GROUP = "The group's name alone, such as developers; not a node ID or an ARN."
+_ADDRESS = "The policy resource's address, such as aws_iam_role_policy.app_read."
+_SID = "The statement's Sid."
+_ARNS = "Exact ARNs."
+
+
 class Statement(Contract):
-    sid: str
+    sid: str = Field(description="A Sid for the statement, unique in its policy.")
     effect: Literal["Allow", "Deny"]
-    actions: list[str]
-    resources: list[str]
+    actions: list[str] = Field(description="IAM actions, such as s3:GetObject.")
+    resources: list[str] = Field(description=_ARNS)
     condition: Condition | None = None
 
 
 class RemoveMembership(Contract):
-    user: str
-    group: str
+    user: str = Field(description=_USER)
+    group: str = Field(description=_GROUP)
 
 
 class AddMembership(Contract):
-    user: str
-    group: str
+    user: str = Field(description=_USER)
+    group: str = Field(description=_GROUP)
 
 
 class RemoveStatement(Contract):
     """Removes the statement with that Sid from an inline policy or an aws_iam_policy."""
 
-    policy_address: str
-    sid: str
+    policy_address: str = Field(description=_ADDRESS)
+    sid: str = Field(description=_SID)
 
 
 class SetStatementResources(Contract):
-    policy_address: str
-    sid: str
-    resources: list[str]
+    policy_address: str = Field(description=_ADDRESS)
+    sid: str = Field(description=_SID)
+    resources: list[str] = Field(description=_ARNS)
 
 
 class AddPolicy(Contract):
     """Adds an inline policy to a principal (`user:`, `group:` or `role:` ID)."""
 
-    principal: str
+    principal: str = Field(description="The principal's node ID: user:<name>, group:<name> or role:<name>.")
     statements: list[Statement]
 
 
 class AddRole(Contract):
-    """Adds a role trusting those principals' exact ARNs, with an inline policy."""
+    """Adds a role trusted only by these principals, with an inline policy."""
 
-    name: str
-    trust_principals: list[str]
+    name: str = Field(description="The new role's name, unused by any other role.")
+    trust_principals: list[str] = Field(
+        description="Node IDs of the principals the role trusts: user:<name> or role:<name>, not ARNs."
+    )
     statements: list[Statement]
 
 
 class SetOidcSub(Contract):
     """Replaces the role's OIDC `sub` condition with StringLike on these patterns."""
 
-    role: str
-    patterns: list[str]
+    role: str = Field(description="The role's name alone, such as deploy.")
+    patterns: list[str] = Field(description="OIDC sub patterns, such as repo:org/app:ref:refs/heads/main.")
 
 
 OPS: dict[str, type[Contract]] = {

@@ -14,7 +14,7 @@ from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev, JevAnswer
-from theseus.agent.llm import LlmReply
+from theseus.agent.llm import Llm, LlmReply
 from theseus.config import get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, World
@@ -48,9 +48,18 @@ class RecordedJev:
 class RecordedIntent:
     """A1's recorded intent answer for the same PR text. A1 recorded it before C1 added nine resources to the
     vocabulary, so the request no longer hashes to its key; the PR text and the answer are the same. A PR it
-    never recorded fails the test, loudly."""
+    never recorded fails the test, loudly.
+
+    Every other call (the fix agent's) replays its own recording by key and never goes live: a request that
+    was never recorded raises ModelError, as replay does."""
+
+    def __init__(self) -> None:
+        settings = get_settings().model_copy(update={"theseus_mode": "replay"})
+        self.replay = Llm(settings, recordings=ROOT / "recordings/llm")
 
     def call(self, purpose: str, messages: list[dict[str, Any]], *args: Any, **kwargs: Any) -> LlmReply:
+        if purpose != "intent":
+            return self.replay.call(purpose, messages, *args, **kwargs)
         pr = messages[-1]["content"]
         for path in sorted((ROOT / "recordings/llm").glob(f"{purpose}-*.json")):
             recording = json.loads(path.read_text(encoding="utf-8"))
