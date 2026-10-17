@@ -14,6 +14,9 @@ Task briefs in `docs/tasks/` point to the exact sections each task needs.
 | [07-github-and-deploy.md](07-github-and-deploy.md) | The GitHub Action and App, the apply command, Docker Compose, Caddy, environment variables | GitHub and deploy tasks |
 | [08-core-and-adapters.md](08-core-and-adapters.md) | What is core and what is an adapter, what crosses between them, and how to add a cloud, IaC format, CI system or language | Every task, before writing a module |
 
+How the pieces fit together, every Cypher query, when the models are called and why each choice was made:
+[`docs/architecture/`](../architecture/README.md).
+
 ## Decisions already made
 
 - AWS, Terraform, GitHub Actions and Python in v1, each behind an adapter; the core names none of them

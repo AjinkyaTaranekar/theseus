@@ -6,7 +6,7 @@
 **The PR says:** stub.\
 **It asked for:** read **demo-company-files/public/** · **It would get:** **demo-company-files/invoices/**\
 **How:** **anyone on the internet** can read **demo-company-files/invoices/**.\
-**Fix:** reply `/theseus apply` to commit the fix (candidate S). Tested on a copy of the graph: closes all 1 way in, breaks nothing.
+**Fix:** reply `/theseus apply` to commit the fix (candidate S). Tested on a copy of the graph: closes the only way in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -60,18 +60,20 @@ Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time
 
 | Actor | Target | Hops |
 | --- | --- | --- |
+| `user:casey-contractor` | `db:customer-db` | 4 |
+| `user:casey-contractor` | `s3://demo-company-files/invoices/` | 3 |
+| `user:casey-contractor` | `secret:legacy-reports-password` | 3 |
+| `user:casey-contractor` | `secret:payments-api-key` | 3 |
+| `user:casey-contractor` | `secret:prod-db-credentials` | 3 |
+| `user:casey-contractor` | `secret:smtp-credentials` | 3 |
 | `workflow:demo-org/docs-site/preview.yml` | `db:customer-db` | 4 |
 | `workflow:demo-org/docs-site/preview.yml` | `s3://demo-company-files/invoices/` | 3 |
-| `workflow:demo-org/docs-site/preview.yml` | `secret:prod-db-credentials` | 3 |
-| `workflow:demo-org/infra/deploy.yml` | `s3://demo-company-files/invoices/` | 3 |
-| `workload:support-portal` | `db:customer-db` | 3 |
-| `workload:support-portal` | `secret:prod-db-credentials` | 2 |
+
+and 15 more: every path is on the graph page.
 
 Coverage: not recorded.
 
 Timings: not recorded.
-
-Models: not recorded.
 
 </details>
 

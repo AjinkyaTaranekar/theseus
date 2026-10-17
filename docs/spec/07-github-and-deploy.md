@@ -190,7 +190,7 @@ lacks with its colour and description. A re-run of an old commit leaves the labe
 
 | Labels | When |
 | --- | --- |
-| `theseus: S0` to `theseus: S6`, exactly one | Severity, by the first rule that holds (below) |
+| `theseus: S0 critical` to `theseus: S6 none`, exactly one | Severity, by the first rule that holds (below); the name says the level in words: critical, high, medium, low, unchecked, unclear text, none |
 | `theseus: blocked`, `theseus: needs a look`, `theseus: clear`, exactly one | The verdict, as the check run's |
 | `theseus: regulated data` or `theseus: confidential data` | The most sensitive class an opened path or a code read beyond intent reaches |
 | `theseus: grants more than it says` | The PR states a purpose, and the change reaches data its intent does not ask for |

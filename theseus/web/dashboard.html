@@ -228,13 +228,17 @@ const KINDS = { user: "person", group: "group", role: "role", workload: "service
 const CATEGORIES = { objectstorage: "storage", filestorage: "file share", blockstorage: "disk", database: "database",
                      secret: "secret", encryptionkey: "key", aimodel: "AI model", logstore: "logs",
                      messagequeue: "queue", messagetopic: "topic", datastream: "stream" };
-const CLASS = { regulated: ["Customer data", "b-red"], confidential: ["Business data", "b-orange"],
+const CLASS = { regulated: ["Regulated", "b-red"], confidential: ["Confidential", "b-orange"],
                 internal: ["Internal", "b-blue"], public: ["Public", "b-grey"] };
 const TRIGGERS = { push: "push to main", schedule: "nightly run", workflow_dispatch: "manual run", cli: "command line" };
 const VERDICT = { blocked: ["Blocked", "b-red"], look: ["Needs a look", "b-yellow"], clear: ["Clear", "b-green"] };
 const PROVIDERS = { aws: "AWS", github: "GitHub" };
 const STATE = { down: ["Down", "b-red"], impaired: ["Loses access", "b-orange"], degraded: ["Degraded", "b-yellow"], broken: ["Broken", "b-red"] };
 const STATE_RANK = { down: 0, broken: 0, impaired: 1, degraded: 2 };
+// Severity in words: S0 is the worst, S6 nothing new.
+const SEVERITY = ["critical", "high", "medium", "low", "unchecked", "unclear text", "none"];
+// A fix's verdict in words, for the tables that name one.
+const FIX_WORDS = { pass: "passes", fail: "doesn't pass", invalid: "can't be applied", unknown: "couldn't be checked" };
 const FIX = { pass: "b-green", fail: "b-red", invalid: "b-red", unknown: "b-grey" };
 const TONES = { red: "#f2495c", orange: "#ff9830", yellow: "#fade2a", green: "#73bf69", blue: "#5794f2", purple: "#b877d9" };
 const PAGE = 25;
@@ -533,7 +537,7 @@ function repoViews(d) {
       statPanel("Dangerous paths", dangerous.length, "to sensitive data nothing requires", dangerous.length ? "red" : "green", series("dangerous"), "#access"),
       statPanel("Pull requests", `${blocked}/${d.reviews.length}`, "blocked from merging", blocked ? "orange" : "green", null, "#prs"),
       statPanel("Advisories", d.findings.length, "affect a workflow on main", d.findings.length ? "red" : "green", series("findings"), "#findings"),
-      statPanel("Single points", p ? p.single_points.length : 0, "of failure on main", "yellow", series("single_points"), "#weak"),
+      statPanel("Single points", p ? p.single_points.filter((s) => new Set(s.breaks.map((b) => b.principal)).size > 1).length : 0, "shared by several services", "yellow", null, "#weak"),
       statPanel("Unused grants", scan ? scan.unused_grants.length : 0, "access no code calls", scan && scan.unused_grants.length ? "orange" : "green", series("unused_grants"), "#weak"),
       statPanel("Monthly cost", p ? usd(p.cost.monthly_usd) : "–", "estimated at list price", "blue", series("monthly_usd"), "#cost"),
     );
@@ -600,12 +604,15 @@ function repoViews(d) {
         if (r.opened.length) {
           what.append(el("div", `${list([...new Set(r.opened.map((o) => nameOf(o.actor)))])} could reach`, { class: "sub" }));
           what.append(chips([...new Set(r.opened.map((o) => o.target))], (id) => ({ sensitivity: (r.opened.find((o) => o.target === id) || {}).sensitivity })));
+        } else if ((r.closed || []).length) {
+          what.append(el("div", `Closes ${plural(r.closed.length, "dangerous path")}: ${list([...new Set(r.closed.map((o) => nameOf(o.actor)))])} can no longer reach`, { class: "sub tone-green" }));
+          what.append(chips([...new Set(r.closed.map((o) => o.target))], () => ({})));
         } else what.textContent = r.headline || "Nothing new reaches sensitive data.";
         if (r.beyond_intent) what.append(el("div", `Its code now reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
         const fixes = el("td");
         for (const f of r.fixes) fixes.append(add(el("div"), badge("Fix passes", "b-green"), el("div", f.title, { class: "sub" })));
-        if (!r.fixes.length) fixes.append(el("span", r.fixes_tried ? "no fix passes" : "none needed", { class: "sub" }));
-        const link = el("td");
+        if (!r.fixes.length) fixes.append(el("span", r.fixes_tried ? "no fix passes" : r.verdict.level === "clear" ? "none needed" : "no automatic fix: ask the author", { class: "sub" }));
+        const link = el("td", null, { style: "white-space:nowrap" });
         if (r.url) link.append(add(el("div"), el("a", "Open review", { href: r.url, "aria-label": `Open the review of pull request ${r.number}` })));
         if (r.pr_url) link.append(add(el("div"), el("a", "Open PR ↗", { href: r.pr_url, target: "_blank", rel: "noopener", "aria-label": `Open pull request ${r.number} on GitHub` })));
         const prCell = el("td");
@@ -614,7 +621,7 @@ function repoViews(d) {
         tb.append(add(el("tr"),
           prCell,
           add(el("td"), badge(vt, vc)),
-          add(el("td"), el("span", r.severity === null || r.severity === undefined ? "–" : `S${r.severity}`, { class: "mono", title: "S0 is the most severe, S6 the least" })),
+          add(el("td", null, { style: "white-space:nowrap" }), r.severity === null || r.severity === undefined ? el("span", "–") : add(el("div"), el("span", `S${r.severity}`, { class: "mono", title: "S0 is the most severe, S6 the least" }), el("div", SEVERITY[r.severity] || "", { class: "sub" }))),
           what, fixes, el("td", ago(r.updated_at), { class: "sub" }), link));
       }
       t.append(tb);
@@ -644,7 +651,7 @@ function repoViews(d) {
       { label: "Workflows", value: (f) => f.workflows.length, cell: (f) => el("div", list(f.workflows.map(nameOf))) },
       { label: "Could reach", value: (f) => f.reaches.length, cell: (f) => chips(f.reaches, info) },
       { label: "Cut", value: null, cell: (f) => el("div", f.cut.map((c) => `${nameOf(c.src)} → ${nameOf(c.dst)}`).join("; ") || "no single cut", { class: "mono sub" }) },
-      { label: "Fix", value: (f) => (f.fix ? f.fix.verdict : ""), cell: (f) => (f.fix ? badge(`${f.fix.id} ${f.fix.verdict}`, FIX[f.fix.verdict] || "b-grey") : "–") },
+      { label: "Fix", value: (f) => (f.fix ? f.fix.verdict : ""), cell: (f) => (f.fix ? badge(`Containment ${FIX_WORDS[f.fix.verdict] || f.fix.verdict}`, FIX[f.fix.verdict] || "b-grey") : "–") },
       { label: "Rotate", value: (f) => f.rotate.length, cell: (f) => el("div", f.rotate.map(nameOf).join(", ") || "nothing") },
       { label: "Opened", value: null, cell: (f) => (f.containment ? add(el("div"), el("a", `PR #${f.containment.pr_number}`, { href: f.containment.pr }), f.containment.issue ? add(el("div"), el("a", "Rotate issue", { href: f.containment.issue })) : null) : el("span", "–", { class: "sub" })) },
     ], d.findings, { sort: 1, empty: "No advisory in the feed affects a workflow on main.", search: (f) => `${f.id} ${f.action} ${f.workflows.join(" ")} ${f.reaches.join(" ")}` }));
@@ -677,13 +684,22 @@ function repoViews(d) {
   views.weak = () => {
     head("Weak points", p ? `Computed on main's graph from ${plural(p.dependencies, "dependency", "dependencies")}: each call a service's code makes, and each access theseus.yaml requires.` : "Waiting for the first scan of main.");
     const actorsOf = (s) => new Set(s.breaks.map((b) => b.principal)).size;
-    const [sp, sb] = panel("Single points of failure", "s24", { flush: true, hint: "on every route of something that is needed" });
+    // A node only one actor depends on is usually that service's own role: worth knowing, not a shared risk.
+    const shared = (p ? p.single_points : []).filter((s) => actorsOf(s) > 1);
+    const own = (p ? p.single_points : []).filter((s) => actorsOf(s) <= 1);
+    const [sp, sb] = panel("Shared single points of failure", "s24", { flush: true, hint: "one node that several people or services all depend on" });
     sb.append(table("Single points of failure", [
       { label: "Node", value: (s) => nameOf(s.id), cell: (s) => add(el("div"), el("div", nameOf(s.id), { class: "mono" }), el("div", kindOf(s.id, info(s.id)), { class: "sub" })) },
       { label: "Actors who depend on it", value: actorsOf, num: true, cell: (s) => String(actorsOf(s)) },
       { label: "Dependencies", value: (s) => s.breaks.length, num: true, cell: (s) => String(s.breaks.length) },
       { label: "If it goes", value: null, cell: (s) => { const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))]; return el("div", `${list(who)} ${who.length === 1 ? "loses" : "lose"} ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`); } },
-    ], p ? p.single_points : [], { page: 10, sort: 1, empty: "No node is the only route to anything that is needed.", search: (s) => `${s.id} ${s.breaks.map((b) => `${b.principal} ${b.resource}`).join(" ")}` }));
+    ], shared, { page: 10, sort: 1, empty: "No node is shared by several people or services as their only route.", search: (s) => `${s.id} ${s.breaks.map((b) => `${b.principal} ${b.resource}`).join(" ")}` }));
+    if (own.length) {
+      const more = el("details", null, { style: "padding:10px 12px" });
+      more.append(el("summary", `${plural(own.length, "more node")} only one service depends on, such as its own role`, { class: "sub", style: "cursor:pointer" }));
+      more.append(add(el("div", null, { style: "margin-top:8px" }), ...own.map((s) => el("div", `${nameOf(s.id)}: if it goes, ${nameOf(s.breaks[0].principal)} loses ${list([...new Set(s.breaks.map((b) => nameOf(b.resource)))].slice(0, 4))}`, { class: "sub" }))));
+      sb.append(more);
+    }
     const [ap, ab] = panel("Articulation points", "s12", { flush: true, hint: "removing one splits the access graph" });
     ab.append(table("Articulation points", [
       { label: "Node", value: (a) => nameOf(a.id), cell: (a) => add(el("div"), el("div", nameOf(a.id), { class: "mono" }), el("div", kindOf(a.id, info(a.id)), { class: "sub" })) },
@@ -699,7 +715,7 @@ function repoViews(d) {
       { label: "Service", value: (u) => nameOf(u.workload), cell: (u) => nameOf(u.workload) },
       { label: "Can", value: (u) => u.access, cell: (u) => u.access },
       { label: "On", value: (u) => nameOf(u.resource), cell: (u) => el("span", nameOf(u.resource), { class: "mono" }) },
-      { label: "Fix", value: null, cell: () => (fixU ? badge(`U ${fixU.verdict}`, FIX[fixU.verdict] || "b-grey") : "–") },
+      { label: "Fix", value: null, cell: () => (fixU ? badge(`Removing them ${FIX_WORDS[fixU.verdict] || fixU.verdict}`, FIX[fixU.verdict] || "b-grey") : "–") },
     ], scan ? scan.unused_grants : [], { page: 10, empty: "Every grant to sensitive data is used by the code that holds it.", search: (u) => `${u.workload} ${u.resource}` }));
     $("view").append(grid(sp), grid(ap, cp), grid(up));
   };
@@ -752,8 +768,8 @@ function repoViews(d) {
     for (const s of o.services) (groups[s.provider] = groups[s.provider] || []).push(s);
     for (const [prov, items] of Object.entries(groups)) {
       const g = el("optgroup", null, { label: PROVIDERS[prov] || prov });
-      items.sort((a, b) => (b.here > 0) - (a.here > 0) || a.name.localeCompare(b.name));
-      for (const s of items) g.append(el("option", s.here ? `${s.name} · ${s.here} here` : s.name, { value: `${s.provider}/${s.service}` }));
+      items.sort((a, b) => (b.breaks || 0) - (a.breaks || 0) || b.here - a.here || a.name.localeCompare(b.name));
+      for (const s of items) g.append(el("option", s.here ? `${s.name} · runs ${s.here} here` : `${s.name} · nothing here`, { value: `${s.provider}/${s.service}` }));
       svc.append(g);
     }
     const reg = el("select", null, { "aria-label": "Region" });
@@ -764,8 +780,9 @@ function repoViews(d) {
     for (const [v, t] of [["down", "Down"], ["degraded", "Degraded"]]) sev.append(el("option", t, { value: v }));
     const f2 = add(el("form", null, { class: "ask", "aria-label": "Pick a service" }), el("span", "or pick", { class: "or" }), svc, reg, sev, el("button", "Show", { class: "btn", type: "submit" }));
     const quick = el("div", null, { class: "quick", role: "group", "aria-label": "Services this world runs on" });
-    for (const s of o.services.filter((s) => s.here).sort((a, b) => b.here - a.here || a.name.localeCompare(b.name)).slice(0, 8)) {
-      const b = el("button", `${s.name} down`, { type: "button" });
+    const ranked = o.services.filter((s) => s.here).sort((a, b) => (b.breaks || 0) - (a.breaks || 0) || (b.affected || 0) - (a.affected || 0) || a.name.localeCompare(b.name));
+    for (const s of ranked.slice(0, 8)) {
+      const b = el("button", `${s.name} down${s.breaks ? ` · breaks ${s.breaks}` : ""}`, { type: "button" });
       b.addEventListener("click", () => ask({ provider: s.provider, service: s.service, severity: "down" }));
       quick.append(b);
     }
@@ -796,7 +813,16 @@ function repoViews(d) {
     });
     fb.append(feed, add(el("div", null, { style: "margin-top:10px" }), check));
     const out = el("div", null, { "aria-live": "polite" });
-    $("view").append(grid(ap, fp), out);
+    const [rp, rb] = panel("Outages that would hurt most", "s24", { flush: true, hint: "each service down everywhere, traced on main's graph" });
+    rb.append(table("Outages that would hurt most", [
+      { label: "Service", value: (s) => s.name, cell: (s) => add(el("div"), el("div", s.name), el("div", PROVIDERS[s.provider] || s.provider, { class: "sub" })) },
+      { label: "Runs here", value: (s) => s.here, num: true, cell: (s) => String(s.here) },
+      { label: "Goes down", value: (s) => s.down || 0, num: true, cell: (s) => String(s.down || 0) },
+      { label: "Lose access", value: (s) => s.affected || 0, num: true, cell: (s) => String(s.affected || 0) },
+      { label: "Dependencies broken", value: (s) => s.breaks || 0, num: true, cell: (s) => el("span", `${s.breaks || 0}/${s.dependencies || 0}`, { class: s.breaks ? "tone-red" : "" }) },
+      { label: "", value: null, cell: (s) => { const b = el("button", "Show", { class: "btn", type: "button", "aria-label": `Show what a ${s.name} outage takes down` }); b.addEventListener("click", () => ask({ provider: s.provider, service: s.service, severity: "down" })); return b; } },
+    ], ranked, { page: 8, sort: 4, empty: "Nothing here runs on a service Theseus maps.", search: (s) => `${s.name} ${s.service}` }));
+    $("view").append(grid(ap, fp), out, grid(rp));
 
     async function ask(params) {
       const qs = Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
@@ -1050,7 +1076,7 @@ function orgViews(d) {
   const repoTable = (page) => table("Repositories", [
     { label: "Repository", value: (r) => r.repo, cell: (r) => add(el("div"), r.url ? el("a", r.repo.split("/")[1], { href: r.url }) : el("span", r.repo), el("div", r.scanned ? `main@${r.sha.slice(0, 7)} · ${ago(r.updated_at)}` : "not scanned yet", { class: "sub mono", style: "white-space:nowrap" })) },
     { label: "Dangerous paths", value: (r) => r.dangerous || 0, num: true, cell: (r) => el("span", r.scanned ? String(r.dangerous) : "–", { class: r.dangerous ? "tone-red" : "" }) },
-    { label: "Customer data", value: (r) => r.regulated || 0, num: true, cell: (r) => (r.scanned ? String(r.regulated) : "–") },
+    { label: "Regulated data", value: (r) => r.regulated || 0, num: true, cell: (r) => (r.scanned ? String(r.regulated) : "–") },
     { label: "Blocked PRs", value: (r) => r.reviews.blocked, num: true, cell: (r) => `${r.reviews.blocked}/${r.reviews.blocked + r.reviews.look + r.reviews.clear}` },
     { label: "Advisories", value: (r) => (r.findings || []).length, num: true, cell: (r) => (r.scanned ? String(r.findings.length) : "–") },
     { label: "Single points", value: (r) => r.single_points || 0, num: true, cell: (r) => (r.scanned ? String(r.single_points) : "–") },
@@ -1068,7 +1094,7 @@ function orgViews(d) {
     };
     const stats = grid(
       statPanel("Dangerous paths", t.dangerous, `across ${plural(t.scanned, "repository", "repositories")}`, t.dangerous ? "red" : "green", daily("dangerous"), "#repos"),
-      statPanel("Customer data", t.regulated, "paths to regulated data", t.regulated ? "red" : "green", null),
+      statPanel("Regulated data", t.regulated, "paths to regulated data", t.regulated ? "red" : "green", null),
       statPanel("Pull requests", `${t.blocked}/${t.reviewed}`, "blocked from merging", t.blocked ? "orange" : "green", null),
       statPanel("Advisories", t.findings, "affect a workflow on main", t.findings ? "red" : "green", daily("findings")),
       statPanel("Graph size", t.nodes.toLocaleString(), `nodes and ${t.edges.toLocaleString()} edges in FalkorDB`, "blue", null),

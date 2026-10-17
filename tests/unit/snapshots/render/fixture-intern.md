@@ -87,18 +87,20 @@ Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time
 
 | Actor | Target | Hops |
 | --- | --- | --- |
+| `user:casey-contractor` | `db:customer-db` | 4 |
+| `user:casey-contractor` | `s3://demo-company-files/invoices/` | 3 |
+| `user:casey-contractor` | `secret:legacy-reports-password` | 3 |
+| `user:casey-contractor` | `secret:payments-api-key` | 3 |
+| `user:casey-contractor` | `secret:prod-db-credentials` | 3 |
+| `user:casey-contractor` | `secret:smtp-credentials` | 3 |
 | `workflow:demo-org/docs-site/preview.yml` | `db:customer-db` | 4 |
 | `workflow:demo-org/docs-site/preview.yml` | `s3://demo-company-files/invoices/` | 3 |
-| `workflow:demo-org/docs-site/preview.yml` | `secret:prod-db-credentials` | 3 |
-| `workflow:demo-org/infra/deploy.yml` | `s3://demo-company-files/invoices/` | 3 |
-| `workload:support-portal` | `db:customer-db` | 3 |
-| `workload:support-portal` | `secret:prod-db-credentials` | 2 |
+
+and 15 more: every path is on the graph page.
 
 Coverage: not recorded.
 
 Timings: not recorded.
-
-Models: not recorded.
 
 </details>
 

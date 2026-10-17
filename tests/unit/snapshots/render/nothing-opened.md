@@ -1,7 +1,7 @@
 <!-- theseus:pr-comment -->
 ## 🟢 No new access to sensitive data
 
-**No new access to sensitive data.**
+**Theseus traced every path to sensitive data in this commit: none of them is new.**
 
 **The PR says:** let Priya read the app logs.\
 **It asked for:** **priya-intern** to read **demo-app-logs/**\
@@ -28,7 +28,7 @@ Checkov 3.2.255 passed this commit (52 checks).
 | --- | --- | --- |
 | `user:priya-intern` | `s3://demo-app-logs/` (internal) | 2 |
 
-Read 46 resources, modeled 31; skipped 15 of types Theseus does not model, such as `aws_cloudwatch_metric_alarm` (6), `aws_sns_topic` (5) and `aws_kms_alias` (2).
+Read 46 resources: the 31 that grant or hold access are in the graph, and the other 15 carry no access Theseus models, such as `aws_cloudwatch_metric_alarm` (6), `aws_sns_topic` (5) and `aws_kms_alias` (2).
 
 Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s.
 

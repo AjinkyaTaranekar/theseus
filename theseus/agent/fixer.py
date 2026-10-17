@@ -335,6 +335,15 @@ def plain_rationale(text: str) -> str:
     return " ".join(sentences[:MAX_SENTENCES])
 
 
+def ops_title(ops: list[PatchOp]) -> str:
+    """The agent's fix named by what its ops do, in order: "Remove membership, add role and add policy"."""
+    steps = list(dict.fromkeys(op.op.replace("_", " ") for op in ops))
+    if not steps:
+        return TITLE
+    named = steps[0] if len(steps) == 1 else f"{', '.join(steps[:-1])} and {steps[-1]}"
+    return named[:1].upper() + named[1:]
+
+
 def template_rationale(ops: list[PatchOp], verdict: str) -> str:
     """The sentence that stands when the model's rationale keeps citing what does not exist: built from the
     ops and the engine's verdict only."""
@@ -488,7 +497,11 @@ def design_fix(
 
         def verify(submission: _Submission) -> Candidate:
             draft = CandidateDraft(
-                id=CANDIDATE_ID, source="llm", proposed_by=session.model, title=TITLE, ops=submission.ops
+                id=CANDIDATE_ID,
+                source="llm",
+                proposed_by=session.model,
+                title=ops_title(submission.ops),
+                ops=submission.ops,
             )
             start = time.perf_counter()
             candidate = context.engine.simulate(
