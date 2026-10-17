@@ -403,7 +403,7 @@ function render(data) {
     const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))];
     const what = [...new Set(s.breaks.map((b) => nameOf(b.resource)))];
     const loses = who.length === 1 ? "loses" : "lose";
-    return { id: s.id, n: s.breaks.length, what: `If it goes, ${plural(s.breaks.length, "dependency", "dependencies")} break: ${list(who)} ${loses} ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
+    return { id: s.id, n: who.length, what: `If it goes, ${plural(s.breaks.length, "dependency", "dependencies")} break: ${list(who)} ${loses} ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
   }), "No node is the only route to anything that is needed.");
   items($("art"), (p ? p.articulation : []).slice(0, 6).map((a) => ({
     id: a.id, n: a.cut_off, what: `Without it, ${plural(a.cut_off, "node")} lose every link to the rest.`, detail: `It leaves pieces of ${list(a.pieces.map(String))} nodes.`,
