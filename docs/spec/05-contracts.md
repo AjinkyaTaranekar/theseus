@@ -202,7 +202,7 @@ build them.
 | Protocol | v1 | Methods | Tasks |
 | --- | --- | --- | --- |
 | `IacAdapter` | `TerraformAdapter` | `read(root, plan) -> IacRead` (resources, unknown fields, files); `locate(files, address, part) -> Evidence`; `render(files, ops) -> files` | E1, E9 |
-| `CloudAdapter` | `AwsAdapter` | `name`, `modeled_types`, `resource_kinds` (kind to category); `rows(resources, identities, locate) -> GraphRows`; `ops_for(change, rows, resources, *, base_resources=None) -> ops`; `apply_ops(resources, ops) -> resources`; `ops_schema()`; `patch_traits(ops) -> PatchTraits` (validated `adds_broad_wildcard: bool`) | E1, E2, E5, E6, FM1 |
+| `CloudAdapter` | `AwsAdapter` | `name`, `modeled_types`, `resource_kinds` (kind to category); `rows(resources, identities, locate) -> GraphRows`; `ops_for(change, rows, resources, *, base_resources=None) -> ops`; `apply_ops(resources, ops) -> resources`; `ops_schema()`; `patch_traits(ops) -> PatchTraits` (validated `adds_broad_wildcard: bool`); `monthly_cost(resources) -> list[CostLine]` (list-price estimates, O3) | E1, E2, E5, E6, FM1, O3 |
 | `CiAdapter` | `GithubAdapter` | `read(files) -> CiRead` (Workflow and Action nodes, `USES` edges, each workflow's `CiIdentity`) | E1, FM1 |
 | `CodeAdapter` | `PythonAdapter` | `read(files, rows, resources) -> CodeRead` (`CALLS`, `REQUESTS`, `HAS_ENV` edges, unknowns, calls skipped) | E1, C2 |
 
@@ -249,6 +249,9 @@ Calls from the GitHub Action carry `X-Theseus-Token`. Webhooks are verified with
 | `POST /webhooks/github` | GitHub payload | `204` | From a user with write access, `issue_comment` with `/theseus apply <ID>` calls apply and `/theseus review` re-runs the review; `check_run` `rerequested` re-runs the review; a `pull_request` that changes nothing under the world root gets a `success` check; `pull_request` closed deletes graphs; `push` to `main` runs a scan (`07-github-and-deploy.md`, "When Theseus reviews") |
 | `GET /reviews/{owner}/{repo}/{number}?k=` | | the review page | A 404 unless `k` is the PR's signature (`07-github-and-deploy.md`, "The review page") |
 | `GET /reviews/{owner}/{repo}/{number}/data?k=` | | `{repo, number, base_sha, head_sha, world_root, verdict, result, graphs: {head, base}}` | The PR's newest result and both graphs, read from the store now; each graph as `{name, nodes, edges}` |
+| `POST /posture` | `{repo, sha, plan, trigger}` | `{repo, sha, graph, dangerous, unused_grants, single_points, monthly_usd, findings, dashboard}` | From the `Theseus main` workflow (`push` to `main`, nightly, on demand): builds `main`'s graph, runs the scan and the posture (`contracts/posture.py`), runs finding mode for each advisory in `THESEUS_ADVISORIES` that affects a workflow on `main`, and keeps it all for the dashboard. The dashboard's link comes back in `X-Theseus-Page` |
+| `GET /dashboard/{owner}/{repo}?k=` | | the dashboard | A 404 unless `k` is the repo's dashboard signature (an HMAC of `dashboard:<repo>`, like the review page's) |
+| `GET /dashboard/{owner}/{repo}/data?k=` | | `{repo, posture, main_graph, reviews, findings, onboarding}` | `main`'s newest posture, every PR review and every finding, read from the store now |
 | `GET /graphs` | | graph names | For the "under the hood" shot |
 | `GET /` and `POST /try/{preset}` | | the Try-it page; an `AnalysisResult` | Runs the live engine on a fixture, with the LLM replayed |
 
