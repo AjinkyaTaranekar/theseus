@@ -575,6 +575,95 @@ def _reviewed(settings: Settings, gh: GitHub, owner: str, name: str, number: int
     return repo
 
 
+# The lines behind a claim --------------------------------------------------------------------------------
+
+SOURCE_FILE = re.compile(r"^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$")
+SOURCE_AROUND = 6
+_sources: dict[tuple[str, str, str], str] = {}
+
+
+def _source_lines(
+    gh: GitHub, repo: str, sha: str, world_root: str, file: str, line: int | None
+) -> dict[str, Any]:
+    """The lines around `line` of a world file at a commit, read through the App and kept per commit: a
+    commit's file never changes. A path outside the world root, or with `..`, is a 422."""
+    if not SOURCE_FILE.fullmatch(file) or ".." in file.split("/") or len(file) > 200:
+        raise HTTPException(422, "name a file under the world root, such as terraform/people.tf")
+    if not SHA.fullmatch(sha):
+        raise HTTPException(404, "no commit to read")
+    cache = (repo, sha, file)
+    if cache not in _sources:
+        try:
+            _sources[cache] = gh.read_file(repo, f"{world_root.strip('/')}/{file}", sha)
+        except GitHubError as e:
+            log.warning("%s@%s: cannot read %s: %s", repo, sha[:7], file, e)
+            raise HTTPException(404, "that file isn't at this commit") from e
+        if len(_sources) > 256:
+            _sources.pop(next(iter(_sources)))
+    text = _sources[cache].splitlines()
+    at = min(max(line or 1, 1), max(len(text), 1))
+    start, end = max(1, at - SOURCE_AROUND), min(len(text), at + SOURCE_AROUND)
+    return {
+        "file": file,
+        "line": line,
+        "sha": sha,
+        "start": start,
+        "lines": [{"n": n, "text": text[n - 1]} for n in range(start, end + 1)],
+        "url": f"https://github.com/{repo}/blob/{sha}/{world_root.strip('/')}/{file}"
+        + (f"#L{line}" if line else ""),
+    }
+
+
+@router.get("/dashboard/{owner}/{name}/source")
+def dashboard_source(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    file: str = "",
+    line: int | None = None,
+) -> dict[str, Any]:
+    """The Terraform lines behind a claim on the dashboard, at main's scanned commit, so the proof opens for
+    someone who can't open the private repo on GitHub."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    try:
+        posture = reviews.kept_posture(store, repo)
+    except GraphError as e:
+        raise HTTPException(502, "the graph store did not answer") from e
+    if posture is None:
+        raise HTTPException(404, "main hasn't been scanned yet")
+    return _source_lines(
+        gh, repo, posture.get("sha", ""), posture.get("world_root") or settings.theseus_world_root, file, line
+    )
+
+
+@router.get("/reviews/{owner}/{name}/{number}/source")
+def review_source(
+    owner: str,
+    name: str,
+    number: int,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    file: str = "",
+    line: int | None = None,
+) -> dict[str, Any]:
+    """The lines behind a step on a review's page, at the PR's head commit."""
+    repo = _reviewed(settings, gh, owner, name, number, k)
+    try:
+        doc = reviews.kept_review(store, repo, number)
+    except GraphError as e:
+        raise HTTPException(502, "the graph store did not answer") from e
+    if doc is None:
+        raise HTTPException(404, "no such review")
+    return _source_lines(
+        gh, repo, doc.get("head_sha", ""), doc.get("world_root") or settings.theseus_world_root, file, line
+    )
+
+
 @router.get("/reviews/{owner}/{name}/{number}", response_class=HTMLResponse)
 def review_page(
     owner: str, name: str, number: int, settings: SettingsDep, gh: GitHubDep, k: str | None = None
@@ -824,6 +913,30 @@ def finding_data(
     if data is None:
         raise HTTPException(404, "no such finding")
     return {**data, "dashboard": reviews.dashboard_url(settings, str(data.get("repo") or ""))}
+
+
+@router.get("/findings/{finding_id}/source")
+def finding_source(
+    finding_id: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    file: str = "",
+    line: int | None = None,
+) -> dict[str, Any]:
+    """The lines behind a step on a finding's page, at the commit of main it was found on."""
+    _signed_finding(settings, finding_id, k)
+    try:
+        doc = reviews.page_doc(store, reviews.finding_key(finding_id))
+    except GraphError as e:
+        raise HTTPException(502, "the graph store did not answer") from e
+    repo = str((doc or {}).get("repo") or "")
+    if doc is None or not gh.allowed(repo):
+        raise HTTPException(404, "no such finding")
+    return _source_lines(
+        gh, repo, doc.get("head_sha", ""), doc.get("world_root") or settings.theseus_world_root, file, line
+    )
 
 
 @router.post("/scan", response_model=AnalysisResult)
@@ -1076,6 +1189,34 @@ def dashboard_incident(
     repo = _dashboard_repo(settings, gh, owner, name, k)
     basis = _basis(store, repo)
     return blast(basis, _incident(basis, text, provider, service, region or None, severity))
+
+
+@router.get("/dashboard/{owner}/{name}/compromise")
+def dashboard_compromise(
+    owner: str,
+    name: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+    node: str = "",
+) -> dict[str, Any]:
+    """What a node could reach on main if it were compromised, traced now by the engine on main's graph in
+    FalkorDB: every resource with its shortest valid path and the file and line behind each hop, the data
+    classes at risk, and the links any one of which cuts every route to sensitive data. Reads only."""
+    repo = _dashboard_repo(settings, gh, owner, name, k)
+    if not node or len(node) > 300:
+        raise HTTPException(422, "name a node on main, such as user:casey-contractor")
+    try:
+        found = reviews.compromise(store, repo, node)
+    except KeyError as e:
+        raise HTTPException(404, "main's graph has no such node") from e
+    except GraphError as e:
+        log.error("%s: cannot trace %s: %s", repo, node, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if found is None:
+        raise HTTPException(404, "main has no graph yet")
+    return found
 
 
 @router.post("/dashboard/{owner}/{name}/incidents/check")

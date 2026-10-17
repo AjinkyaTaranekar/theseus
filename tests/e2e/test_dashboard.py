@@ -412,3 +412,94 @@ def test_a_feed_check_keeps_each_incident_s_blast_radius_for_the_dashboard(
     assert again.status_code == 200 and again.json()["trigger"] == "workflow_dispatch"
     assert client.post(f"/dashboard/{REPO}/incidents/check?k={'0' * 32}").status_code == 404
     assert len(client.checks) == 2  # type: ignore[attr-defined]
+
+
+def compromise(client: TestClient, settings: Settings, node: str, k: str | None = None):
+    k = reviews.sign(settings, reviews.dashboard_key(REPO)) if k is None else k
+    return client.get(f"/dashboard/{REPO}/compromise", params={"k": k, "node": node})
+
+
+def test_a_compromised_contractor_reaches_the_secrets_through_platform_admin_with_every_line(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    res = compromise(client, settings, "user:casey-contractor")
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert found["sensitive"] >= 6 and found["classes"]["regulated"] >= 5
+    secret = next(r for r in found["reaches"] if r["target"] == "secret:prod-db-credentials")
+    assert [(s["type"], s["to"]) for s in secret["steps"]] == [
+        ("MEMBER_OF", "group:contractors"),
+        ("CAN_ASSUME", "role:platform-admin"),
+        ("CAN", "secret:prod-db-credentials"),
+    ]
+    first = secret["steps"][0]["proof"]
+    assert first["file"] == "terraform/legacy.tf" and first["url"].endswith(f"legacy.tf#L{first['line']}")
+    assert first["url"].startswith(f"https://github.com/{REPO}/blob/{SHA}/")
+    # Cutting either of the first two links cuts every route to sensitive data.
+    assert {(c["from"], c["to"]) for c in found["cut"]} == {
+        ("user:casey-contractor", "group:contractors"),
+        ("group:contractors", "role:platform-admin"),
+    }
+    group = compromise(client, settings, "group:contractors").json()
+    assert {r["target"] for r in group["reaches"]} == {r["target"] for r in found["reaches"]}
+
+
+def test_a_compromise_needs_a_known_node_and_the_signed_link(client: TestClient, settings: Settings) -> None:
+    assert compromise(client, settings, "user:casey-contractor").status_code == 404  # no posture yet
+    assert send(client).status_code == 200
+    assert compromise(client, settings, "user:nobody").status_code == 404
+    assert compromise(client, settings, "").status_code == 422
+    assert compromise(client, settings, "user:casey-contractor", k="0" * 32).status_code == 404
+
+
+def test_each_weak_point_comes_with_the_routes_that_all_pass_through_it(
+    client: TestClient, settings: Settings
+) -> None:
+    assert send(client).status_code == 200
+    data = dashboard(client, settings).json()
+    weak = data["posture"]["weak_routes"]
+    deps = weak["secret:prod-db-credentials"]
+    assert deps and all(
+        all("secret:prod-db-credentials" in route[1:-1] for route in d["routes"]) for d in deps
+    )
+    assert data["posture"]["blob"] == f"https://github.com/{REPO}/blob/{SHA}/demo-infra"
+
+
+class Sources(GitHub):
+    """The App's file reads, answered from the demo world on disk."""
+
+    reads: list[tuple[str, str]] = []
+
+    def read_file(self, repo: str, path: str, sha: str) -> str:
+        Sources.reads.append((path, sha))
+        if not path.startswith("demo-infra/"):
+            raise GitHubError("outside the world root")
+        file = Path(path)
+        if not file.is_file():
+            raise GitHubError("404 Not Found")
+        return file.read_text(encoding="utf-8")
+
+
+def test_the_lines_behind_a_claim_open_without_github_access(client: TestClient, settings: Settings) -> None:
+    assert send(client).status_code == 200
+    client.app.dependency_overrides[routes.get_github] = lambda: Sources(settings)  # type: ignore[attr-defined]
+    k = reviews.sign(settings, reviews.dashboard_key(REPO))
+    res = client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": "terraform/legacy.tf", "line": 13})
+    assert res.status_code == 200, res.text
+    found = res.json()
+    assert found["sha"] == SHA and found["start"] <= 13 <= found["start"] + len(found["lines"]) - 1
+    line = next(x for x in found["lines"] if x["n"] == 13)
+    assert "casey" in line["text"] or "contractors" in "".join(x["text"] for x in found["lines"])
+    assert found["url"].endswith("/demo-infra/terraform/legacy.tf#L13")
+    for bad in ("../.env", "/etc/passwd", "terraform/../../x"):
+        assert client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": bad}).status_code == 422
+    assert (
+        client.get(
+            f"/dashboard/{REPO}/source", params={"k": "0" * 32, "file": "terraform/legacy.tf"}
+        ).status_code
+        == 404
+    )
+    reads = len(Sources.reads)
+    client.get(f"/dashboard/{REPO}/source", params={"k": k, "file": "terraform/legacy.tf", "line": 24})
+    assert len(Sources.reads) == reads  # a commit's file is read once

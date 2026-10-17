@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from theseus.adapters.aws.proof import proof_fields
 from theseus.contracts.adapters import IacResource
 from theseus.contracts.posture import CostLine
 
@@ -134,8 +135,9 @@ def _dynamodb(r: IacResource) -> CostLine:
     return _line(r, usd, f"{reads:g} read and {writes:g} write capacity units")
 
 
-def monthly_cost(resources: list[IacResource]) -> list[CostLine]:
-    """One line per resource this table can price, sorted by address."""
+def monthly_cost(resources: list[IacResource], region: str = "us-east-1") -> list[CostLine]:
+    """One line per resource this table can price, sorted by address, each with AWS's pricing page and, where
+    one is known, a read-only check that it is idle (`proof.py`)."""
     tasks = {
         str(r.values.get("family") or r.name): r for r in resources if r.type == "aws_ecs_task_definition"
     }
@@ -161,5 +163,5 @@ def monthly_cost(resources: list[IacResource]) -> list[CostLine]:
         else:
             line = None
         if line is not None:
-            lines.append(line)
+            lines.append(line.model_copy(update=proof_fields(r, region)))
     return sorted(lines, key=lambda line: line.address)

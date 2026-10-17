@@ -27,6 +27,66 @@
 **[See it on a graph →]({{ graph_url }})**
 
 {% endif %}
+{% if impact %}
+<details>
+<summary><b>Where this change lands</b> (who reaches it, what runs through it, what it costs)</summary>
+
+{% if impact.diagram %}
+{{ impact.diagram }}
+
+<sub>Green: added by this PR · Red, dashed: removed · Yellow: where it lands most</sub>
+
+{% endif %}
+{% for m in impact.moved %}
+- {{ m }}
+{% endfor %}
+{% if impact.moved_more %}
+- and {{ impact.moved_more }} more links
+{% endif %}
+
+| Touched | Change | Reached by | Dependencies through it | Services that call it |
+| --- | --- | --- | --- | --- |
+{% for t in impact.touched %}
+| {{ t.node }} | {{ t.change }} | {{ t.reached_by }} | {{ t.relied_on }} | {{ t.dependents }} |
+{% endfor %}
+{% if impact.touched_more %}
+
+and {{ impact.touched_more }} more.
+{% endif %}
+{% if impact.access %}
+
+**Access that moves**, whatever the data's class:
+
+| Who | | What | Class |
+| --- | --- | --- | --- |
+{% for a in impact.access %}
+| {{ a.who }} | {{ a.change }} | {{ a.what }} | {{ a.class }} |
+{% endfor %}
+{% if impact.access_more %}
+
+and {{ impact.access_more }} more.
+{% endif %}
+{% endif %}
+{% if impact.relies %}
+
+**Dependencies the change touches** (code calls and `theseus.yaml` requirements):
+
+| Who | Needs | From | State |
+| --- | --- | --- | --- |
+{% for r in impact.relies %}
+| {{ r.who }} | {{ r.needs }} | {{ r.source }} | {{ r.state }} |
+{% endfor %}
+{% if impact.relies_more %}
+
+and {{ impact.relies_more }} more.
+{% endif %}
+{% endif %}
+
+**Cost:** {{ impact.cost }}
+
+</details>
+
+{% endif %}
 {% if opened %}
 <details>
 <summary><b>Step by step</b> ({{ opened|length + opened_more }} {{ "way" if opened|length + opened_more == 1 else "ways" }} in, each linked to its line)</summary>

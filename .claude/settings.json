@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python \"$CLAUDE_PROJECT_DIR/tools/agent_guard.py\""
+            "command": "sh \"$CLAUDE_PROJECT_DIR/tools/py.sh\" \"$CLAUDE_PROJECT_DIR/tools/agent_guard.py\""
           }
         ]
       }

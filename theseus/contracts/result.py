@@ -293,6 +293,65 @@ class Coverage(Contract):
     edges: int = 0
 
 
+class TouchedNode(Contract):
+    """A node the change adds, updates or removes, or an end of a link it adds or removes; who reaches it, how
+    many dependencies run through it, and the services that call it."""
+
+    id: str
+    action: Literal["added", "updated", "removed"]
+    address: str = ""
+    reached_by: list[str] = Field(default_factory=list)
+    relied_on: int = 0
+    dependents: list[str] = Field(default_factory=list)
+
+
+class EdgeChange(Contract):
+    """A link the change adds or removes. `evidence` is a key of the result's evidence."""
+
+    src: str
+    type: EdgeType
+    dst: str
+    action: Literal["added", "removed"]
+    evidence: str | None = None
+
+
+class AccessChange(Contract):
+    """Access an actor gains or loses with the change, to any resource, whatever its data class."""
+
+    actor: str
+    target: str
+    change: Literal["gained", "lost"]
+    grants: list[Access] = Field(default_factory=list)
+    sensitivity: Sensitivity | None = None
+
+
+class Reliance(Contract):
+    """A dependency (a code call or a theseus.yaml requirement) the change touches: its routes go through
+    `via`, or it gains or loses its last route."""
+
+    principal: str
+    access: Access
+    resource: str
+    source: Literal["code", "requirement"]
+    state: Literal["kept", "lost", "gained"]
+    via: list[str] = Field(default_factory=list)
+
+
+class ChangeImpact(Contract):
+    """Where a change lands and what depends on it, for every PR, sensitive data or not: the nodes and links
+    it touches, who reaches them, the dependencies through them, access gained and lost, and the cost."""
+
+    headline: str = ""
+    touched: list[TouchedNode] = Field(default_factory=list)
+    edges: list[EdgeChange] = Field(default_factory=list)
+    access: list[AccessChange] = Field(default_factory=list)
+    relies: list[Reliance] = Field(default_factory=list)
+    dependents: list[str] = Field(default_factory=list)
+    most_affected: list[str] = Field(default_factory=list)
+    monthly_usd_before: float = 0.0
+    monthly_usd_after: float = 0.0
+
+
 class AnalysisResult(Contract):
     scenario: str | None = None
     mode: Literal["pr", "finding", "scan"]
@@ -323,6 +382,8 @@ class AnalysisResult(Contract):
     models: dict[str, str] = Field(default_factory=dict)
     # Every node on a listed path, for plain names in the comment: shown, not compared.
     nodes: dict[str, NodeInfo] = Field(default_factory=dict)
+    # PR mode: where the change lands and what depends on it, whatever the data's class. Shown, not compared.
+    impact: ChangeImpact | None = None
 
 
 # Golden tests ---------------------------------------------------------------------------------------------

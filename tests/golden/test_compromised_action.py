@@ -96,7 +96,7 @@ def test_run_finding_matches_the_answer_key(deps: Deps) -> None:
     assert result.mode == "finding"
     assert result.finding is not None and result.finding["id"] == "GHSA-demo-0001"
     assert result.finding["workflows"] == [PREVIEW, LINT]
-    keys = ["scenario", "mode", "min_cut", "candidates", "rotate", "staging_to_prod"]
+    keys = ["scenario", "mode", "min_cut", "candidates", "recommended", "rotate", "staging_to_prod"]
     assert compare(project(result), expected(SCENARIO), keys) == []
 
 
@@ -262,7 +262,10 @@ def test_falkordb_and_memory_agree_on_the_finding(monkeypatch: pytest.MonkeyPatc
         assert result.rotate == ["secret:prod-db-credentials"]
         assert [p.route for p in result.opened] == [p.route for p in memory.opened]
     finally:
-        falkor.delete(f"{name}__base")
+        # The finding also leaves a graph per candidate fix (`<name>__base-fix-k`), so delete by prefix.
+        for graph in falkor.list_graphs():
+            if graph.startswith(f"{name}__"):
+                falkor.delete(graph)
 
 
 @pytest.mark.falkordb

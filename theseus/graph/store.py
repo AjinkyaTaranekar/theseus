@@ -220,6 +220,33 @@ def edge_properties(e: EdgeRow) -> dict[str, Any]:
 
 GraphView = dict[str, list[dict[str, Any]]]
 
+_NODE_FIELDS = frozenset(NodeRow.model_fields) - {"props"}
+_EDGE_FIELDS = frozenset(EdgeRow.model_fields) - {"props"}
+
+
+def rows_from_view(view: GraphView) -> GraphRows:
+    """The rows a stored graph holds, read back from its view: the inverse of `node_properties` and
+    `edge_properties`, so the engine can reason on a graph it did not build in this process."""
+    nodes = [
+        NodeRow.model_validate(
+            {
+                **{k: v for k, v in n.items() if k in _NODE_FIELDS},
+                "props": {k: v for k, v in n.items() if k not in _NODE_FIELDS},
+            }
+        )
+        for n in view["nodes"]
+    ]
+    edges = [
+        EdgeRow.model_validate(
+            {
+                **{k: v for k, v in e.items() if k in _EDGE_FIELDS},
+                "props": {k: v for k, v in e.items() if k not in _EDGE_FIELDS},
+            }
+        )
+        for e in view["edges"]
+    ]
+    return GraphRows(nodes=nodes, edges=edges)
+
 
 def _view(nodes: list[tuple[Any, dict[str, Any]]], edges: list[tuple[Any, ...]]) -> GraphView:
     """A graph as JSON-ready nodes and edges, as stored, sorted by ID and by (src, type, dst): each node's

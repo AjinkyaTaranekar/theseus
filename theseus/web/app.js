@@ -83,7 +83,21 @@ async function draw(box, path) {
 function renderPaths(result) {
   const host = $("paths");
   clear(host);
-  $("paths-empty").hidden = result.opened.length > 0;
+  const beyond = result.use_beyond_intent || [];
+  $("paths-empty").hidden = result.opened.length > 0 || beyond.length > 0;
+  // No new path, but the code now reads data the PR doesn't mention: show that, with its line.
+  for (const use of beyond) {
+    const section = el("div", "path");
+    const title = el("h3");
+    title.append(el("span", "", `${name(use.workload)}'s code now reads ${name(use.resource)}`));
+    title.append(pill("not in the PR", "high"));
+    section.append(title);
+    const why = el("p", "", `The access was there before; the PR's code starts using it at `);
+    why.append(el("code", "", `${use.file}:${use.line}`));
+    why.append(document.createTextNode(". The PR says nothing about it, so the merge is blocked."));
+    section.append(why);
+    host.append(section);
+  }
   for (const path of result.opened) {
     const section = el("div", "path");
     const title = el("h3");
@@ -130,20 +144,20 @@ function table(headers, rows) {
   return wrap;
 }
 
-const VERDICT = { verified: "ok", passes: "ok", fails: "high", unknown: "mid" };
+const VERDICT = { pass: "ok", fail: "high", invalid: "high", unknown: "mid" };
+const VERDICT_WORDS = { pass: "passes", fail: "doesn't pass", invalid: "can't be applied", unknown: "couldn't be checked" };
 
 function renderFixes(result) {
   const host = $("fixes");
   clear(host);
   $("fixes-empty").hidden = result.candidates.length > 0;
   if (!result.candidates.length) return;
-  const rows = result.candidates.map((c) => [
-    c.id + (c.recommended ? " (recommended)" : ""),
-    c.title,
-    pill(c.verdict, VERDICT[c.verdict] || "plain"),
-    c.reason,
-  ]);
-  host.append(table(["Fix", "What it does", "Verdict", "Why"], rows));
+  const rows = result.candidates.map((c) => {
+    const what = el("span", "", c.title);
+    if (c.recommended) what.append(document.createTextNode(" "), pill("recommended", "ok"));
+    return [what, pill(VERDICT_WORDS[c.verdict] || c.verdict, VERDICT[c.verdict] || "plain"), c.reason];
+  });
+  host.append(table(["What the fix does", "Tested on a graph copy", "Why"], rows));
 }
 
 function renderTrace(result) {
