@@ -31,15 +31,15 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
 from theseus.agent.labels import LABELS, labels_for
-from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
-from theseus.api import reviews, webhooks
+from theseus.agent.render import MARKER, annotations, best_fix, code, render_comment, tested_line, verdict
+from theseus.api import reviews, suggest, webhooks
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import is_candidate_id
-from theseus.errors import GitHubError, GraphError, TheseusError
+from theseus.errors import GitHubError, GraphError, PatchError, TheseusError
 from theseus.graph.client import server_version
 
 log = logging.getLogger(__name__)
@@ -258,6 +258,52 @@ class Fixing:
     render: webhooks.Render
 
 
+def _suggest(
+    gh: GitHub, render: webhooks.Render, repo: str, number: int, head_sha: str, result: AnalysisResult
+) -> tuple[str, int] | None:
+    """Suggests the fix that passes on the PR's own lines, once per head commit, and returns where the first
+    suggestion sits; None when no fix passes or its edits cannot all sit on lines of the diff, so the comment
+    offers `/theseus apply <ID>` instead. A failure here never stops the review: it is logged, and apply
+    stays."""
+    fix = best_fix(result)
+    if fix is None or not fix.ops:
+        return None
+    try:
+        files = gh.world_files(repo, head_sha)
+        edited = render(files, list(fix.ops))
+        in_diff = {path: suggest.diff_lines(patch) for path, patch in gh.pull_patches(repo, number).items()}
+        placed = suggest.plan(files, edited, in_diff, gh.world_root)
+        if not placed.suggestions or placed.unplaced:
+            log.info(
+                "%s#%d: fix %s has edits off the diff (%s); offering apply",
+                repo,
+                number,
+                fix.id,
+                placed.unplaced,
+            )
+            return None
+        marker = f"<!-- theseus:head:{head_sha} -->"
+        if not gh.has_review_with(repo, number, marker):
+            tested = tested_line(result)
+            comments = []
+            for s in placed.suggestions:
+                comment = {
+                    "path": s.path,
+                    "line": s.end,
+                    "side": "RIGHT",
+                    "body": suggest.comment_body(fix.title, tested, s),
+                }
+                if s.start < s.end:
+                    comment |= {"start_line": s.start, "start_side": "RIGHT"}
+                comments.append(comment)
+            gh.post_review(repo, number, head_sha, suggest.review_body(head_sha), comments)
+        first = placed.suggestions[0]
+        return first.path, first.start
+    except (PatchError, GitHubError) as e:
+        log.warning("%s#%d: could not suggest fix %s: %s", repo, number, fix.id, e)
+        return None
+
+
 def get_falkordb_version(request: Request) -> str | None:
     """The version of the FalkorDB the graphs are built in, for the comment; None for a stand-in or when the
     server will not say."""
@@ -335,6 +381,7 @@ def analyze(
     store: StoreDep,
     results: ResultsDep,
     falkordb: FalkorVersionDep,
+    render: RenderDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
     """PR mode. With a repo, from the Action: the real review of the PR's two commits (A5), posted as the
@@ -369,8 +416,21 @@ def analyze(
         # Kept by the commit it reviewed: `/theseus apply` commits a fix only on the head it was checked on.
         results.put(req.repo, req.pr_number, req.head_sha, result)
         url = reviews.page_url(settings, req.repo, req.pr_number)
+        # The fix that passes, as suggestions on the PR's own lines, before the comment that points at them.
+        suggestion = (
+            _suggest(gh, render, req.repo, req.pr_number, req.head_sha, result)
+            if pr["head"]["sha"] == req.head_sha
+            else None
+        )
         comment = render_comment(
-            result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb, url
+            result,
+            req.repo,
+            req.head_sha,
+            req.checkov,
+            settings.theseus_world_root,
+            falkordb,
+            url,
+            suggestion,
         )
         status = verdict(result)
         notes = annotations(result, settings.theseus_world_root)
@@ -419,7 +479,7 @@ def apply(
     the same checks and the same commit as `/theseus apply <ID>`. Refuses any file outside the world root."""
     _require_token(settings, x_theseus_token)
     _require_repo(gh, req.repo)
-    if not is_candidate_id(req.candidate_id):
+    if req.candidate_id and not is_candidate_id(req.candidate_id):
         raise HTTPException(422, f"not a candidate ID: {req.candidate_id!r}")
     try:
         applied = webhooks.apply_fix(
@@ -512,6 +572,31 @@ def review_data(
     if data is None:
         raise HTTPException(404, "no such review")
     return {**data, "dashboard": reviews.dashboard_url(settings, repo)}
+
+
+@router.get("/reviews/{owner}/{name}/{number}/fixes/{fix_id}")
+def review_fix(
+    owner: str,
+    name: str,
+    number: int,
+    fix_id: str,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    store: StoreDep,
+    k: str | None = None,
+) -> dict[str, Any]:
+    """One fix and the graph copy the engine verified it on, read from the store when its view opens."""
+    repo = _reviewed(settings, gh, owner, name, number, k)
+    if not is_candidate_id(fix_id):
+        raise HTTPException(404, "no such fix")
+    try:
+        fix = reviews.fix_graph(store, reviews.key(repo, number), fix_id)
+    except GraphError as e:
+        log.error("%s#%d: cannot read fix %s: %s", repo, number, fix_id, e)
+        raise HTTPException(502, "the graph store did not answer") from e
+    if fix is None:
+        raise HTTPException(404, "no such fix")
+    return fix
 
 
 # The Try-it page (S4) ---------------------------------------------------------------------------------------
@@ -961,7 +1046,7 @@ def _apply_by_comment(
     gh: GitHub, repo: str, number: int, candidate_id: str, user: str, fixing: Fixing
 ) -> None:
     """`/theseus apply <ID>`: commits the fix, or says why not, in a reply to the person who asked."""
-    command = f"/theseus apply {candidate_id}"
+    command = webhooks.command_for(candidate_id)
     try:
         applied = webhooks.apply_fix(
             gh, fixing.results, fixing.store, fixing.render, repo, number, candidate_id, user
@@ -975,10 +1060,7 @@ def _apply_by_comment(
         text = str(e)
     except GitHubError as e:
         log.error("%s#%d: %s failed: %s", repo, number, command, e)
-        failed = (
-            f"Theseus could not commit fix {candidate_id}: {code(str(e)[:REASON_MAX])}. "
-            "Comment again to retry."
-        )
+        failed = f"Theseus could not commit the fix: {code(str(e)[:REASON_MAX])}. Comment again to retry."
         gh.reply(repo, number, webhooks.answer(command, user, failed))
         raise
     gh.reply(repo, number, webhooks.answer(command, user, text))

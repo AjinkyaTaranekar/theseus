@@ -832,7 +832,7 @@ function repoViews(d) {
     const runList = el("ul", null, { class: "steps" });
     for (const [h, text, code] of [
       ["Pull requests", "Every push to a PR that changes the infrastructure is reviewed again. To ask again:", "/theseus review"],
-      ["Apply a fix", "A person with write access approves a fix that passed:", "/theseus apply B"],
+      ["Apply the fix", "Commit Theseus's suggestion on the PR, or, with write access, reply:", "/theseus apply"],
       ["main", "On every push to main, nightly at 03:17 UTC, and from Actions, Theseus main, Run workflow.", "python -m theseus posture <world> <plan>"],
       ["Advisories", "Each scan of main checks the advisory feed, and opens a containment PR when the fix passes.", "python -m theseus finding fixtures/compromised-action"],
     ]) runList.append(add(el("li"), add(el("div"), el("div", h), el("div", text, { class: "sub" }), el("code", code, { class: "cmd" }))));

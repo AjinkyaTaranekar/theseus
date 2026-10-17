@@ -234,7 +234,20 @@ a pull request. The advisory feed is `advisories/` (`THESEUS_ADVISORIES`): one J
 | Practice: open, check, close. Record on a fresh branch per take | Closing deletes the PR's graphs; old takes never clutter the video |
 | `main` holds the world with no scenario applied | Each PR starts from the same `main` the fixtures were made from |
 
+## Suggested fixes
+
+When a fix passes, Theseus posts it as GitHub suggestions on the PR's own changed lines, in one review per
+head commit (`api/suggest.py`). A reviewer commits a suggestion as it is or edits it first; Theseus reviews
+whatever is pushed. A new file the fix adds goes into the suggestion that replaces the PR's lines in its
+folder; a fix whose edits cannot all sit on the diff is left to `/theseus apply`. The comment and the review
+page name the one fix that passes by what it does, not by its letter, and list the fixes that don't pass
+with what each breaks.
+
 ## The apply command (task A9)
+
+`/theseus apply` alone commits the recommended fix that passes; `/theseus apply <ID>` names one, for when
+several pass or for a person's `H<n>`.
+
 
 1. An `issue_comment` on a PR matches `^/theseus apply ([A-Z][0-9]*)\s*$` (a rule's or the LLM's letter, or a
    person's `H1`, `H2`, ...).
