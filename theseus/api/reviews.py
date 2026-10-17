@@ -312,8 +312,15 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
             {"actor": p.actor, "target": p.target, "sensitivity": p.sensitivity} for p in result.opened
         ],
         "beyond_intent": len(result.use_beyond_intent),
-        "fixes": [{"id": c.id, "verdict": c.verdict, "title": c.title} for c in result.candidates],
+        # The fix that passes, the one a reviewer would commit; the others are named on the PR.
+        "fixes": [
+            {"id": c.id, "verdict": c.verdict, "title": c.title}
+            for c in result.candidates
+            if c.verdict == "pass"
+        ],
+        "fixes_tried": len(result.candidates),
         "url": page_url(settings, repo, int(doc["number"])),
+        "pr_url": f"https://github.com/{quote(repo)}/pull/{int(doc['number'])}",
     }
 
 
