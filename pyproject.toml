@@ -55,6 +55,8 @@ select = ["E", "F", "W", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Benchmark and fixture tools run from the checkout rather than the runtime package.
+pythonpath = ["."]
 addopts = "-ra --import-mode=importlib"
 markers = [
     "falkordb: needs a FalkorDB server (FALKORDB_HOST)",
