@@ -2,7 +2,8 @@
 
 A request from the Action runs the real review (A5) and posts it on the PR as the comment and the `Theseus`
 check run. A `{fixture}` request to `/analyze` or `/finding` still answers from that fixture's stub, for the
-Try-it page (S4); `/scan` runs the real scan (C3).
+Try-it page (S4); `/scan` runs the real scan (C3). `/theseus apply <ID>` and `POST /apply` commit a fix that
+passed (A9, `api/webhooks.py`).
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -23,11 +25,12 @@ from pydantic import BaseModel
 
 from theseus.agent.labels import LABELS, labels_for
 from theseus.agent.render import MARKER, annotations, code, render_comment, verdict
-from theseus.api import reviews
+from theseus.api import reviews, webhooks
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
 from theseus.api.stub import result_from_expected
 from theseus.config import Settings, get_settings
 from theseus.contracts.result import AnalysisResult
+from theseus.contracts.schema import is_candidate_id
 from theseus.errors import GitHubError, GraphError, TheseusError
 from theseus.graph.client import server_version
 
@@ -80,6 +83,19 @@ class FailedRequest(BaseModel):
     repo: str
     head_sha: str
     run_url: str | None = None
+
+
+class ApplyRequest(BaseModel):
+    """A person's approval of a fix that passed, made through the API instead of a comment."""
+
+    repo: str
+    pr_number: int
+    candidate_id: str
+    requested_by: str
+
+
+class ApplyResponse(BaseModel):
+    commit_sha: str
 
 
 class FindingRequest(BaseModel):
@@ -158,6 +174,37 @@ def get_store(request: Request) -> reviews.ReviewStore:
 StoreDep = Annotated[reviews.ReviewStore, Depends(get_store)]
 
 
+def get_results(request: Request) -> webhooks.Results:
+    """The reviews a fix is applied from; `api/app.py` sets it at startup."""
+    results = getattr(request.app.state, "results", None)
+    if results is None:
+        raise HTTPException(503, "the result cache is not ready")
+    return results
+
+
+ResultsDep = Annotated[webhooks.Results, Depends(get_results)]
+
+
+def get_render(request: Request) -> webhooks.Render:
+    """The IaC adapter's verified edits for a fix; `api/app.py` builds it as the composition root."""
+    render = getattr(request.app.state, "render", None)
+    if render is None:
+        raise HTTPException(503, "the fix renderer is not ready")
+    return render
+
+
+RenderDep = Annotated[webhooks.Render, Depends(get_render)]
+
+
+@dataclass(frozen=True)
+class Fixing:
+    """What applying a fix needs besides GitHub: the reviews, the store keeping them, and the renderer."""
+
+    results: webhooks.Results
+    store: reviews.ReviewStore
+    render: webhooks.Render
+
+
 def get_falkordb_version(request: Request) -> str | None:
     """The version of the FalkorDB the graphs are built in, for the comment; None for a stand-in or when the
     server will not say."""
@@ -233,6 +280,7 @@ def analyze(
     gh: GitHubDep,
     review: ReviewDep,
     store: StoreDep,
+    results: ResultsDep,
     falkordb: FalkorVersionDep,
     x_theseus_token: Annotated[str | None, Header()] = None,
 ) -> AnalysisResult:
@@ -265,6 +313,8 @@ def analyze(
                 f"{reason}\n\nThe merge stays blocked until a review finishes. {RETRY}",
             )
             raise HTTPException(500, f"the review could not finish: {e}") from e
+        # Kept by the commit it reviewed: `/theseus apply` commits a fix only on the head it was checked on.
+        results.put(req.repo, req.pr_number, req.head_sha, result)
         url = reviews.page_url(settings, req.repo, req.pr_number)
         comment = render_comment(
             result, req.repo, req.head_sha, req.checkov, settings.theseus_world_root, falkordb, url
@@ -291,6 +341,37 @@ def analyze(
         log.error("%s#%d: %s", req.repo, req.pr_number, e)
         raise HTTPException(502, str(e)) from e
     return result
+
+
+@router.post("/apply", response_model=ApplyResponse)
+def apply(
+    req: ApplyRequest,
+    settings: SettingsDep,
+    gh: GitHubDep,
+    results: ResultsDep,
+    store: StoreDep,
+    render: RenderDep,
+    x_theseus_token: Annotated[str | None, Header()] = None,
+) -> ApplyResponse:
+    """Commits a fix that passed to the PR branch, approved by `requested_by`, who must have write access:
+    the same checks and the same commit as `/theseus apply <ID>`. Refuses any file outside the world root."""
+    _require_token(settings, x_theseus_token)
+    _require_repo(gh, req.repo)
+    if not is_candidate_id(req.candidate_id):
+        raise HTTPException(422, f"not a candidate ID: {req.candidate_id!r}")
+    try:
+        applied = webhooks.apply_fix(
+            gh, results, store, render, req.repo, req.pr_number, req.candidate_id, req.requested_by
+        )
+    except webhooks.NoReview as e:
+        outcome = _review_again(gh, req.repo, e.sha, [req.pr_number])
+        raise HTTPException(409, webhooks.no_review(e.sha, outcome, req.candidate_id, gh.world_root)) from e
+    except webhooks.Refused as e:
+        raise HTTPException(e.status, str(e)) from e
+    except GitHubError as e:
+        log.error("%s#%d: apply %s: %s", req.repo, req.pr_number, req.candidate_id, e)
+        raise HTTPException(502, str(e)) from e
+    return ApplyResponse(commit_sha=applied.commit_sha)
 
 
 @router.post("/review-failed", status_code=204)
@@ -491,24 +572,58 @@ def _nothing_changed(gh: GitHub, repo: str, number: int, head_sha: str) -> bool:
     return True
 
 
-def _review_again(gh: GitHub, repo: str, head_sha: str, numbers: list[int]) -> None:
+def _review_again(gh: GitHub, repo: str, head_sha: str, numbers: list[int]) -> str:
+    """Re-runs the review of the commit, and returns what `GitHub.rerun_review` did."""
     outcome = gh.rerun_review(repo, head_sha)
     if outcome == "rerun":
         gh.pending_check(repo, head_sha, *AGAIN)
     elif outcome == "none":
         for number in numbers:
             if _nothing_changed(gh, repo, number, head_sha):
-                return
+                return outcome
         log.warning("%s@%s: no Theseus run to repeat", repo, head_sha[:7])
+    return outcome
 
 
-def _on_comment(gh: GitHub, repo: str, payload: dict[str, Any]) -> None:
+def _apply_by_comment(
+    gh: GitHub, repo: str, number: int, candidate_id: str, user: str, fixing: Fixing
+) -> None:
+    """`/theseus apply <ID>`: commits the fix, or says why not, in a reply to the person who asked."""
+    command = f"/theseus apply {candidate_id}"
+    try:
+        applied = webhooks.apply_fix(
+            gh, fixing.results, fixing.store, fixing.render, repo, number, candidate_id, user
+        )
+        text = webhooks.applied_reply(applied)
+    except webhooks.NoReview as e:
+        outcome = _review_again(gh, repo, e.sha, [number])
+        text = webhooks.no_review(e.sha, outcome, candidate_id, gh.world_root)
+    except webhooks.Refused as e:
+        log.info("%s#%d: %s's %s refused: %s", repo, number, user, command, e)
+        text = str(e)
+    except GitHubError as e:
+        log.error("%s#%d: %s failed: %s", repo, number, command, e)
+        failed = (
+            f"Theseus could not commit fix {candidate_id}: {code(str(e)[:REASON_MAX])}. "
+            "Comment again to retry."
+        )
+        gh.reply(repo, number, webhooks.answer(command, user, failed))
+        raise
+    gh.reply(repo, number, webhooks.answer(command, user, text))
+
+
+def _on_comment(gh: GitHub, repo: str, payload: dict[str, Any], fixing: Fixing) -> None:
     comment, issue = payload.get("comment") or {}, payload.get("issue") or {}
     if payload.get("action") != "created" or "pull_request" not in issue:
         return
-    if (comment.get("body") or "").strip() != REVIEW_COMMAND:
-        return
+    body = comment.get("body") or ""
     user = (comment.get("user") or {}).get("login", "")
+    candidate_id = webhooks.apply_command(body)
+    if candidate_id is not None:
+        _apply_by_comment(gh, repo, int(issue["number"]), candidate_id, user, fixing)
+        return
+    if body.strip() != REVIEW_COMMAND:
+        return
     if not gh.can_write(repo, user):
         log.info(
             "%s#%s: %s asked for a review without write access; ignored", repo, issue.get("number"), user
@@ -541,7 +656,8 @@ def _on_pull_request(gh: GitHub, repo: str, payload: dict[str, Any]) -> None:
     _nothing_changed(gh, repo, number, head)
 
 
-HANDLERS = {"issue_comment": _on_comment, "check_run": _on_check_run, "pull_request": _on_pull_request}
+HANDLERS = {"check_run": _on_check_run, "pull_request": _on_pull_request}
+EVENTS = frozenset({"issue_comment", *HANDLERS})
 
 
 @router.post("/webhooks/github", status_code=204)
@@ -549,26 +665,31 @@ async def github_webhook(
     request: Request,
     settings: SettingsDep,
     gh: GitHubDep,
+    results: ResultsDep,
+    store: StoreDep,
+    render: RenderDep,
     x_github_event: Annotated[str | None, Header()] = None,
     x_hub_signature_256: Annotated[str | None, Header()] = None,
 ) -> Response:
-    """The App's events, checked against GITHUB_WEBHOOK_SECRET before anything is read: `/theseus review` and
-    Re-run on the check run the review again; a PR that changes the world root shows its check in progress
-    while the Action plans it, and one that changes nothing there gets a `success` check. Every other event
-    is accepted and ignored."""
+    """The App's events, checked against GITHUB_WEBHOOK_SECRET before anything is read: `/theseus apply <ID>`
+    commits a fix that passed; `/theseus review` and Re-run on the check run the review again; a PR that
+    changes the world root shows its check in progress while the Action plans it, and one that changes
+    nothing there gets a `success` check. Every other event is accepted and ignored."""
     if settings.github_webhook_secret is None:
         raise HTTPException(503, "GITHUB_WEBHOOK_SECRET is not set on the server")
     body = await request.body()
     if not _signed(body, x_hub_signature_256, settings.github_webhook_secret.get_secret_value()):
         raise HTTPException(401, "bad webhook signature")
-    handler = HANDLERS.get(x_github_event or "")
-    if handler is None:
+    if x_github_event not in EVENTS:
         return Response(status_code=204)
     payload = json.loads(body)
     repo = (payload.get("repository") or {}).get("full_name", "")
     _require_repo(gh, repo)
     try:
-        handler(gh, repo, payload)
+        if x_github_event == "issue_comment":
+            _on_comment(gh, repo, payload, Fixing(results, store, render))
+        else:
+            HANDLERS[x_github_event](gh, repo, payload)
     except GitHubError as e:
         log.error("webhook %s for %s: %s", x_github_event, repo, e)
         raise HTTPException(502, str(e)) from e
