@@ -1,8 +1,8 @@
-"""Command line: `python -m theseus analyze | finding | scan | posture | serve`.
+"""Command line: `python -m theseus analyze | finding | scan | posture | incident | serve`.
 
 `serve` runs the API (F3); `analyze`, `finding` and `scan` print a PR, finding or scan fixture's
-AnalysisResult as JSON (E3, FM3, C3); `posture` prints a world's posture report (O1 to O3). All of them
-need FalkorDB (rule 3). A composition root
+AnalysisResult as JSON (E3, FM3, C3); `posture` prints a world's posture report (O1 to O3), and
+`incident` an outage's blast radius on it. All of them need FalkorDB (rule 3). A composition root
 (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks adapters.
 """
 
@@ -26,8 +26,10 @@ from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
+from theseus.contracts.incident import Incident
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
+from theseus.engine.incident import blast, read_incident
 from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
 from theseus.errors import GraphError, TheseusError
 from theseus.graph.client import get_client
@@ -52,6 +54,14 @@ def build_parser() -> argparse.ArgumentParser:
     posture.add_argument("world", help="a world root with theseus.yaml, e.g. fixtures/unused-grant/base")
     posture.add_argument("plan", help="its Terraform plan JSON, e.g. fixtures/unused-grant/base.plan.json")
     posture.add_argument("--advisories", default=None, help="the advisory feed folder (THESEUS_ADVISORIES)")
+    outage = commands.add_parser("incident", help="what an outage of one service breaks in a world")
+    outage.add_argument("world", help="a world root with theseus.yaml, e.g. fixtures/unused-grant/base")
+    outage.add_argument("plan", help="its Terraform plan JSON")
+    outage.add_argument("headline", nargs="?", default="", help='e.g. "AWS Lambda is down in eu-west-1"')
+    outage.add_argument("--provider", help="instead of a headline: aws or github")
+    outage.add_argument("--service", help="instead of a headline: a service code, e.g. lambda")
+    outage.add_argument("--region", help="a region code; every region when left out")
+    outage.add_argument("--degraded", action="store_true", help="degraded rather than down")
     commands.add_parser("serve", help="run the API on http://localhost:8000; needs FalkorDB")
     return parser
 
@@ -69,6 +79,8 @@ def main(argv: list[str] | None = None) -> int:
         return scan(Path(args.fixture))
     if args.command == "posture":
         return posture(Path(args.world), Path(args.plan), args.advisories)
+    if args.command == "incident":
+        return incident(Path(args.world), Path(args.plan), args)
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
     return 2
 
@@ -223,6 +235,45 @@ def posture(world_root: Path, plan: Path, feed: str | None) -> int:
         print(f"theseus posture: {e}", file=sys.stderr)
         return 1
     print(report.model_dump_json(indent=2, by_alias=True))
+    return 0
+
+
+def incident(world_root: Path, plan: Path, args: argparse.Namespace) -> int:
+    """Print an outage's blast radius on the world as JSON: its posture first, then the incident a headline
+    names (or the one given with --provider and --service). Exit 1 when FalkorDB or the inputs fail, and 2
+    when the headline names no service Theseus maps."""
+    from theseus.agent.jev import Jev
+    from theseus.agent.llm import Llm
+
+    settings = get_settings()
+    try:
+        store = FalkorStore(get_client(settings))
+        jev = Jev(settings, llm=Llm(settings))
+        basis = posture_world(world_root, plan, store, jev, settings, []).posture.outage
+    except (TheseusError, OSError) as e:
+        print(f"theseus incident: {e}", file=sys.stderr)
+        return 1
+    found: Incident | None
+    if args.headline.strip():
+        found = read_incident(args.headline, basis.terms, basis.regions)
+    else:
+        term = next(
+            (t for t in basis.terms if (t.provider, t.service) == (args.provider, args.service)), None
+        )
+        found = (
+            None
+            if term is None
+            else Incident(provider=term.provider, service=term.service, title=term.name, source="picker")
+        )
+    if found is None:
+        names = ", ".join(sorted(f"{t.provider}/{t.service}" for t in basis.terms))
+        print(f"theseus incident: name a service Theseus maps: {names}", file=sys.stderr)
+        return 2
+    update: dict[str, Any] = {"region": args.region or found.region}
+    if args.degraded:
+        update["severity"] = "degraded"
+    report = blast(basis, found.model_copy(update=update))
+    print(report.model_dump_json(indent=2))
     return 0
 
 

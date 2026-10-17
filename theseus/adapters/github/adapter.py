@@ -6,8 +6,10 @@ import logging
 
 import yaml
 
+from theseus.adapters.github.status import outages
 from theseus.adapters.github.workflows import parse_workflow
 from theseus.contracts.adapters import CiIdentity, CiRead
+from theseus.contracts.posture import OutageMap
 from theseus.contracts.result import EdgeRow, GraphRows, NodeRow
 
 log = logging.getLogger(__name__)
@@ -54,3 +56,7 @@ class GithubAdapter:
             unknowns=sorted(set(unknowns)),
         )
         return CiRead(rows=rows, identities=sorted(identities, key=lambda i: i.workflow))
+
+    def outages(self, rows: GraphRows) -> OutageMap:
+        """Every workflow runs on GitHub Actions (`status.py`)."""
+        return outages(rows)

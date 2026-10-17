@@ -20,14 +20,16 @@ from fastapi import Depends, FastAPI, Request, Response
 from fastapi.middleware.gzip import GZipMiddleware
 
 from theseus import __version__
+from theseus.adapters.aws import health
 from theseus.adapters.aws.adapter import AwsAdapter
+from theseus.adapters.github import status as github_status
 from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.agent.jev import Jev
 from theseus.agent.llm import Llm, load_client
 from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
-from theseus.api import contain, routes, webhooks
+from theseus.api import contain, routes, status, webhooks
 from theseus.api.github import GitHub
 from theseus.cli import analyze_fixture, load_advisories
 from theseus.config import Settings, get_settings
@@ -169,6 +171,13 @@ def build_finder(store: GraphStore, jev: Any, settings: Settings) -> routes.Find
     return finder
 
 
+# The public status feeds an incident check reads, and the adapter that reads each one.
+STATUS_FEEDS: dict[str, tuple[str, status.Reader]] = {
+    "aws": ("https://health.aws.amazon.com/public/currentevents", health.read_status),
+    "github": ("https://www.githubstatus.com/api/v2/incidents/unresolved.json", github_status.read_status),
+}
+
+
 def connect_falkordb() -> Any:
     """A FalkorDB client from the environment and .env. Raises GraphError when it cannot connect."""
     return get_client(get_settings())
@@ -211,6 +220,7 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.contain = lambda gh, repo, sha, result, page: contain.contain(
             gh, app.state.render, repo, sha, result, page
         )
+        app.state.status_feeds = lambda: status.fetch_feeds(STATUS_FEEDS)
         app.state.try_preset = build_try(app.state.store, settings)
         app.state.try_limiter = routes.RateLimit()
         yield
