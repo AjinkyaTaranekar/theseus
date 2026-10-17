@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import runpy
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -28,12 +29,13 @@ from theseus.config import Settings
 from theseus.contracts.result import AnalysisResult, Candidate, PatchOp
 from theseus.errors import GitHubError, PatchError
 from theseus.graph.store import MemoryStore
-from tools.check_commit_msg import problems
 
 # The App's settings and client, as tests/unit/test_github.py builds them; `gh` talks to the FakeRepo below.
 key_file, settings, gh = base.key_file, base.settings, base.gh
 
 ROOT = Path(__file__).resolve().parents[2]
+# The rules every commit message must pass (tools/ is scripts, not a package: load it as the other tests do).
+problems = runpy.run_path(str(ROOT / "tools/check_commit_msg.py"))["problems"]
 WORLD = ROOT / "fixtures/intern/head"
 BRANCH = "demo/intern-2"
 NEXT = "c" * 40
