@@ -1,0 +1,11 @@
+--- terraform/roles.tf
++++ terraform/roles.tf
+@@ -30,7 +30,7 @@
+         Sid      = "ReadInvoices"
+         Effect   = "Allow"
+         Action   = "s3:GetObject"
+-        Resource = "arn:aws:s3:::demo-company-files/invoices/*"
++        Resource = ["arn:aws:s3:::demo-company-files/invoices/2026/*"]
+       },
+       {
+         Sid      = "ReadDbSecret"

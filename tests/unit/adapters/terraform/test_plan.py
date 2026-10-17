@@ -11,7 +11,7 @@ import pytest
 from theseus.adapters.aws.catalog import load_catalog
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.adapters.terraform.plan import READ_FIELDS
-from theseus.errors import IngestError, PatchError
+from theseus.errors import IngestError
 
 
 def test_every_catalog_read_field_is_tracked_for_unknown_values() -> None:
@@ -162,8 +162,9 @@ def test_read_source_and_render_boundary(tmp_path: Path) -> None:
     source.write_text('resource "aws_iam_role" "demo" {}\n')
     result = TerraformAdapter().read(tmp_path, plan_for({"name": "demo"}, {}))
     assert result.files == {"terraform/nested/main.tf": source.read_text()}
-    with pytest.raises(PatchError, match="E9"):
-        TerraformAdapter().render(result.files, [])
+    rendered = TerraformAdapter().render(result.files, [])
+    assert rendered == result.files
+    assert rendered is not result.files
 
 
 def test_reference_in_a_counted_resource_with_a_dot_in_its_key(tmp_path: Path) -> None:

@@ -1,0 +1,31 @@
+--- terraform/theseus_fixes.tf
++++ terraform/theseus_fixes.tf
+@@ -0,0 +1,28 @@
++resource "aws_iam_role" "theseus_add_role_6f09503e189c" {
++  assume_role_policy = jsonencode({
++    "Statement" = [{
++      "Action" = "sts:AssumeRole"
++      "Effect" = "Allow"
++      "Principal" = {
++        "AWS" = ["arn:aws:iam::111122223333:user/priya-intern"]
++      }
++    }]
++    "Version" = "2012-10-17"
++  })
++  depends_on = [aws_iam_user.priya]
++  name = "intern-onboarding"
++}
++
++resource "aws_iam_role_policy" "theseus_add_role_6f09503e189c_access" {
++  name = "theseus_add_role_6f09503e189c_access"
++  policy = jsonencode({
++    "Statement" = [{
++      "Action" = ["s3:GetObject", "s3:ListBucket"]
++      "Effect" = "Allow"
++      "Resource" = ["arn:aws:s3:::demo-app-logs", "arn:aws:s3:::demo-app-logs/*"]
++      "Sid" = "ReadLogs"
++    }]
++    "Version" = "2012-10-17"
++  })
++  role = aws_iam_role.theseus_add_role_6f09503e189c.name
++}

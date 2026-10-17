@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from theseus.contracts.engine import Analysis, FlowRow, GraphState, GraphStore
 from theseus.contracts.result import CutEdge, EdgeRow, GraphRows, MinCut, Requirement
-from theseus.contracts.schema import BIG, MAX_PATH_EDGES, PATH_TYPES, TRAVERSE
+from theseus.contracts.schema import BIG, MAX_PATH_EDGES, PATH_TYPES, TRAVERSE, USED
 from theseus.engine.analyze import evidence_id, primary_evidence
 from theseus.errors import GraphError
 from theseus.graph.algos import max_flow, reachable
@@ -49,8 +49,36 @@ def _required_paths(rows: GraphRows, requirement: Requirement) -> list[list[Edge
     return found
 
 
+def used_grants(rows: GraphRows) -> set[str]:
+    """IDs of the CAN edges a workload's code uses: its role grants an access that a CALLS edge, from a
+    workload running as that role to the same resource, also names (04-engine.md section 12)."""
+    roles: dict[str, set[str]] = defaultdict(set)
+    for edge in rows.edges:
+        if edge.type == "RUNS_AS":
+            roles[edge.dst].add(edge.src)
+    called: dict[tuple[str, str], set[str]] = defaultdict(set)
+    for edge in rows.edges:
+        if edge.type == "CALLS":
+            called[edge.src, edge.dst].update(edge.grants)
+    return {
+        edge.eid
+        for edge in rows.edges
+        if edge.type == "CAN"
+        and edge.kind != "unknown"
+        and any(called[workload, edge.dst] & set(edge.grants) for workload in roles[edge.src])
+    }
+
+
+def _capacity(edge: EdgeRow, protected: set[str], used: set[str]) -> int:
+    if edge.type in {"RUNS_AS", "UNLOCKS"} or edge.eid in protected:
+        return BIG
+    return USED if edge.eid in used else 1
+
+
 def capacities(rows: GraphRows, analysis: Analysis, requirements: list[Requirement]) -> list[FlowRow]:
     """FLOW rows protecting config and approved intent requirements, with parallel capacities summed.
+
+    A grant the code uses costs `USED`, so a cut prefers a grant nobody calls.
 
     Callers exclude intent requirements from suspicious text before passing them here.
     Sensitive targets cannot be approved by intent, even if a caller includes them.
@@ -77,6 +105,7 @@ def capacities(rows: GraphRows, analysis: Analysis, requirements: list[Requireme
                         and evidence_id(primary_evidence(edge, nodes)) == step.evidence
                         and (index != len(path.steps) - 1 or req.access in edge.grants)
                     )
+    used = used_grants(rows)
     pairs = defaultdict(list)
     for edge in rows.edges:
         if edge.type in PATH_TYPES:
@@ -86,7 +115,7 @@ def capacities(rows: GraphRows, analysis: Analysis, requirements: list[Requireme
             src=src,
             dst=dst,
             eids=sorted(e.eid for e in edges),
-            capacity=sum(BIG if e.type in {"RUNS_AS", "UNLOCKS"} or e.eid in protected else 1 for e in edges),
+            capacity=sum(_capacity(e, protected, used) for e in edges),
         )
         for (src, dst), edges in sorted(pairs.items())
     ]

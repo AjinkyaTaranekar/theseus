@@ -75,6 +75,14 @@ def test_analyze_returns_a_valid_stub_for_the_sample(client: TestClient) -> None
 @pytest.mark.parametrize("path", FIXTURES, ids=lambda p: p.parent.name)
 def test_every_fixture_with_an_expected_json_gets_a_valid_stub(client: TestClient, path: Path) -> None:
     expected = json.loads(path.read_text(encoding="utf-8"))
+    if expected["mode"] == "scan":
+        # /scan runs the real scan (C3); the answer key must still hold, here on an in-memory store.
+        from tests.golden.conftest import RecordedJev
+        from theseus.api.app import build_scan
+        from theseus.config import get_settings
+        from theseus.graph.store import MemoryStore
+
+        client.app.state.scan = build_scan(MemoryStore(), RecordedJev(), get_settings())  # type: ignore[attr-defined]
     res = client.post(ROUTES[expected["mode"]], json={"fixture": path.parent.name})
     assert res.status_code == 200
     assert compare(project(AnalysisResult.model_validate(res.json())), expected) == []
