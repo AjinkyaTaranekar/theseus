@@ -149,8 +149,8 @@
   @media (prefers-reduced-motion: reduce) { * { transition: none !important; scroll-behavior: auto !important; } }
   @media (max-width: 1280px) { .s4 { grid-column: span 8; } .s6 { grid-column: span 12; } }
   @media (max-width: 980px) {
-    .app { grid-template-columns: 1fr; }
-    .side { position: static; height: auto; }
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .side { position: static; height: auto; min-width: 0; }
     .side ul { flex-direction: row; flex-wrap: wrap; }
     .side-foot { display: none; }
     .s4, .s6, .s8 { grid-column: span 12; } .s12, .s16 { grid-column: span 24; }
