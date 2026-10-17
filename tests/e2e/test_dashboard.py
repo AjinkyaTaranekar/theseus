@@ -168,3 +168,15 @@ def test_a_posture_request_is_checked_before_anything_runs(
 ) -> None:
     assert send(client, token, **changes).status_code == status
     assert client.asked == []  # type: ignore[attr-defined]
+
+
+def test_a_finding_s_urgency_is_shown_as_jev_s_probability(
+    client: TestClient, settings: Settings, store: MemoryStore
+) -> None:
+    assert send(client).status_code == 200
+    key = reviews.finding_key("GHSA-demo-0001")
+    doc = json.loads(store.get_doc(key) or "{}")
+    doc["result"]["finding"]["urgency"] = {"p": 0.93, "source": "jev"}
+    store.put_doc(key, json.dumps(doc))
+    [finding] = dashboard(client, settings).json()["findings"]
+    assert finding["urgency"] == 0.93

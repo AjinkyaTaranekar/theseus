@@ -239,11 +239,15 @@ def _finding_row(settings: Settings, doc: dict[str, Any]) -> dict[str, Any]:
     result = AnalysisResult.model_validate(doc["result"])
     finding = result.finding or {}
     cut = result.min_cut.cut if result.min_cut is not None else []
+    # Jev's urgency is kept as {"p", "source"}; the dashboard ranks and shows the probability.
+    urgency = finding.get("urgency")
+    if isinstance(urgency, dict):
+        urgency = urgency.get("p")
     return {
         "id": doc["id"],
         "action": finding.get("action", ""),
         "workflows": finding.get("workflows", []),
-        "urgency": finding.get("urgency"),
+        "urgency": urgency if isinstance(urgency, int | float) else None,
         "headline": result.headline,
         "reaches": sorted({p.target for p in result.opened}),
         "rotate": result.rotate,
