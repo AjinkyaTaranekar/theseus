@@ -75,7 +75,8 @@ and {{ opened_more }} more not shown.
 {% endif %}
 {% if fixes %}
 <details>
-<summary><b>All {{ fixes|length }} fixes Theseus tested</b>, each on a copy of the graph</summary>
+{% if nothing_passes %}<summary><b>All {{ fixes|length }} fixes Theseus tested</b>, each on a copy of the graph</summary>{% elif fixes|length == 1 %}<summary><b>The fix that passes</b>, tested on a copy of the graph</summary>{% else %}<summary><b>{{ fixes|length }} fixes that pass</b>, each tested on a copy of the graph</summary>{% endif %}
+
 
 {% if cut %}
 **Smallest change:** {{ cut }}
@@ -89,6 +90,9 @@ and {{ opened_more }} more not shown.
 
 {% if nothing_passes %}
 No fix passes every check. The table shows what each one breaks.
+
+{% endif %}{% if other_fixes %}
+{{ other_fixes }}
 
 {% endif %}
 {% if apply_hint %}

@@ -65,16 +65,15 @@ How **priya-intern** reaches **demo-company-files/invoices/**
 </details>
 
 <details>
-<summary><b>All 4 fixes Theseus tested</b>, each on a copy of the graph</summary>
+<summary><b>The fix that passes</b>, tested on a copy of the graph</summary>
 
 **Smallest change:** No single permission can be removed without breaking required access.
 
 | ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| A | Revert the membership (rule) | all closed | breaks I1 | kept | fail |
 | **B** | **A new support-logs-read role for Priya (zai-org/GLM-5.3)** | **all closed** | **kept** | **kept** | **pass** |
-| C | Deny Priya on prod-support (rule) | all closed | kept | kept | unknown |
-| D | Remove AssumeProdSupport (rule) | 1 left | breaks R2, R3 | kept | fail |
+
+Theseus also tried A (fail), C (unknown) and D (fail), which don't pass. The review page draws each one.
 
 Reply `/theseus apply B` to commit a fix.
 

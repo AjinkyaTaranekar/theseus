@@ -296,7 +296,7 @@ def test_the_card_comes_first_and_the_sections_follow_in_spec_order() -> None:
         "**Fix:**",
         "<summary><b>Step by step</b> (3 ways in",
         "**What's at risk**",
-        "<summary><b>All 4 fixes Theseus tested</b>",
+        "<summary><b>The fix that passes</b>",
         "<summary><b>What Theseus couldn't check</b> (1)",
         "<summary><b>Details</b>",
         "Checkov 3.2.255 passed this commit",
@@ -678,18 +678,35 @@ def test_the_cut_sentence_has_three_forms() -> None:
     )
 
 
-def test_the_fix_table_shows_every_candidate_with_the_recommended_row_bold() -> None:
-    section = folded(render(intern()), "All 4 fixes")
+def test_the_fix_table_shows_the_fix_that_passes_and_names_the_rest() -> None:
+    section = folded(render(intern()), "The fix that passes")
     assert "**Smallest change:** No single permission can be removed" in section
-    rows = fix_rows(section)
-    assert rows == [
-        "| A | Revert the membership (rule) | all closed | breaks I1 | kept | fail |",
+    assert fix_rows(section) == [
         "| **B** | **A new support-logs-read role for Priya (zai-org/GLM-5.3)** | **all closed** | **kept**"
         " | **kept** | **pass** |",
-        "| C | Deny Priya on prod-support (rule) | all closed | kept | kept | unknown |",
-        "| D | Remove AssumeProdSupport (rule) | 1 left | breaks R2, R3 | kept | fail |",
     ]
+    assert "Theseus also tried A (fail), C (unknown) and D (fail), which don't pass." in section
     assert "Reply `/theseus apply B` to commit a fix." in section
+
+
+def test_when_nothing_passes_the_table_shows_every_fix_and_what_it_breaks() -> None:
+    failing = [c.model_copy(update={"verdict": "fail", "recommended": False}) for c in intern().candidates]
+    section = folded(render(intern().model_copy(update={"candidates": failing})), "All 4 fixes")
+    assert len(fix_rows(section)) == 4 and "No fix passes every check." in section
+
+
+def test_the_fix_line_points_at_the_suggestion_when_theseus_made_one() -> None:
+    line = do_line(
+        intern(),
+        "blocked",
+        "[people.tf:83](https://github.com/x/y/blob/s/demo-infra/terraform/people.tf#L83)",
+    )
+    assert line.startswith("**Fix:** commit Theseus's suggestion on [people.tf:83](")
+    assert "fix B, a new support-logs-read role for priya" in line and "closes all 3 ways in" in line
+    comment = render_comment(intern(), REPO, SHA, suggestion=("demo-infra/terraform/people.tf", 83))
+    assert (
+        f"[people.tf:83](https://github.com/{REPO}/blob/{SHA}/demo-infra/terraform/people.tf#L83)" in comment
+    )
 
 
 def test_a_vetoed_pass_needs_a_closer_look_and_nothing_passing_is_said_plainly() -> None:
@@ -786,7 +803,7 @@ def test_text_from_prs_and_models_cannot_change_the_comment_s_structure() -> Non
     assert comment.count("<!--") == 1 and comment.count(MARKER) == 1
     assert "<img" not in comment and "](https://evil" not in comment
     assert re.search(r"(?<!`)@security-team", comment) is None
-    assert len(fix_rows(comment)) == 4
+    assert len(fix_rows(comment)) == 1
     assert all(row.count(" | ") == 5 for row in fix_rows(comment))
 
 
@@ -820,7 +837,7 @@ def test_spec_05_s_intern_example_renders_through_the_stub() -> None:
     comment = render(result_from_expected(INTERN_EXPECTED))
     assert comment.startswith(MARKER + "\n## 🔴 Merge blocked")
     assert card(comment).count("```mermaid") == 1 and "```mermaid" not in folded(comment, "Step by step")
-    assert len(fix_rows(comment)) == 4
+    assert len(fix_rows(comment)) == 1
     assert f"{BLOB}terraform/roles.tf#L31" in comment
 
 

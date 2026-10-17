@@ -62,16 +62,15 @@ How **priya-intern** reaches **prod-db-credentials**
 </details>
 
 <details>
-<summary><b>All 4 fixes Theseus tested</b>, each on a copy of the graph</summary>
+<summary><b>The fix that passes</b>, tested on a copy of the graph</summary>
 
 **Smallest change:** No single permission can be removed without breaking required access.
 
 | ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| A | Candidate A (rule) | all closed | kept | kept | fail |
 | **B** | **Candidate B (stub)** | **all closed** | **kept** | **kept** | **pass** |
-| C | Candidate C (rule) | all closed | kept | kept | unknown |
-| D | Candidate D (rule) | all closed | kept | kept | fail |
+
+Theseus also tried A (fail), C (unknown) and D (fail), which don't pass. The review page draws each one.
 
 Reply `/theseus apply B` to commit a fix.
 

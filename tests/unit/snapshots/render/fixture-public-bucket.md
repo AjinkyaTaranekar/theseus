@@ -35,14 +35,15 @@ How **anyone on the internet** reaches **demo-company-files/invoices/**
 </details>
 
 <details>
-<summary><b>All 2 fixes Theseus tested</b>, each on a copy of the graph</summary>
+<summary><b>The fix that passes</b>, tested on a copy of the graph</summary>
 
 **Smallest change:** One change closes every path: `entry:internet CAN s3://demo-company-files/invoices/` (unknown: stub).
 
 | ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
 | --- | --- | --- | --- | --- | --- |
-| A | Candidate A (rule) | all closed | kept | kept | fail |
 | **S** | **Candidate S (rule)** | **all closed** | **kept** | **kept** | **pass** |
+
+Theseus also tried A (fail), which don't pass. The review page draws each one.
 
 Reply `/theseus apply S` to commit a fix.
 

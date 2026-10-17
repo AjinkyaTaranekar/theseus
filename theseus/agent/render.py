@@ -295,20 +295,37 @@ def why_line(result: AnalysisResult, repo: str, head_sha: str, world_root: str) 
     return None
 
 
-def do_line(result: AnalysisResult, level: str) -> Md:
-    """The one thing to do next."""
+def best_fix(result: AnalysisResult) -> Candidate | None:
+    """The fix to offer: the recommended one that passes, else the first that passes, else None."""
+    passing = [c for c in result.candidates if c.verdict == "pass"]
+    return next((c for c in passing if c.recommended), passing[0] if passing else None)
+
+
+def tested_line(result: AnalysisResult) -> str:
+    return (
+        f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
+        if result.opened
+        else "breaks nothing"
+    )
+
+
+def do_line(result: AnalysisResult, level: str, suggested: str | None = None) -> Md:
+    """The one thing to do next. `suggested` links the line where Theseus suggested the fix, when it did."""
     if level == "clear":
         return Md("**Fix:** nothing to fix.")
     if level == "look":
         return Md("**Fix:** check what Theseus couldn't, below, before you merge.")
     passing = [c for c in result.candidates if c.verdict == "pass"]
     recommended = next((c for c in passing if c.recommended), None)
-    if recommended is not None:
-        tested = (
-            f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
-            if result.opened
-            else "breaks nothing"
+    best = best_fix(result)
+    if suggested is not None and best is not None:
+        return Md(
+            f"**Fix:** commit Theseus's suggestion on {suggested}: fix {best.id},"
+            f" {escape(best.title).lower()}, tested on a copy of the graph ({tested_line(result)})."
+            " Edit it first if you like; Theseus reviews whatever you push."
         )
+    if recommended is not None:
+        tested = tested_line(result)
         return Md(
             f"**Fix:** reply {code(f'/theseus apply {recommended.id}')} to commit fix {recommended.id}"
             f" ({escape(recommended.title)}). Tested on a copy of the graph: {tested}."
@@ -333,7 +350,14 @@ def do_line(result: AnalysisResult, level: str) -> Md:
     return Md("**Fix:** ask the author why the change needs this access.")
 
 
-def card_lines(result: AnalysisResult, repo: str, head_sha: str, world_root: str, level: str) -> list[Md]:
+def card_lines(
+    result: AnalysisResult,
+    repo: str,
+    head_sha: str,
+    world_root: str,
+    level: str,
+    suggested: str | None = None,
+) -> list[Md]:
     """The lines under the consequence: says, needs and grants, why, do. Outside PR mode, only why."""
     if result.mode != "pr":
         return [line for line in (why_line(result, repo, head_sha, world_root),) if line]
@@ -341,7 +365,7 @@ def card_lines(result: AnalysisResult, repo: str, head_sha: str, world_root: str
         says_line(result),
         needs_and_grants(result),
         why_line(result, repo, head_sha, world_root),
-        do_line(result, level),
+        do_line(result, level, suggested),
     ]
     return [line for line in lines if line]
 
@@ -651,6 +675,7 @@ def _context(
     scale: int,
     falkordb: str | None,
     graph_url: str | None,
+    suggestion: tuple[str, int] | None = None,
 ) -> dict[str, Any]:
     caps = {k: max(1, v // scale) for k, v in CAPS.items()}
     status = verdict(result)
@@ -658,6 +683,14 @@ def _context(
     risks, risks_more = at_risk(result)
     pr = result.mode == "pr"
     passing = any(c.verdict == "pass" for c in result.candidates)
+    suggested = None
+    if suggestion is not None:
+        path, line = suggestion
+        name = f"{path.rsplit('/', 1)[-1]}:{line}"
+        url = f"https://github.com/{quote(repo)}/blob/{quote(head_sha)}/{quote(path)}#L{line}"
+        suggested = f"[{name}]({url})"
+    shown = [c for c in result.candidates if c.verdict == "pass"] if passing else result.candidates
+    others = [c for c in result.candidates if c not in shown]
     return {
         "marker": Md(MARKER),
         "status": status,
@@ -665,7 +698,7 @@ def _context(
         "headline": None if pr else result.headline,
         "consequence": consequence(result) if pr or result.opened or result.use_beyond_intent else None,
         "suspicious": bool(result.intent and result.intent.suspicious),
-        "lines": Md(_BREAK.join(card_lines(result, repo, head_sha, world_root, status.level))),
+        "lines": Md(_BREAK.join(card_lines(result, repo, head_sha, world_root, status.level, suggested))),
         "risks": risks,
         "risks_more": risks_more,
         "checkov": checkov_line(checkov, bool(result.opened)) if pr else None,
@@ -682,7 +715,15 @@ def _context(
             for p in pick_diagrams(result.opened)
         ],
         "cut": cut_sentence(result, repo, head_sha, world_root) if result.opened else None,
-        "fixes": [_fix_row(c) for c in result.candidates],
+        "fixes": [_fix_row(c) for c in shown],
+        "fixes_tried": len(result.candidates),
+        "other_fixes": Md(
+            "Theseus also tried "
+            + _names([f"{c.id} ({escape(c.verdict)})" for c in others])
+            + ", which don't pass. The review page draws each one."
+        )
+        if others
+        else None,
         "nothing_passes": bool(result.candidates) and not passing,
         "apply_hint": apply_hint(result.candidates),
         "unknowns": result.unknowns[: caps["unknowns"]],
@@ -710,13 +751,17 @@ def render_comment(
     world_root: str = "demo-infra",
     falkordb: str | None = None,
     graph_url: str | None = None,
+    suggestion: tuple[str, int] | None = None,
 ) -> str:
     """The whole PR comment, marker first. `falkordb` is the version the graphs were built in; `graph_url`
-    is the review's page. Long lists are cut short, so the comment fits GitHub's limit."""
+    is the review's page; `suggestion` is the repo path and line where Theseus suggested the fix. Long lists
+    are cut short, so the comment fits GitHub's limit."""
     template = _ENV.get_template("comment.md")
     scale = 1
     while True:
-        context = _context(result, repo, head_sha, checkov, world_root, scale, falkordb, graph_url)
+        context = _context(
+            result, repo, head_sha, checkov, world_root, scale, falkordb, graph_url, suggestion
+        )
         comment = template.render(**context)
         if len(comment) < MAX_CHARS or scale >= 64:
             return comment
