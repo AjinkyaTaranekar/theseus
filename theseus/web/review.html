@@ -682,9 +682,10 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       });
     };
     const verdict = fx.verdict === "pass" ? "passes" : fx.verdict === "fail" ? "fails" : `is ${fx.verdict}`;
+    const which = fixes.length === 1 ? "The fix" : `Fix ${fx.id}`;
     const viaNew = asked.length && asked.flat().every((e) => !headEdges.has(ekey(e)));
     const keeps = asked.length ? ` ${nameOf(r.intent.grants[0].principal)} can still ${access([r.intent.grants[0].access])} ${short(r.intent.grants[0].resource)}, the access the PR asked for, ${viaNew ? "through the new links" : "along the blue links"}.` : "";
-    $("note").textContent = `Fix ${fx.id} ${verdict}: it cuts ${plural(removed.length, "link")} (red, dashed) and adds ${plural(added.length, "link")} (green). ` +
+    $("note").textContent = `${which} ${verdict}: it cuts ${plural(removed.length, "link")} (red, dashed) and adds ${plural(added.length, "link")} (green). ` +
       (still.length ? `${plural(still.length, "way")} in ${still.length === 1 ? "is" : "are"} still open.` : `None of the ${plural(opened.length, "way")} in remains.`) + keeps;
     const ops = $("fixops");
     const list = el("ul");
@@ -694,8 +695,11 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
       list.append(add(el("li"), el("code", op.op.replace(/_/g, " ")), document.createTextNode(who ? ` ${who}` : ""),
         document.createTextNode(args.group ? ` from ${args.group}` : args.trust_principals ? `, trusted only by ${args.trust_principals.map(nameOf).join(", ")}` : "")));
     }
-    ops.replaceChildren(el("div", `What fix ${fx.id} changes, ${fx.verdict === "pass" ? "checked on a copy of the graph" : `and why it doesn't pass: ${fx.reason || fx.verdict}`}:`), list);
-    if (fx.verdict === "pass") ops.append(el("div", `Reply /theseus apply ${fx.id} on the PR to commit it.`, { style: "margin-top:8px" }));
+    ops.replaceChildren(el("div", `What ${which.toLowerCase()} changes, ${fx.verdict === "pass" ? "checked on a copy of the graph" : `and why it doesn't pass: ${fx.reason || fx.verdict}`}:`), list);
+    if (fx.verdict === "pass") {
+      const command = fixes.length === 1 ? "/theseus apply" : `/theseus apply ${fx.id}`;
+      ops.append(el("div", `Commit Theseus's suggestion on the PR, or reply ${command} to commit it.`, { style: "margin-top:8px" }));
+    }
     if (typeof cytoscape !== "undefined") { go(); return; }
     const s = el("script", null, { src: CYTOSCAPE.src, integrity: CYTOSCAPE.integrity, crossorigin: "anonymous", referrerpolicy: "no-referrer" });
     s.onload = go;

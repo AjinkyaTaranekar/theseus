@@ -526,7 +526,7 @@ def test_a_branch_that_moved_since_the_review_is_never_overwritten(
     fake.branch_moved = True
     assert apply(client).status_code == 502
     assert [body["force"] for _, body in fake.refs] == [False]
-    assert "could not commit fix B" in fake.replies[0] and "422" in fake.replies[0]
+    assert "could not commit the fix" in fake.replies[0] and "422" in fake.replies[0]
 
 
 # What counts as the command -------------------------------------------------------------------------------
@@ -538,7 +538,6 @@ def test_a_branch_that_moved_since_the_review_is_never_overwritten(
         comment("/theseus apply b"),
         comment("/theseus apply B now"),
         comment("please /theseus apply B"),
-        comment("/theseus apply"),
         comment("/theseus apply B C"),
         comment("/theseus apply B", action="edited"),
         comment("/theseus apply B", on_pr=False),
@@ -560,9 +559,18 @@ def test_surrounding_whitespace_is_allowed(client: TestClient, fake: FakeRepo, b
     assert len(fake.commits) == 1
 
 
-@pytest.mark.parametrize(("body", "candidate"), [("/theseus apply B", "B"), ("/theseus apply H12", "H12")])
-def test_the_command_names_a_letter_or_a_person_s_fix(body: str, candidate: str) -> None:
+@pytest.mark.parametrize(
+    ("body", "candidate"), [("/theseus apply B", "B"), ("/theseus apply H12", "H12"), ("/theseus apply", "")]
+)
+def test_the_command_names_a_letter_a_person_s_fix_or_nothing(body: str, candidate: str) -> None:
     assert webhooks.apply_command(body) == candidate
+
+
+def test_apply_alone_commits_the_recommended_fix(client: TestClient, fake: FakeRepo) -> None:
+    reviewed(client)
+    assert webhook(client, "issue_comment", comment("/theseus apply")).status_code == 204
+    assert len(fake.commits) == 1
+    assert fake.replies[0].startswith("> /theseus apply\n") and "Committed the fix (" in fake.replies[0]
 
 
 @pytest.mark.parametrize("body", ["/theseus apply Z9", "/theseus apply H0", "/theseus apply K12"])

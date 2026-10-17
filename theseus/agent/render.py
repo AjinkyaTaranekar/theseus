@@ -295,6 +295,11 @@ def why_line(result: AnalysisResult, repo: str, head_sha: str, world_root: str) 
     return None
 
 
+def _lead(text: str) -> str:
+    """A title as part of a sentence: its first letter lowered, the rest as written."""
+    return text[:1].lower() + text[1:]
+
+
 def best_fix(result: AnalysisResult) -> Candidate | None:
     """The fix to offer: the recommended one that passes, else the first that passes, else None."""
     passing = [c for c in result.candidates if c.verdict == "pass"]
@@ -320,20 +325,25 @@ def do_line(result: AnalysisResult, level: str, suggested: str | None = None) ->
     best = best_fix(result)
     if suggested is not None and best is not None:
         return Md(
-            f"**Fix:** commit Theseus's suggestion on {suggested}: fix {best.id},"
-            f" {escape(best.title).lower()}, tested on a copy of the graph ({tested_line(result)})."
-            " Edit it first if you like; Theseus reviews whatever you push."
+            f"**Fix:** commit Theseus's suggestion on {suggested} ({_lead(escape(best.title))}),"
+            f" tested on a copy of the graph: {tested_line(result)}. Edit it first if you like;"
+            " Theseus reviews whatever you push."
         )
     if recommended is not None:
         tested = tested_line(result)
         return Md(
-            f"**Fix:** reply {code(f'/theseus apply {recommended.id}')} to commit fix {recommended.id}"
-            f" ({escape(recommended.title)}). Tested on a copy of the graph: {tested}."
+            f"**Fix:** reply {code('/theseus apply')} to commit the fix"
+            f" ({_lead(escape(recommended.title))}). Tested on a copy of the graph: {tested}."
         )
     if passing:
-        ids = _names([code(c.id) for c in passing])
-        verb = "passes but needs" if len(passing) == 1 else "pass but need"
-        return Md(f"**Fix:** {ids} {verb} a closer look first. Then reply {code('/theseus apply <ID>')}.")
+        if len(passing) == 1:
+            return Md(
+                f"**Fix:** one fix passes but needs a closer look first. Then reply {code('/theseus apply')}."
+            )
+        ids = _names([f"{code(c.id)} ({_lead(escape(c.title))})" for c in passing])
+        return Md(
+            f"**Fix:** {ids} pass but need a closer look first. Then reply {code('/theseus apply <ID>')}."
+        )
     if result.candidates:
         return Md(
             "**Fix:** ask the author to change the PR. None of the fixes Theseus tested passes every check."
@@ -558,6 +568,19 @@ def cut_sentence(result: AnalysisResult, repo: str, head_sha: str, world_root: s
     return Md(f"{len(edges)} changes close every path: {'; '.join(edges)}.")
 
 
+def _why_not(c: Candidate) -> str:
+    """Why a fix doesn't pass, in a few words."""
+    if c.requirements_broken:
+        return f"breaks {', '.join(c.requirements_broken)}"
+    if c.paths_left:
+        return f"leaves {_plural(len(c.paths_left), 'way')} in"
+    if c.new_paths:
+        return f"opens {_plural(len(c.new_paths), 'new way')} in"
+    if c.calls_broken:
+        return "breaks a code call"
+    return "couldn't be checked" if c.verdict == "unknown" else c.verdict
+
+
 def _fix_row(c: Candidate) -> list[Md]:
     who = "rule" if c.source == "rule" else escape(c.proposed_by)
     paths = []
@@ -567,7 +590,6 @@ def _fix_row(c: Candidate) -> list[Md]:
         paths.append(f"{len(c.new_paths)} new")
     verdict_cell = f"{c.verdict}, needs a closer look" if c.needs_closer_look else c.verdict
     cells = [
-        c.id,
         f"{escape(c.title)} ({who})",
         ", ".join(paths) or "all closed",
         f"breaks {escape(', '.join(c.requirements_broken))}" if c.requirements_broken else "kept",
@@ -583,12 +605,15 @@ def apply_hint(candidates: list[Candidate]) -> Md | None:
     if not passing:
         return None
     recommended = next((c for c in passing if c.recommended), None)
+    if len(passing) == 1:
+        return Md(f"Reply {code('/theseus apply')} to commit it.")
+    named = _names([f"{code(c.id)} ({_lead(escape(c.title))})" for c in passing if c is not recommended])
     if recommended is None:
-        ids = _names([code(c.id) for c in passing])
-        return Md(f"Reply {code('/theseus apply <ID>')} with a fix that passes: {ids}.")
-    others = [code(c.id) for c in passing if c is not recommended]
-    also = f" {_names(others)} also {'passes' if len(others) == 1 else 'pass'}." if others else ""
-    return Md(f"Reply {code(f'/theseus apply {recommended.id}')} to commit a fix.{also}")
+        return Md(f"Reply {code('/theseus apply <ID>')} with a fix that passes: {named}.")
+    return Md(
+        f"Reply {code('/theseus apply')} to commit the recommended fix, or {code('/theseus apply <ID>')}"
+        f" for {named}."
+    )
 
 
 def _path_row(p: PathRecord) -> dict[str, Md]:
@@ -718,9 +743,11 @@ def _context(
         "fixes": [_fix_row(c) for c in shown],
         "fixes_tried": len(result.candidates),
         "other_fixes": Md(
-            "Theseus also tried "
-            + _names([f"{c.id} ({escape(c.verdict)})" for c in others])
-            + ", which don't pass. The review page draws each one."
+            f"Theseus also tried {len(others)} other {'fix' if len(others) == 1 else 'fixes'} that "
+            + ("doesn't" if len(others) == 1 else "don't")
+            + " pass: "
+            + _names([f"{_lead(escape(c.title))} ({_why_not(c)})" for c in others])
+            + "."
         )
         if others
         else None,

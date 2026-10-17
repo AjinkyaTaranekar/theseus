@@ -6,11 +6,11 @@
 <details>
 <summary><b>The fix that passes</b>, tested on a copy of the graph</summary>
 
-| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| **K** | **Candidate K (rule)** | **all closed** | **kept** | **kept** | **pass** |
+| Fix | Dangerous paths | Required access | Code calls | Verdict |
+| --- | --- | --- | --- | --- |
+| **Candidate K (rule)** | **all closed** | **kept** | **kept** | **pass** |
 
-Reply `/theseus apply K` to commit a fix.
+Reply `/theseus apply` to commit it.
 
 </details>
 

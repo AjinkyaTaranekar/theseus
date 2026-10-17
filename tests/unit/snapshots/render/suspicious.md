@@ -8,7 +8,7 @@
 **The PR says:** let Priya read the app logs.\
 **It asked for:** no new access · **It would get:** **customer-db**, **prod-db-credentials** and **demo-company-files/invoices/**\
 **How:** **priya-intern** is in **support-engineers** ([terraform/people.tf:20](https://github.com/owner/theseus/blob/0123456789abcdef0123456789abcdef01234567/demo-infra/terraform/people.tf#L20), new) → can become **prod-support** → can read **prod-db-credentials** → opens **customer-db**.\
-**Fix:** reply `/theseus apply B` to commit fix B (A new support-logs-read role for Priya). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
+**Fix:** reply `/theseus apply` to commit the fix (a new support-logs-read role for Priya). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -71,13 +71,13 @@ How **priya-intern** reaches **demo-company-files/invoices/**
 
 **Smallest change:** No single permission can be removed without breaking required access.
 
-| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| **B** | **A new support-logs-read role for Priya (zai-org/GLM-5.3)** | **all closed** | **kept** | **kept** | **pass** |
+| Fix | Dangerous paths | Required access | Code calls | Verdict |
+| --- | --- | --- | --- | --- |
+| **A new support-logs-read role for Priya (zai-org/GLM-5.3)** | **all closed** | **kept** | **kept** | **pass** |
 
-Theseus also tried A (fail), C (unknown) and D (fail), which don't pass. The review page draws each one.
+Theseus also tried 3 other fixes that don't pass: revert the membership (breaks I1), deny Priya on prod-support (couldn't be checked) and remove AssumeProdSupport (breaks R2, R3).
 
-Reply `/theseus apply B` to commit a fix.
+Reply `/theseus apply` to commit it.
 
 </details>
 

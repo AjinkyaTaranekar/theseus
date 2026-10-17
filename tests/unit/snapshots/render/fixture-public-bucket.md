@@ -6,7 +6,7 @@
 **The PR says:** stub.\
 **It asked for:** read **demo-company-files/public/** · **It would get:** **demo-company-files/invoices/**\
 **How:** **anyone on the internet** can read **demo-company-files/invoices/**.\
-**Fix:** reply `/theseus apply S` to commit fix S (Candidate S). Tested on a copy of the graph: closes all 1 way in, breaks nothing.
+**Fix:** reply `/theseus apply` to commit the fix (candidate S). Tested on a copy of the graph: closes all 1 way in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -39,13 +39,13 @@ How **anyone on the internet** reaches **demo-company-files/invoices/**
 
 **Smallest change:** One change closes every path: `entry:internet CAN s3://demo-company-files/invoices/` (unknown: stub).
 
-| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| **S** | **Candidate S (rule)** | **all closed** | **kept** | **kept** | **pass** |
+| Fix | Dangerous paths | Required access | Code calls | Verdict |
+| --- | --- | --- | --- | --- |
+| **Candidate S (rule)** | **all closed** | **kept** | **kept** | **pass** |
 
-Theseus also tried A (fail), which don't pass. The review page draws each one.
+Theseus also tried 1 other fix that doesn't pass: candidate A (fail).
 
-Reply `/theseus apply S` to commit a fix.
+Reply `/theseus apply` to commit it.
 
 </details>
 

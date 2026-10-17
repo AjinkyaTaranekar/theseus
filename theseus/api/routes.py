@@ -291,12 +291,12 @@ def _suggest(
                     "path": s.path,
                     "line": s.end,
                     "side": "RIGHT",
-                    "body": suggest.comment_body(fix.id, fix.title, tested, s),
+                    "body": suggest.comment_body(fix.title, tested, s),
                 }
                 if s.start < s.end:
                     comment |= {"start_line": s.start, "start_side": "RIGHT"}
                 comments.append(comment)
-            gh.post_review(repo, number, head_sha, suggest.review_body(fix.id, head_sha), comments)
+            gh.post_review(repo, number, head_sha, suggest.review_body(head_sha), comments)
         first = placed.suggestions[0]
         return first.path, first.start
     except (PatchError, GitHubError) as e:
@@ -479,7 +479,7 @@ def apply(
     the same checks and the same commit as `/theseus apply <ID>`. Refuses any file outside the world root."""
     _require_token(settings, x_theseus_token)
     _require_repo(gh, req.repo)
-    if not is_candidate_id(req.candidate_id):
+    if req.candidate_id and not is_candidate_id(req.candidate_id):
         raise HTTPException(422, f"not a candidate ID: {req.candidate_id!r}")
     try:
         applied = webhooks.apply_fix(
@@ -1046,7 +1046,7 @@ def _apply_by_comment(
     gh: GitHub, repo: str, number: int, candidate_id: str, user: str, fixing: Fixing
 ) -> None:
     """`/theseus apply <ID>`: commits the fix, or says why not, in a reply to the person who asked."""
-    command = f"/theseus apply {candidate_id}"
+    command = webhooks.command_for(candidate_id)
     try:
         applied = webhooks.apply_fix(
             gh, fixing.results, fixing.store, fixing.render, repo, number, candidate_id, user
@@ -1060,10 +1060,7 @@ def _apply_by_comment(
         text = str(e)
     except GitHubError as e:
         log.error("%s#%d: %s failed: %s", repo, number, command, e)
-        failed = (
-            f"Theseus could not commit fix {candidate_id}: {code(str(e)[:REASON_MAX])}. "
-            "Comment again to retry."
-        )
+        failed = f"Theseus could not commit the fix: {code(str(e)[:REASON_MAX])}. Comment again to retry."
         gh.reply(repo, number, webhooks.answer(command, user, failed))
         raise
     gh.reply(repo, number, webhooks.answer(command, user, text))

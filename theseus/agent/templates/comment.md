@@ -82,10 +82,10 @@ and {{ opened_more }} more not shown.
 **Smallest change:** {{ cut }}
 
 {% endif %}
-| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
-| --- | --- | --- | --- | --- | --- |
+| Fix | Dangerous paths | Required access | Code calls | Verdict |
+| --- | --- | --- | --- | --- |
 {% for row in fixes %}
-| {{ row[0] }} | {{ row[1] }} | {{ row[2] }} | {{ row[3] }} | {{ row[4] }} | {{ row[5] }} |
+| {{ row[0] }} | {{ row[1] }} | {{ row[2] }} | {{ row[3] }} | {{ row[4] }} |
 {% endfor %}
 
 {% if nothing_passes %}

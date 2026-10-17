@@ -58,7 +58,7 @@ def test_fix_b_becomes_one_suggestion_replacing_the_pr_s_membership_with_the_new
     assert old[s.end - 1] == "}" and "aws_iam_user_group_membership" not in "\n".join(s.lines)
     assert any('resource "aws_iam_role"' in line for line in s.lines)
     assert any("arn:aws:s3:::demo-app-logs" in line for line in s.lines)
-    body = comment_body("B", "A new role", "closes all 3 ways in, breaks nothing", s)
+    body = comment_body("A new role", "closes all 3 ways in, breaks nothing", s)
     assert body.count("```suggestion\n") == 1 and body.rstrip().endswith("```")
 
 

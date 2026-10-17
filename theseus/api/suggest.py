@@ -91,21 +91,21 @@ def plan(before: dict[str, str], after: dict[str, str], in_diff: dict[str, set[i
     return out
 
 
-def comment_body(fix_id: str, title: str, tested: str, suggestion: Suggestion) -> str:
+def comment_body(title: str, tested: str, suggestion: Suggestion) -> str:
     """One review comment: what the fix is, how it was checked, and the suggestion block."""
     fence = "````" if any(line.startswith("```") for line in suggestion.lines) else "```"
     block = "\n".join(suggestion.lines)
     return (
-        f"**Theseus fix {fix_id}:** {title}. Tested on a copy of the graph: {tested}.\n\n"
+        f"**Theseus's fix:** {title}. Tested on a copy of the graph: {tested}.\n\n"
         "Commit the suggestion as it is, or edit it first: Theseus reviews whatever you push.\n\n"
         f"{fence}suggestion\n{block}\n{fence}"
     )
 
 
-def review_body(fix_id: str, head_sha: str) -> str:
+def review_body(head_sha: str) -> str:
     """The review's own text, with the marker that says which head it was for."""
     return (
         f"{MARKER}\n<!-- theseus:head:{head_sha} -->\n"
-        f"Theseus suggests fix {fix_id} on the lines below. "
-        f"Reply `/theseus apply {fix_id}` to commit all of it."
+        "Theseus suggests a fix on the lines below. Commit it from there, or reply `/theseus apply` to commit"
+        " all of it at once."
     )
