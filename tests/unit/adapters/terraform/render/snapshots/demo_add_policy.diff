@@ -1,0 +1,16 @@
+--- terraform/theseus_fixes.tf
++++ terraform/theseus_fixes.tf
+@@ -0,0 +1,13 @@
++resource "aws_iam_user_policy" "theseus_add_policy_48ed64767924" {
++  name = "theseus_add_policy_48ed64767924"
++  policy = jsonencode({
++    "Statement" = [{
++      "Action" = ["s3:GetObject", "s3:ListBucket"]
++      "Effect" = "Allow"
++      "Resource" = ["arn:aws:s3:::demo-app-logs", "arn:aws:s3:::demo-app-logs/*"]
++      "Sid" = "ReadLogs"
++    }]
++    "Version" = "2012-10-17"
++  })
++  user = aws_iam_user.priya.name
++}

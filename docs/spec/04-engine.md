@@ -419,3 +419,11 @@ Blocks are found with the same header search as `source_index.py`, and their end
 editing, parse the files with `python-hcl2` (pure Python) and check that the edited block now says what the op
 intended. If either check fails, refuse to commit. The Action's re-run after the commit (a fresh plan and a
 fresh analysis) is the final check.
+
+The composition root passes the existing world config to `TerraformAdapter(config)`. For `add_role`, use
+its explicit `account` and each exact declared principal to write literal canonical trust ARNs (section 4).
+Keep an explicit `depends_on` on those declarations so Terraform creates them before the role. A reference
+to a newly created principal's `.arn` makes the trust policy unknown in a fresh plan and prevents the
+importer from proving the intended access. Refuse missing or invalid account context, explicit provider
+bindings, and non-root principal paths; the engine's canonical ARN subset does not model those paths.
+The adapter's protocol signatures stay unchanged, and other operations do not require account context.

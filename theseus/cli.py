@@ -67,7 +67,7 @@ def adapters_for(root: Path) -> Adapters:
     """AWS, Terraform, GitHub Actions and Python, configured from the world root's theseus.yaml."""
     config = yaml.safe_load((root / "theseus.yaml").read_text(encoding="utf-8"))
     return Adapters(
-        iac=TerraformAdapter(), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
+        iac=TerraformAdapter(config), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
     )
 
 
