@@ -148,8 +148,9 @@ def _one_line(text: str) -> str:
 
 
 def commit_message(candidate: Candidate, result: AnalysisResult, user: str) -> str:
-    """`fix: Apply Theseus fix <ID>`, a body naming the paths it closes and the requirements it keeps, and the
-    `Proposed-by:` and `Requested-by:` trailers, following AGENTS.md's commit rules."""
+    """`fix: Apply the fix Theseus suggested`, a body naming the fix by what it does, the paths it closes and
+    the requirements it keeps, and the `Proposed-by:` and `Requested-by:` trailers, following AGENTS.md's
+    commit rules."""
 
     def fill(text: str, indent: str = "") -> str:
         return textwrap.fill(
@@ -163,14 +164,16 @@ def commit_message(candidate: Candidate, result: AnalysisResult, user: str) -> s
 
     paths = sorted({(p.actor, p.target) for p in result.opened})
     kept = sorted(r.id for r in result.requirements if r.status == "satisfied")
-    body = [fill(f"Theseus checked fix {candidate.id} on a copy of the reviewed graph, where it passed.")]
+    title = " ".join(candidate.title.split()).rstrip(".")
+    named = title[:1].lower() + title[1:]
+    body = [fill(f"Theseus checked this fix ({named}) on a copy of the reviewed graph, where it passed.")]
     if paths:
         body += ["", "It closes the dangerous paths this pull request opened:"]
         body += [fill(f"{actor} -> {target}", "- ") for actor, target in paths]
     if kept:
         body += ["", fill("It keeps the access these requirements need: " + ", ".join(kept) + ".")]
     trailers = [f"Proposed-by: {_one_line(candidate.proposed_by)}", f"Requested-by: @{user}"]
-    return "\n".join([f"fix: Apply Theseus fix {candidate.id}", "", *body, "", *trailers]) + "\n"
+    return "\n".join(["fix: Apply the fix Theseus suggested", "", *body, "", *trailers]) + "\n"
 
 
 def _passing(result: AnalysisResult) -> str:
