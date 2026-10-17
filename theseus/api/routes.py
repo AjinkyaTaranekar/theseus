@@ -26,6 +26,7 @@ from typing import Annotated, Any, Literal
 import yaml
 from falkordb import FalkorDB
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
@@ -1303,10 +1304,12 @@ async def github_webhook(
     repo = (payload.get("repository") or {}).get("full_name", "")
     _require_repo(gh, repo)
     try:
+        # The handlers call GitHub synchronously, and applying a fix takes seconds: off the event loop, so
+        # the next delivery is read meanwhile instead of GitHub giving up on it.
         if x_github_event == "issue_comment":
-            _on_comment(gh, repo, payload, Fixing(results, store, render))
+            await run_in_threadpool(_on_comment, gh, repo, payload, Fixing(results, store, render))
         else:
-            HANDLERS[x_github_event](gh, repo, payload)
+            await run_in_threadpool(HANDLERS[x_github_event], gh, repo, payload)
     except GitHubError as e:
         log.error("webhook %s for %s: %s", x_github_event, repo, e)
         raise HTTPException(502, str(e)) from e

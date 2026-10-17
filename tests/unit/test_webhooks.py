@@ -275,7 +275,7 @@ def test_the_commit_message_follows_the_repo_s_rules_and_names_who_proposed_and_
     message = fake.commits[0]["message"]
     assert problems(message) == []
     subject, blank, *body = message.splitlines()
-    assert subject == "fix: Apply Theseus fix B" and blank == ""
+    assert subject == "fix: Apply the fix Theseus suggested" and blank == ""
     text = "\n".join(body)
     # The paths it closes and the requirements it keeps, from the review the fix was checked against.
     assert "user:priya-intern -> db:customer-db" in text

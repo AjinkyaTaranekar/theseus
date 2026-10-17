@@ -6,7 +6,7 @@
 **The PR says:** stub.\
 **It asked for:** read **demo-company-files/public/** · **It would get:** **demo-company-files/invoices/**\
 **How:** **anyone on the internet** can read **demo-company-files/invoices/**.\
-**Fix:** reply `/theseus apply` to commit the fix (candidate S). Tested on a copy of the graph: closes all 1 way in, breaks nothing.
+**Fix:** reply `/theseus apply` to commit the fix (candidate S). Tested on a copy of the graph: closes the only way in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -87,8 +87,6 @@ Checkov 3.2.255 passed this commit (52 checks). It checks one resource at a time
 Coverage: not recorded.
 
 Timings: not recorded.
-
-Models: not recorded.
 
 </details>
 

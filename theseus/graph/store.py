@@ -87,6 +87,9 @@ class MemoryStore:
     def docs(self, prefix: str) -> list[str]:
         return sorted(k for k in self._docs if k.startswith(prefix))
 
+    def read_docs(self, prefix: str) -> dict[str, str]:
+        return {k: self._docs[k] for k in self.docs(prefix)}
+
     def apply_delta(self, graph: str, delta: GraphDelta) -> None:
         rows = self._rows(graph)
         gone_edges = set(delta.remove_edges)
@@ -243,6 +246,13 @@ class FalkorStore:
 
     def __init__(self, db: FalkorDB) -> None:
         self.db = db
+        # Once the documents graph exists it stays; each check of it was a round trip to FalkorDB.
+        self._docs_exist = False
+
+    def _has_docs(self) -> bool:
+        if not self._docs_exist:
+            self._docs_exist = DOCS in self.list_graphs()
+        return self._docs_exist
 
     def _query(self, graph: str, cypher: str, params: dict[str, Any] | None = None) -> list[list[Any]]:
         try:
@@ -257,6 +267,8 @@ class FalkorStore:
             raise GraphError(f"cannot list graphs: {e}") from e
 
     def delete(self, graph: str) -> None:
+        if graph == DOCS:
+            self._docs_exist = False
         if graph not in self.list_graphs():
             return
         try:
@@ -273,16 +285,17 @@ class FalkorStore:
 
     def put_doc(self, key: str, text: str) -> None:
         self._query(DOCS, "MERGE (d:Doc {key: $key}) SET d.text = $text", {"key": key, "text": text})
+        self._docs_exist = True
 
     def get_doc(self, key: str) -> str | None:
-        if DOCS not in self.list_graphs():
+        if not self._has_docs():
             return None
         found = self._query(DOCS, "MATCH (d:Doc {key: $key}) RETURN d.text", {"key": key})
         return found[0][0] if found else None
 
     def docs(self, prefix: str) -> list[str]:
         """The keys of the documents starting with `prefix`, sorted."""
-        if DOCS not in self.list_graphs():
+        if not self._has_docs():
             return []
         found = self._query(
             DOCS,
@@ -290,6 +303,17 @@ class FalkorStore:
             {"prefix": prefix},
         )
         return [row[0] for row in found]
+
+    def read_docs(self, prefix: str) -> dict[str, str]:
+        """Every document whose key starts with `prefix`, by key, in one query."""
+        if not self._has_docs():
+            return {}
+        found = self._query(
+            DOCS,
+            "MATCH (d:Doc) WHERE d.key STARTS WITH $prefix RETURN d.key, d.text ORDER BY d.key",
+            {"prefix": prefix},
+        )
+        return {row[0]: row[1] for row in found}
 
     def _add(self, graph: str, nodes: list[NodeRow], edges: list[EdgeRow]) -> None:
         by_labels: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)

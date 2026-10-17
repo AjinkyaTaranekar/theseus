@@ -172,7 +172,7 @@ def test_the_agent_s_fix_is_verified_by_the_engine_and_becomes_b(case: Case) -> 
         "B",
         "llm",
         "test-model",
-        fixer.TITLE,
+        "Remove membership, add role and add policy",
         "pass",
     )
     assert [o.op for o in b.ops] == ["remove_membership", "add_role", "add_policy"]

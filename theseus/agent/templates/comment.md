@@ -162,8 +162,10 @@ and {{ unchanged_more }} more not shown.
 {{ coverage }}
 
 {{ timings }}
+{% if versions %}
 
 {{ versions }}
+{% endif %}
 
 </details>
 
