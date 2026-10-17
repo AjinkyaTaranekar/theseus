@@ -23,6 +23,8 @@ MODULES = {
     "billing_api": ["handler.py", "db.py", "queries.py"],
     "support_portal": ["handler.py", "clients.py", "views.py"],
     "analytics_export": ["handler.py", "export.py"],
+    "invoice_mailer": ["handler.py"],
+    "receipt_renderer": ["handler.py"],
 }
 # The workload each folder belongs to: its Lambda function or ECS service in spec 02.
 WORKLOADS = {
@@ -32,6 +34,8 @@ WORKLOADS = {
     "billing_api": ("lambda", "billing-api"),
     "support_portal": ("lambda", "support-portal"),
     "analytics_export": ("lambda", "analytics-export"),
+    "invoice_mailer": ("lambda", "invoice-mailer"),
+    "receipt_renderer": ("lambda", "receipt-renderer"),
 }
 # Spec 02's table: (client service, method, the keyword naming the resource, the variable it comes from,
 # the key's literal prefix or None). Nothing else a boto3 client calls.
@@ -63,6 +67,14 @@ BOTO_CALLS: dict[str, list[tuple[str, str, str, str, str | None]]] = {
         ("s3", "put_object", "Bucket", "LAKE_BUCKET", "raw/orders/"),
         ("s3", "get_object", "Bucket", "LAKE_BUCKET", "raw/orders/"),
         ("s3", "put_object", "Bucket", "LAKE_BUCKET", "curated/daily_sales/"),
+    ],
+    "invoice_mailer/handler.py": [
+        ("secretsmanager", "get_secret_value", "SecretId", "SMTP_SECRET", None),
+        ("s3", "get_object", "Bucket", "INVOICES_BUCKET", "invoices/"),
+    ],
+    "receipt_renderer/handler.py": [
+        ("s3", "get_object", "Bucket", "INVOICES_BUCKET", "invoices/"),
+        ("secretsmanager", "get_secret_value", "SecretId", "SMTP_SECRET", None),
     ],
 }
 # (httpx method, the variable the URL starts with, or the literal host for the external payment provider).

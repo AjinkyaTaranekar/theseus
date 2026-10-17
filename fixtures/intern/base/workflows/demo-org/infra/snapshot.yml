@@ -1,0 +1,20 @@
+name: Snapshot company files
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/backup-runner
+          aws-region: eu-west-1
+      - uses: demo-thirdparty/s3-sync@v1
+        with:
+          source: s3://demo-company-files
+          destination: s3://demo-backups/company-files

@@ -15,6 +15,8 @@ from theseus.graph.load import load_graph
 
 SCENARIO = "unused-grant"
 PORTAL = "workload:support-portal"
+MAILER = "workload:invoice-mailer"
+RENDERER = "workload:receipt-renderer"
 
 
 def scan() -> tuple[AnalysisResult, Deps]:
@@ -37,20 +39,30 @@ def test_scan_matches_the_answer_key() -> None:
 def test_the_cut_lands_on_the_unused_grant_and_not_on_what_carries_it() -> None:
     result, _ = scan()
     assert result.min_cut is not None
-    assert result.min_cut.sources == [PORTAL]
-    assert result.min_cut.value == 1 and result.min_cut.cuttable
+    assert result.min_cut.sources == [MAILER, RENDERER, PORTAL]
+    assert result.min_cut.value == 2 and result.min_cut.cuttable
     assert [(e.src, e.type, e.dst) for e in result.min_cut.cut] == [
-        ("role:support-portal", "CAN", "secret:prod-db-credentials")
+        ("role:shared-lambda", "CAN", "secret:payments-api-key"),
+        ("role:support-portal", "CAN", "secret:prod-db-credentials"),
     ]
 
 
-def test_exactly_one_grant_is_unused_and_it_cites_the_policy_statement() -> None:
+def test_the_unused_grants_are_exactly_these_and_cite_their_policy_statements() -> None:
+    """support-portal's legacy DB secret, and the payments key the shared role holds for its two functions."""
     result, _ = scan()
-    (grant,) = result.unused_grants
-    assert (grant.workload, grant.resource, grant.access) == (PORTAL, "secret:prod-db-credentials", "read")
-    cited = result.evidence[grant.evidence]
-    assert (cited.address, cited.part) == ("aws_iam_role_policy.support_portal", "LegacyDbSecret")
-    assert cited.file != "unknown" and cited.line is not None
+    assert [(g.workload, g.resource, g.access) for g in result.unused_grants] == [
+        (MAILER, "secret:payments-api-key", "read"),
+        (RENDERER, "secret:payments-api-key", "read"),
+        (PORTAL, "secret:prod-db-credentials", "read"),
+    ]
+    statements = {
+        (result.evidence[g.evidence].address, result.evidence[g.evidence].part) for g in result.unused_grants
+    }
+    assert statements == {
+        ("aws_iam_role_policy.shared_lambda", "ReadPaymentsKey"),
+        ("aws_iam_role_policy.support_portal", "LegacyDbSecret"),
+    }
+    assert all(result.evidence[g.evidence].line is not None for g in result.unused_grants)
 
 
 def test_candidate_u_removes_that_statement_and_passes_without_breaking_a_call() -> None:
@@ -60,8 +72,12 @@ def test_candidate_u_removes_that_statement_and_passes_without_breaking_a_call()
     assert [(o.op, o.args) for o in u.ops] == [
         (
             "remove_statement",
+            {"policy_address": "aws_iam_role_policy.shared_lambda", "sid": "ReadPaymentsKey"},
+        ),
+        (
+            "remove_statement",
             {"policy_address": "aws_iam_role_policy.support_portal", "sid": "LegacyDbSecret"},
-        )
+        ),
     ]
     assert u.paths_left == u.new_paths == u.requirements_broken == u.calls_broken == u.unknown == []
 
@@ -80,7 +96,9 @@ def test_scan_reports_the_dangerous_paths_already_in_main_and_names_the_graph() 
     assert result.graphs == {"main": "fx__unused-grant__main"}
     assert not result.opened and not result.closed
     assert (PORTAL, "secret:prod-db-credentials") in {(p.actor, p.target) for p in result.unchanged}
-    assert "support-portal" in result.headline and "prod-db-credentials" in result.headline
+    # The headline gives the first grant as its example: invoice-mailer's payments key, from legacy.tf.
+    assert result.headline.startswith("3 grants to sensitive data are never called")
+    assert "invoice-mailer" in result.headline and "payments-api-key" in result.headline
 
 
 def test_candidate_u_is_verified_on_a_copy_of_main() -> None:
@@ -122,5 +140,5 @@ def test_removing_a_grant_the_code_calls_fails_with_the_file_and_line() -> None:
 
 def test_the_config_requirements_still_hold_after_candidate_u() -> None:
     result, _ = scan()
-    assert {r.id: r.status for r in result.requirements} == {f"R{i}": "satisfied" for i in range(1, 18)}
+    assert {r.id: r.status for r in result.requirements} == {f"R{i}": "satisfied" for i in range(1, 22)}
     assert config_requirements(world(SCENARIO, "base"))
