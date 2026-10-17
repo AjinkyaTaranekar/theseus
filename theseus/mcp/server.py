@@ -3,7 +3,7 @@
 It loads a fixture's graphs into FalkorDB, then serves the ten tools of `tools.py` to any MCP client, Claude
 Code through `.mcp.json` among them. Every call goes through the recorder (`agent/trace.py`); the calls so far
 can be read as the resource `theseus://tool-trace`. This module is also a composition root: `main` picks the
-adapters, as `cli.py` does.
+adapters and the models (recordings in replay, the real clients otherwise), as `cli.py` does.
 """
 
 from __future__ import annotations
@@ -179,21 +179,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     # stdout carries the protocol; logs go to stderr.
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(name)s: %(message)s")
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-    from theseus.cli import adapters_for
+    from theseus.cli import adapters_for, models
     from theseus.config import get_settings
     from theseus.graph.client import get_client
     from theseus.graph.store import FalkorStore
 
     settings = get_settings()
     try:
-        llm = Llm(settings)
+        llm, jev = models(settings)
         deps = Deps(
             store=FalkorStore(get_client(settings)),
             adapters=adapters_for(args.fixture / ("head" if (args.fixture / "head").is_dir() else "base")),
             llm=llm,
-            jev=Jev(settings, llm=llm),
+            jev=jev,
             settings=settings,
         )
         context = context_for_fixture(args.fixture, deps)

@@ -31,8 +31,9 @@ Data**.
    engine compares that with what it *grants*.
 4. **Cut.** `algo.maxFlow`, inside FalkorDB, finds the fewest edges that close every opened route without cutting
    access a requirement in `theseus.yaml` needs.
-5. **Fix.** Rule fixes and one fix the LLM designs with MCP tools are each applied to a `GRAPH.COPY` of the head
-   and re-analyzed. Each gets a verdict: `pass`, `fail`, `unknown` or `invalid`.
+5. **Fix.** Rule fixes and one fix the LLM designs (it calls five of the ten graph tools, in process) are each
+   applied to a `GRAPH.COPY` of the head and re-analyzed. Each gets a verdict: `pass`, `fail`, `unknown` or
+   `invalid`.
 6. **Act.** One PR comment, a required check, labels, and the passing fix as GitHub suggestions on the PR's
    own lines. A reviewer commits a suggestion, or comments `/theseus apply`, and the GitHub App commits the
    Terraform for the fix that passed; Theseus then reviews the new head.
@@ -201,6 +202,60 @@ the `FALKORDB_*` settings.
 To review your own pull requests, install the GitHub App and add `theseus.yaml` and the workflows:
 [docs/onboarding.md](docs/onboarding.md). Every setting is in [`.env.example`](.env.example).
 
+## Try the tools from Claude Code
+
+The ten graph tools are one registry with two users. The fix agent calls five of them in process, as plain Python
+calls. The same registry is also an [MCP](https://modelcontextprotocol.io) server over stdio, so an outside client
+such as Claude Code can ask the graph questions itself.
+
+| | Over MCP | In process |
+| --- | --- | --- |
+| Who calls | An MCP client, such as Claude Code | The fix agent (`theseus/agent/fixer.py`) |
+| Tools | All ten | `explain_path`, `shortest_route`, `min_cut`, `check_requirements`, `simulate_fix` |
+| Call record | The resource `theseus://tool-trace` | The result's `tool_trace`, shown in the PR comment and on the Try-it page |
+
+[`.mcp.json`](.mcp.json) starts the server on `fixtures/intern`. It loads the fixture's two graphs into the
+FalkorDB from [Setup](#setup) (or the one the `FALKORDB_*` settings name) and answers from the recordings, so it
+needs no keys. It runs `${THESEUS_PYTHON:-python}`, and a stock macOS has no `python` on its PATH, so name your
+virtualenv's Python in the shell that starts Claude Code, from the repository root:
+
+```bash
+export THESEUS_PYTHON=.venv/bin/python        # macOS and Linux
+```
+
+On Windows, in Command Prompt (`$env:THESEUS_PYTHON=".venv\Scripts\python.exe"` in PowerShell):
+
+```bat
+set THESEUS_PYTHON=.venv\Scripts\python.exe
+```
+
+Start `claude` there and accept the project's `theseus` server. `/mcp` lists it and its tools, and
+`claude mcp list` shows `✓ Connected`. If it says `Failed to connect`, check that FalkorDB is running and that
+`THESEUS_PYTHON` is set in the shell that started Claude Code. Then ask, for example:
+
+> What does the intern PR open?
+
+Claude Code calls `diff_paths` on the two loaded graphs: 3 paths opened, none closed, 23 unchanged. Priya, the
+intern, now reaches `db:customer-db`, the invoices in `s3://demo-company-files/invoices/` and
+`secret:prod-db-credentials`.
+
+> What is the cheapest way to cut off Priya's access?
+
+It calls `min_cut` on `user:priya-intern` in the head graph. The answer is `cuttable: false`: the one edge that
+closes every route is her group membership (`terraform/people.tf:83`), and a requirement needs it, so a cut would
+break something that must keep working.
+
+> Why can Priya reach the customer database?
+
+It calls `explain_path`: `user:priya-intern`, `group:support-engineers`, `role:prod-support`,
+`secret:prod-db-credentials`, `db:customer-db`, each step with the file and line that created it
+(`terraform/people.tf:83` and `:56`, `terraform/roles.tf:36`, `terraform/data.tf:31`).
+
+Each answer agrees with the fixture's hand-written `expected.json`, and `theseus://tool-trace` lists the calls.
+To serve another fixture, change the last argument in `.mcp.json`. With `fixtures/compromised-action`, ask which
+secrets the compromised preview workflow can reach: `secrets_reachable` answers `secret:prod-db-credentials`,
+the fixture's rotate list.
+
 ## Live deployment
 
 <https://guest-box.tail27b7c5.ts.net> serves the Try-it page at `/` and the health check at
@@ -253,7 +308,9 @@ every diff. Humans wrote every `expected.json`, and a hook blocks agents from wr
 commit names it in a `Co-Authored-By` trailer, and [`AGENTS.md`](AGENTS.md) holds the rules every agent reads.
 
 **Inside the product.** The LLM (GLM 5.3 on Crusoe, through LiteLLM) reads PR intent and designs one candidate fix
-with five read-only or sandboxed MCP tools; it has no tool that comments or commits. Jev (TypeSafe) answers fast
+by calling five read-only or sandboxed tools of the registry, in process and not over MCP; it has no tool that
+comments or commits. [The same registry is an MCP server](#try-the-tools-from-claude-code) for outside clients
+such as Claude Code. Jev (TypeSafe) answers fast
 typed questions, such as how sensitive a resource is, and can veto a fix but never approve one. PR text and
 advisories reach a model only inside `<untrusted_...>` tags and never count as evidence.
 
