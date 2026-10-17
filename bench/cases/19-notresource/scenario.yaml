@@ -1,0 +1,4 @@
+description: Use a NotResource policy
+mode: pr
+name: 19-notresource
+world: demo-infra

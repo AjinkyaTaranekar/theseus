@@ -1,0 +1,4 @@
+description: Pin the release workflow subject
+mode: pr
+name: 15-pin-deploy-trust
+world: demo-infra

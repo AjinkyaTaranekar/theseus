@@ -1,0 +1,4 @@
+description: Broaden shared log access
+mode: pr
+name: 06-shared-policy-wildcard
+world: demo-infra

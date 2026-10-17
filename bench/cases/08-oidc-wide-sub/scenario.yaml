@@ -1,0 +1,4 @@
+description: Widen the apply subject restriction
+mode: pr
+name: 08-oidc-wide-sub
+world: demo-infra

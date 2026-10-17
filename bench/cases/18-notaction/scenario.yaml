@@ -1,0 +1,4 @@
+description: Use a NotAction policy
+mode: pr
+name: 18-notaction
+world: demo-infra

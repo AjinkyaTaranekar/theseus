@@ -1,0 +1,4 @@
+description: Remove the apply subject restriction
+mode: pr
+name: 07-oidc-no-sub
+world: demo-infra

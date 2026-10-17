@@ -1,0 +1,4 @@
+description: Make raw data public
+mode: pr
+name: 04-public-raw
+world: demo-infra

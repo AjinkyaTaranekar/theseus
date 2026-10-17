@@ -1,0 +1,4 @@
+description: Give Priya secret access
+mode: pr
+name: 05-secret-wildcard
+world: demo-infra
