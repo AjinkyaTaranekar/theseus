@@ -140,6 +140,49 @@ def test_removal_of_only_group_deletes_the_resource_not_neighbors() -> None:
     parse_all(result)
 
 
+MORE_GROUPS = (
+    'resource "aws_iam_group" "ops" { name = "ops" }\nresource "aws_iam_group" "eng" { name = "engineers" }\n'
+)
+SUPPORT = "aws_iam_group.support.name"
+OPS = "aws_iam_group.ops.name"
+ENG = "aws_iam_group.eng.name"
+
+
+def with_groups(groups: str) -> str:
+    return SOURCE.replace('["support-engineers", "other"]', groups) + MORE_GROUPS
+
+
+@pytest.mark.parametrize(
+    "before,after",
+    [
+        (f"[{SUPPORT}, {OPS}, {ENG}]", f"[{OPS}, {ENG}]"),
+        (f"[{OPS}, {SUPPORT}, {ENG}]", f"[{OPS}, {ENG}]"),
+        (f'[{OPS}, "other", {SUPPORT}]', f'[{OPS}, "other"]'),
+        (f'[{OPS}, "support-engineers", {ENG}]', f"[{OPS}, {ENG}]"),
+        (f'[{SUPPORT}, "other", "support-engineers"]', '["other"]'),
+        (
+            f'[\n    {OPS}, # on-call\n    {SUPPORT}, # support\n    # kept on purpose\n    "other",\n  ]',
+            f'[\n    {OPS}, # on-call\n    # kept on purpose\n    "other",\n  ]',
+        ),
+        (f'[\n    "other", # keep\n    {SUPPORT}\n  ]', '[\n    "other", # keep\n  ]'),
+    ],
+    ids=["first", "middle", "last", "literal", "duplicates", "own-line", "own-line-last"],
+)
+def test_membership_removal_deletes_only_that_element_as_written(before: str, after: str) -> None:
+    result = render({"terraform/main.tf": with_groups(before)}, [op("remove_membership")])
+    assert result["terraform/main.tf"] == with_groups(after)
+    parse_all(result)
+
+
+@pytest.mark.parametrize("groups", [f"[{SUPPORT}]", f'[{SUPPORT}, "support-engineers"]'])
+def test_membership_removal_deletes_the_resource_when_no_other_group_is_left(groups: str) -> None:
+    result = render({"terraform/main.tf": with_groups(groups)}, [op("remove_membership")])
+    text = result["terraform/main.tf"]
+    assert 'resource "aws_iam_user_group_membership" "priya"' not in text
+    assert 'resource "aws_iam_user" "priya"' in text and text.endswith(MORE_GROUPS)
+    parse_all(result)
+
+
 def test_semantics_use_real_sids_not_fake_text_in_comments_or_heredocs() -> None:
     extra = """locals {
   fake = <<EOF

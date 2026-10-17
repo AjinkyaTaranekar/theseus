@@ -322,6 +322,42 @@ def _remove_member(files: dict[str, str], path: str, container: Tree, member: Tr
         _erase(files, path, start, end)
 
 
+def _remove_element(files: dict[str, str], path: str, container: Tree, index: int) -> None:
+    """Delete one list element and its own comma; every other element keeps its text and comments."""
+    source = files[path]
+    elements = _values(container)
+    start, end = elements[index].meta.start_pos, elements[index].meta.end_pos
+    following = elements[index + 1].meta.start_pos if index + 1 < len(elements) else container.meta.end_pos
+    commas = [c for c in container.children if isinstance(c, Token) and str(c) == ","]
+    comma = next((c for c in commas if end <= c.start_pos < following), None)
+    stop = comma.end_pos if comma is not None else end
+    line_start = source.rfind("\n", 0, start) + 1
+    line_end = source.find("\n", stop)
+    line_end = len(source) if line_end < 0 else line_end + 1
+    if not source[line_start:start].strip() and re.fullmatch(
+        r"[ \t]*(?:(?:#|//).*|/\*.*\*/[ \t]*)?\r?\n?", source[stop:line_end]
+    ):
+        # The element has a line of its own: drop the line with the element's trailing comment.
+        files[path] = source[:line_start] + source[line_end:]
+    elif index + 1 < len(elements):
+        if comma is None:
+            raise PatchError("list element has no separating comma")
+        while stop < len(source) and source[stop] in " \t":
+            stop += 1
+        files[path] = source[:start] + source[stop:]
+    else:
+        while start > 0 and source[start - 1] in " \t":
+            start -= 1
+        before = [c for c in commas if c.end_pos <= start]
+        if comma is not None:
+            files[path] = source[:start] + source[stop:]
+        elif before:
+            separator = before[-1]
+            files[path] = source[: separator.start_pos] + source[separator.end_pos : start] + source[stop:]
+        else:
+            raise PatchError("cannot remove the only list element")
+
+
 def _strings(value: Any, context: str) -> list[str]:
     if not isinstance(value, list) or any(not isinstance(v, str) for v in value):
         raise PatchError(f"{context} must be a list of strings")
@@ -465,15 +501,26 @@ def _apply(files: dict[str, str], op: PatchOp, args: dict[str, Any], account: st
         if op.op == "remove_membership":
             if not memberships:
                 raise PatchError("membership to remove does not exist")
-            # Re-find every resource after each edit, because offsets may have moved.
+            # Re-find every resource after each edit, because offsets may have moved. Only the elements
+            # naming the group go; the others keep their text (a reference stays a reference) and order.
+            expected = {}
             for old, groups in memberships:
-                b = _at(files, old.address)
-                remaining = sorted(set(groups) - {group})
-                if remaining:
-                    _replace(files, b.file, _field(b.node, "groups", files[b.file]), _hcl(remaining))
-                else:
+                kept = [name for name in groups if name != group]
+                if not kept:
+                    b = _at(files, old.address)
                     _erase(files, b.file, b.node.meta.start_pos, b.node.meta.end_pos)
-            if any(group in groups for _, groups in _memberships(files, user)):
+                    continue
+                expected[old.address] = kept
+                for _ in range(len(groups) - len(kept)):
+                    b = _at(files, old.address)
+                    source = files[b.file]
+                    container = _unwrap(_field(b.node, "groups", source))
+                    names = [_name(c, source, files) for c in _values(container)]
+                    _remove_element(files, b.file, container, names.index(group))
+            after = {b.address: groups for b, groups in _memberships(files, user)}
+            if any(group in groups for groups in after.values()) or any(
+                after.get(address) != kept for address, kept in expected.items()
+            ):
                 raise PatchError("membership removal failed verification")
             return
         if memberships:
