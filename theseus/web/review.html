@@ -584,11 +584,11 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
   }
   // Each fix, drawn on the graph copy the engine verified it on, against the PR's head: what it cuts (red,
   // dashed), what it adds (green), and the route that still gives the actor what the PR asked for (blue).
-  const fixes = finding ? [] : r.candidates || [];
+  // Only the fixes that pass: the others are named in the comment, so the page offers what is good.
+  const fixes = finding ? [] : (r.candidates || []).filter((c) => c.verdict === "pass");
   const fixCache = new Map();
   for (const fx of fixes) {
-    const mark = fx.verdict === "pass" ? "✓" : fx.verdict === "fail" ? "✗" : "?";
-    const b = el("button", `Fix ${fx.id} ${mark}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
+    const b = el("button", fixes.length === 1 ? "With the fix" : `With fix ${fx.id}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
                                                     title: `${fx.title}: ${fx.verdict}${fx.recommended ? ", recommended" : ""}` });
     b.addEventListener("click", () => drawBoard(`fix:${fx.id}`));
     $("v-full").before(b);
