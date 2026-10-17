@@ -118,3 +118,18 @@ def test_the_usage_queries(store: MemoryStore) -> None:
     ]
     # workload:w runs as role:b, which has no CAN to the secret, so nothing is unused.
     assert store.unused_grants("g") == []
+
+
+def test_a_graph_view_shows_only_the_schema_s_edges() -> None:
+    """The FLOW edges the engine writes before a max-flow call are working state: the review page never
+    draws or counts them (03-graph.md)."""
+    from theseus.graph.store import _view
+
+    node = {"id": "user:a", "name": "a"}
+    edges = [
+        ("user:a", "MEMBER_OF", "group:b", {"eid": "e1", "evidence": "[]"}),
+        ("user:a", "FLOW", "group:b", {"eids": ["e1"], "capacity": 1}),
+    ]
+    view = _view([(["Node", "User"], node)], edges)
+    assert [e["type"] for e in view["edges"]] == ["MEMBER_OF"]
+    assert view["edges"][0]["evidence"] == []

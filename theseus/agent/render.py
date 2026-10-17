@@ -203,23 +203,27 @@ def _what(node: str, result: AnalysisResult, path: PathRecord | None = None) -> 
 
 
 def consequence(result: AnalysisResult) -> Md:
-    """The card's first line: who could now do what to which data, in plain words."""
+    """The card's first line: what the change would let someone do to which data. A PR is not merged yet, so
+    it would; a finding or a scan reads `main` as it is."""
+    pr = result.mode == "pr"
     if result.opened:
         top = sorted(result.opened, key=_rank)[0]
-        could = words.access_words(top.grants).replace("can ", "could ", 1)
-        n = len(result.opened)
-        more = f" (1 of {n} new ways in)" if n > 1 else ""
-        return Md(f"{_who(top.actor, result)} {could} {_what(top.target, result, top)}{more}.")
+        verb = words.access_words(top.grants).removeprefix("can ")
+        who, what = words.name(top.actor), words.name(top.target)
+        holds = words.holds(_sensitivity(top.target, result, top))
+        lead = f"This PR would let {who} {verb} {what}" if pr else f"{who} can {verb} {what}"
+        return Md(f"**{escape(lead)}**, which holds {holds}.")
     if result.use_beyond_intent:
         use = result.use_beyond_intent[0]
-        return Md(
-            f"The code of {_who(use.workload, result)} now {DOES[use.access]} {_what(use.resource, result)},"
-            " and the PR does not mention it."
-        )
+        who, what = words.name(use.workload), words.name(use.resource)
+        lead = f"This PR would make {who}'s code read {what}" if pr else f"{who}'s code reads {what}"
+        holds = words.holds(_sensitivity(use.resource, result))
+        return Md(f"**{escape(lead)}**, which holds {holds}. The PR doesn't mention it.")
     if result.unknowns:
-        n = _plural(len(result.unknowns), "thing")
-        return Md(f"Theseus could not check {n} in this change; see **What Theseus could not check** below.")
-    return Md("This change opens no new way to reach sensitive data.")
+        n = len(result.unknowns)
+        listed = "It's listed below." if n == 1 else "They're listed below."
+        return Md(f"**Theseus couldn't check {_plural(n, 'part')} of this change.** {listed}")
+    return Md("**No new access to sensitive data.**")
 
 
 def says_line(result: AnalysisResult) -> Md | None:
@@ -228,8 +232,8 @@ def says_line(result: AnalysisResult) -> Md | None:
     if intent is None:
         return None
     if not intent.stated or not intent.purpose.strip():
-        return Md("**Says:** nothing about what it's for. Ask the author to describe it.")
-    return Md(f"**Says:** {escape(says(intent.purpose))}.")
+        return Md("**The PR says:** nothing about what it's for.")
+    return Md(f"**The PR says:** {escape(says(intent.purpose))}.")
 
 
 def _asked_targets(result: AnalysisResult) -> set[str]:
@@ -237,7 +241,7 @@ def _asked_targets(result: AnalysisResult) -> set[str]:
 
 
 def needs_and_grants(result: AnalysisResult) -> Md | None:
-    """What the PR says it needs, then what the change grants: the gap is the finding."""
+    """What the PR asked for, then what the change would give: the gap is the finding."""
     parts: list[str] = []
     intent = result.intent
     if intent is not None and intent.stated:
@@ -247,17 +251,14 @@ def needs_and_grants(result: AnalysisResult) -> Md | None:
             + f"{ASKED[g.access]} {_bold(g.resource)}"
             for g in intent.grants
         ]
-        parts.append(f"**Needs:** {_names(asked)}" if asked else "**Needs:** no new access, it says")
+        parts.append(f"**It asked for:** {_names(asked)}" if asked else "**It asked for:** no new access")
     targets = list(dict.fromkeys(p.target for p in sorted(result.opened, key=_rank)))
     if targets:
         shown = [_bold(t) for t in targets[:NAMES_PER_ACTION]]
-        asked_ids = _asked_targets(result)
-        beyond = intent is not None and intent.stated and bool(asked_ids) and not set(targets) & asked_ids
-        label = "Grants too" if beyond else "Grants"
-        parts.append(f"**{label}:** {_names(shown, len(targets) - len(shown))}")
+        parts.append(f"**It would get:** {_names(shown, len(targets) - len(shown))}")
     reads = list(dict.fromkeys(u.resource for u in result.use_beyond_intent))
     if reads:
-        parts.append(f"**Code now reads:** {_names([_bold(r) for r in reads[:NAMES_PER_ACTION]])}")
+        parts.append(f"**Its code would read:** {_names([_bold(r) for r in reads[:NAMES_PER_ACTION]])}")
     return Md(" · ".join(parts)) if parts else None
 
 
@@ -271,7 +272,7 @@ def chain(path: PathRecord, result: AnalysisResult, repo: str, head_sha: str, wo
         ev = result.evidence.get(s.evidence)
         mark = ""
         if ev is not None and ev.address in changed and ev.file != "unknown":
-            mark = f" ({evidence_link(result, s.evidence, repo, head_sha, world_root)}, changed here)"
+            mark = f" ({evidence_link(result, s.evidence, repo, head_sha, world_root)}, new)"
         head = f"{_bold(s.src)} " if n == 0 else ""
         parts.append(f"{head}{_step_verb(s, path)} {_bold(s.dst)}{mark}")
     return Md(" → ".join(parts) + ".")
@@ -281,7 +282,7 @@ def why_line(result: AnalysisResult, repo: str, head_sha: str, world_root: str) 
     """How the most serious path runs, or where the code reads beyond intent; None when nothing opened."""
     if result.opened:
         top = sorted(result.opened, key=_rank)[0]
-        return Md(f"**Why:** {chain(top, result, repo, head_sha, world_root)}")
+        return Md(f"**How:** {chain(top, result, repo, head_sha, world_root)}")
     if result.use_beyond_intent:
         use = result.use_beyond_intent[0]
         where = (
@@ -290,49 +291,46 @@ def why_line(result: AnalysisResult, repo: str, head_sha: str, world_root: str) 
             else "an unknown line"
         )
         reads = f"{DOES[use.access]} {_bold(use.resource)}"
-        return Md(f"**Why:** {_bold(use.workload)}'s code {reads} at {where}.")
+        return Md(f"**How:** {_bold(use.workload)}'s code {reads} at {where}.")
     return None
 
 
 def do_line(result: AnalysisResult, level: str) -> Md:
     """The one thing to do next."""
     if level == "clear":
-        return Md("**Do:** nothing. Theseus found no new access to sensitive data.")
+        return Md("**Fix:** nothing to fix.")
     if level == "look":
-        return Md("**Do:** read **What Theseus could not check** below before you merge.")
+        return Md("**Fix:** check what Theseus couldn't, below, before you merge.")
     passing = [c for c in result.candidates if c.verdict == "pass"]
     recommended = next((c for c in passing if c.recommended), None)
     if recommended is not None:
         tested = (
-            f"it closes all {_plural(len(result.opened), 'way')} in and breaks nothing"
+            f"closes all {_plural(len(result.opened), 'way')} in, breaks nothing"
             if result.opened
-            else "it breaks nothing"
+            else "breaks nothing"
         )
         return Md(
-            f"**Do:** reply {code(f'/theseus apply {recommended.id}')} to commit fix {recommended.id}"
-            f" ({escape(recommended.title)}). Theseus tested it on a copy of the graph: {tested}."
+            f"**Fix:** reply {code(f'/theseus apply {recommended.id}')} to commit fix {recommended.id}"
+            f" ({escape(recommended.title)}). Tested on a copy of the graph: {tested}."
         )
     if passing:
         ids = _names([code(c.id) for c in passing])
-        return Md(
-            f"**Do:** {ids} {'passes' if len(passing) == 1 else 'pass'} Theseus's checks but needs a closer"
-            f" look first; then reply {code('/theseus apply <ID>')}."
-        )
+        verb = "passes but needs" if len(passing) == 1 else "pass but need"
+        return Md(f"**Fix:** {ids} {verb} a closer look first. Then reply {code('/theseus apply <ID>')}.")
     if result.candidates:
         return Md(
-            "**Do:** ask the author to change the PR. No fix Theseus tested passes every check; see **All"
-            " fixes Theseus tested**."
+            "**Fix:** ask the author to change the PR. None of the fixes Theseus tested passes every check."
         )
     targets = {p.target for p in result.opened} | {u.resource for u in result.use_beyond_intent}
     intent = result.intent
     if intent is not None and intent.stated and targets and targets <= _asked_targets(result):
         return Md(
-            "**Do:** the PR asks for this access on purpose. If it is meant, an owner of the data approves"
-            f" it in {code('theseus.yaml')}."
+            "**Fix:** the PR asks for this on purpose. If that's right, an owner of the data approves it in"
+            f" {code('theseus.yaml')}."
         )
     if intent is not None and intent.stated and intent.grants:
-        return Md("**Do:** ask the author to grant only what the PR says it needs.")
-    return Md("**Do:** ask the author why the change needs this access.")
+        return Md("**Fix:** ask the author to grant only what the PR asked for.")
+    return Md("**Fix:** ask the author why the change needs this access.")
 
 
 def card_lines(result: AnalysisResult, repo: str, head_sha: str, world_root: str, level: str) -> list[Md]:
@@ -469,7 +467,7 @@ def connections(result: AnalysisResult) -> Md | None:
             ev = result.evidence.get(s.evidence)
             new = ev is not None and ev.address in changed
             key = (s.src, s.type, s.dst)
-            verb, was_new = hops.get(key, (_step_verb(s, p).removeprefix("can "), False))
+            verb, was_new = hops.get(key, (_step_verb(s, p), False))
             hops[key] = (verb, was_new or new)
     lines = ["```mermaid", "flowchart LR"]
     for node, nid in ids.items():
@@ -477,7 +475,7 @@ def connections(result: AnalysisResult) -> Md | None:
         lines.append(f'  {nid}["{_label(words.name(node))}<br/>{_label(kind)}"]')
     added: list[int] = []
     for n, ((src, _, dst), (verb, new)) in enumerate(hops.items()):
-        lines.append(f'  {ids[src]} -->|"{_label(verb + (", added here" if new else ""))}"| {ids[dst]}')
+        lines.append(f'  {ids[src]} -->|"{_label(verb + (" · new" if new else ""))}"| {ids[dst]}')
         if new:
             added.append(n)
     if sensitive:

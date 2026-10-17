@@ -258,41 +258,39 @@ words, and everything technical is folded below. Every sentence comes from a tem
 in the plain words of `engine/words.py`; no model writes prose in the comment.
 
 **The card** is five lines with no headings: it says what happened, why it is a risk and what to do, for a
-reader who has never heard of Theseus. The check run's summary is the same card.
+reader who has never heard of Theseus, in short plain sentences. A PR is not merged yet, so the card says what it
+*would* do; a finding or a scan reads `main` as it is. The check run's summary is the same card.
 
 1. The marker `<!-- theseus:pr-comment -->`, so the comment is updated in place, never duplicated
 2. The status, which is also the check run's (`render.verdict`; `07-github-and-deploy.md`, "Blocking a merge"):
    🔴 "Merge blocked" when a dangerous path opened or code reads data beyond intent; 🟡 "Needs a look" when only
    something Theseus could not check remains; 🟢 "No new access to sensitive data" otherwise. Outside PR mode the
    red status reads "Sensitive data at risk", and the headline follows it in bold
-3. **The consequence:** who could now do what to which data. "**priya-intern**, a user, could read and change
-   **customer-db**, a database with personal, payment or health data (1 of 3 new ways in)." The most serious
-   path in the `render._rank` order, its access from the path's grants; or the code that now reads data beyond
-   intent; or what Theseus could not check; or that nothing opened. A warning follows when the intent is
-   suspicious
-4. **Says:** the PR's purpose in the model's plain words, or that it states none (PR mode)
-5. **Needs · Grants:** the access the PR asked for, then the opened targets, most sensitive first, at most three
-   and a count. "Grants too" when none of them is what it asked for; "Code now reads" for uses beyond intent.
-   Together, lines 4 and 5 say section 18's headline of `04-engine.md`, which stays in the result for the
-   Action's log and the Try-it page
-6. **Why:** the most serious path in one line, each hop in plain words with its own access (`PathStep.grants`),
-   and the hop this change adds or edits linked to its line with "changed here"; or the code line that reads
-   beyond intent
-7. **Do:** one thing: the recommended fix and its command, with what Theseus tested it for; a passing fix that
-   needs a closer look; that no fix passes; or, with no fix to test, to ask the author for only what the PR says
-   it needs, why it needs this access, or, when it asks for sensitive data on purpose, that an owner approves it
-   in `theseus.yaml`
+3. **The consequence**, in bold: "**This PR would let priya-intern read and change customer-db**, which holds
+   personal, payment or health data." The most serious path in the `render._rank` order, its access from the
+   path's grants; or "This PR would make billing-api's code read customer-db"; or what Theseus couldn't
+   check; or "No new access to sensitive data." A warning follows when the intent is suspicious
+4. **The PR says:** the PR's purpose in the model's plain words, or "nothing about what it's for" (PR mode)
+5. **It asked for · It would get:** the access the PR asked for, then the opened targets, most sensitive first,
+   at most three and a count; "Its code would read" for uses beyond intent. Together, lines 4 and 5 say section
+   18's headline of `04-engine.md`, which stays in the result for the Action's log and the Try-it page
+6. **How:** the most serious path in one line, each hop in plain words with its own access (`PathStep.grants`):
+   "is in", "can become", "can read", "opens"; the hop this change adds or edits linked to its line, marked
+   "new". Or the code line that reads beyond intent
+7. **Fix:** one thing: the recommended fix and its command, with what Theseus tested it for; a passing fix that
+   needs a closer look; that no fix passes; or, with no fix to test, to ask the author to grant only what the
+   PR asked for, why it needs this access, or, when it asks for sensitive data on purpose, that an owner
+   approves it in `theseus.yaml`
 
 **The connections** (`render.connections`), under the card and above every fold: every opened path drawn as
 one Mermaid `flowchart LR`. Each node is its name and what it is ("priya-intern", "user"); each arrow is the
-hop's own access in plain words ("is a member of", "read", "unlocks"); a hop shared by several paths is drawn
-once; the hop this change adds or edits is a thick red arrow labelled "added here"; and sensitive targets are
-shaded. With more than 12 nodes, it draws the three most serious paths, then only the most serious one. A line
+hop's own access in plain words ("is in", "can read", "opens"); a hop shared by several paths is drawn once;
+the hop this change adds or edits is a thick red arrow marked "new"; and sensitive targets are shaded. With more than 12 nodes, it draws the three most serious paths, then only the most serious one. A line
 under it says what the colours mean. The check run's summary stops before it: the Checks tab draws no diagrams.
 
 **Folded sections** (`<details>`), each shown only when it has something:
 
-8. **The path, step by step:** what's at risk (each exposed target, most sensitive first, at most five: its
+8. **Step by step:** what's at risk (each exposed target, most sensitive first, at most five: its
    name, what it is, and what its class means; a secret that unlocks another listed target is "the key that
    opens" it), a table of opened paths (actor, target with its class, hops), then, for each of the three most
    sensitive, a numbered list of its steps, each linked to `blob/<head_sha>/<world root>/<file>#L<line>` or
@@ -304,14 +302,14 @@ under it says what the colours mean. The check run's summary stops before it: th
    R3"), code calls ("kept" or what breaks), verdict (with "needs a closer look" after Jev's veto), the
    recommended row in bold; "Reply `/theseus apply <ID>` to commit a fix.", naming only fixes that pass; and,
    if nothing passes, a sentence that says so
-10. **What Theseus could not check:** the unknowns
-11. **What Theseus checked:** Checkov's result on the same commit and why it can pass while a path opens; where
+10. **What Theseus couldn't check:** the unknowns
+11. **Details:** Checkov's result on the same commit and why it can pass while a path opens; where
     the graph was built ("Built in FalkorDB 4.22.0: 70 nodes and 146 edges for the head commit; the engine took
     3.1 s."); what
     the change does ("Adds `a`. Opens 3 dangerous paths, closes 0."), the tool trace, unchanged paths, coverage
     ("Read <n> resources, modeled <m>; skipped <k> of types Theseus does not model, such as <the three most
     common>"), timings, and the versions in `models`
-12. **What is Theseus?:** two sentences for a reader who has never seen it
+12. **About Theseus:** two sentences for a reader who has never seen it
 
 **Notes on the lines** (`render.annotations`): the check run also carries a note on each line this change adds
 or edits on a dangerous path ("This line opens 3 new ways to reach sensitive data: customer-db (database), ..."),
