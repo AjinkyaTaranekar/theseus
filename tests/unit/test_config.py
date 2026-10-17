@@ -26,6 +26,7 @@ def test_defaults_match_the_spec() -> None:
     assert s.jev_model == "jev-latest"
     assert (s.falkordb_host, s.falkordb_port, s.falkordb_tls) == ("localhost", 6379, False)
     assert s.theseus_world_root == "demo-infra"
+    assert s.theseus_advisories == "advisories"
     assert s.repos == []
 
 

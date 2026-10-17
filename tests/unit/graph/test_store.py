@@ -133,3 +133,11 @@ def test_a_graph_view_shows_only_the_schema_s_edges() -> None:
     view = _view([(["Node", "User"], node)], edges)
     assert [e["type"] for e in view["edges"]] == ["MEMBER_OF"]
     assert view["edges"][0]["evidence"] == []
+
+
+def test_documents_are_listed_by_prefix() -> None:
+    store = MemoryStore()
+    for key in ("review:o/r#2", "review:o/r#10", "review:o/other#1", "finding:G-1"):
+        store.put_doc(key, "{}")
+    assert store.docs("review:o/r#") == ["review:o/r#10", "review:o/r#2"]
+    assert store.docs("finding:") == ["finding:G-1"] and store.docs("posture:") == []

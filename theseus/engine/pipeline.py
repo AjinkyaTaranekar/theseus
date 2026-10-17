@@ -20,6 +20,7 @@ from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
 from theseus.contracts.adapters import IacResource
 from theseus.contracts.engine import Analysis, CandidateDraft, Deps, GraphState, RuleFix, World
+from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import (
     AnalysisResult,
     Candidate,
@@ -36,9 +37,10 @@ from theseus.contracts.result import (
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
 from theseus.engine.candidates import rank, rule_candidates
-from theseus.engine.finding import action_id, match_advisory, secrets_reached, with_finding
+from theseus.engine.finding import action_id, containment, match_advisory, secrets_reached, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
+from theseus.engine.posture import posture
 from theseus.engine.simulate import simulate
 from theseus.engine.staging import staging_to_prod
 from theseus.engine.usage import scan_headline, unused_fix, unused_grants, use_beyond_intent
@@ -310,6 +312,7 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
                 nodes[node_id] = NodeInfo(
                     category=by_id[node_id].category, sensitivity=by_id[node_id].sensitivity
                 )
+    candidates = contain(state, cut, requirements, workflows, deps)
     urgency, urgency_ms = finding_urgency(advisory, workflows, found.dangerous, state, deps)
     jev_ms += urgency_ms
     total_ms = int((time.perf_counter() - start) * 1000)
@@ -322,6 +325,7 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
         requirements=found.requirements,
         unknowns=sorted(set(state.rows.unknowns)),
         min_cut=cut,
+        candidates=candidates,
         rotate=secrets_reached(found, state),
         staging_to_prod=staging_to_prod(found, state),
         choke_points=choke_points(deps.store, state),
@@ -339,9 +343,53 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
     )
 
 
+def contain(
+    state: GraphState,
+    cut: MinCut | None,
+    requirements: list[Requirement],
+    workflows: list[str],
+    deps: Deps,
+) -> list[Candidate]:
+    """Candidate K, verified on a graph copy like any candidate: the compromised workflows must reach nothing
+    sensitive and every requirement must still hold. Empty when there is no K to write."""
+    nodes = {n.id for n in state.rows.nodes}
+    needed = analyze(deps.store, state, requirements, sorted({r.principal for r in requirements} & nodes))
+    fix = containment(state, needed, cut, requirements)
+    try:
+        draft = draft_for(fix, state, deps) if fix is not None else None
+    except PatchError as e:
+        log.warning("candidate K cannot be written as patch ops: %s", e)
+        draft = None
+    if draft is None:
+        return []
+    return [simulate(deps.store, state, draft, workflows, requirements, deps.adapters)]
+
+
 def run_scan(world: World, deps: Deps) -> AnalysisResult:
     """Scan mode: `main` loaded and analyzed for every actor, the grants its code never uses that lie on a
     dangerous path, their combined minimum cut, and candidate U to remove them, verified on a graph copy."""
+    return _scan(world, deps)[0]
+
+
+def run_posture(world: World, deps: Deps, advisories: list[dict[str, Any]]) -> PostureReport:
+    """The posture of `main` (O1 to O3): the scan, then on the same graph who reaches what, single points of
+    failure, articulation points and the cost; then finding mode for each advisory that a workflow on `main`
+    is affected by. An advisory's text is read only by finding mode, as untrusted data."""
+    scan, state = _scan(world, deps)
+    requirements = config_requirements(world)
+    lines = deps.adapters.cloud.monthly_cost(world.resources)
+    found = posture(deps.store, state, requirements, actors(state), lines)
+    findings = []
+    for advisory in sorted(advisories, key=lambda a: str(a.get("id"))):
+        if match_advisory(state.rows, advisory):
+            findings.append(run_finding(world, advisory, deps))
+        else:
+            log.info("advisory %s affects no workflow on main", advisory.get("id"))
+    scan = scan.model_copy(update={"choke_points": choke_points(deps.store, state)})
+    return PostureReport(scan=scan, posture=found, findings=findings)
+
+
+def _scan(world: World, deps: Deps) -> tuple[AnalysisResult, GraphState]:
     start = time.perf_counter()
     state, jev_ms = prepare_state(world, "main", deps)
     load_graph(deps.store, state)
@@ -372,7 +420,7 @@ def run_scan(world: World, deps: Deps) -> AnalysisResult:
     nodes.update({n: NodeInfo(category=rows[n].category, sensitivity=rows[n].sensitivity) for n in named})
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms += risk_ms
-    return AnalysisResult(
+    result = AnalysisResult(
         scenario=scenario_of(world),
         mode="scan",
         graphs={"main": state.name},
@@ -388,6 +436,7 @@ def run_scan(world: World, deps: Deps) -> AnalysisResult:
         coverage=coverage(world, state.rows, deps),
         nodes=dict(sorted(nodes.items())),
     )
+    return result, state
 
 
 def finding_urgency(

@@ -841,6 +841,37 @@ def test_every_action_is_pinned_to_a_version(workflow: dict[Any, Any], publish: 
     assert uses and all(re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+(\.\d+)*", u) for u in uses), uses
 
 
+MAIN = Path(".github/workflows/theseus-main.yml")
+
+
+@pytest.fixture(scope="module")
+def main_flow() -> dict[Any, Any]:
+    return yaml.safe_load(MAIN.read_text(encoding="utf-8"))
+
+
+def test_main_is_scanned_on_a_push_every_night_and_on_demand_never_for_a_pr(
+    main_flow: dict[Any, Any],
+) -> None:
+    on = main_flow[True]
+    assert on["push"] == {"branches": ["main"], "paths": ["demo-infra/**"]}
+    assert on["schedule"] == [{"cron": "17 3 * * *"}] and "workflow_dispatch" in on
+    assert "pull_request" not in on and "pull_request_target" not in on
+    assert main_flow["permissions"] == {"contents": "read"}
+
+
+def test_main_s_posture_is_sent_with_its_own_commit_and_event(main_flow: dict[Any, Any]) -> None:
+    steps = steps_of(main_flow)
+    checkout = next(s for s in steps if s.get("uses", "").startswith("actions/checkout"))
+    assert checkout["with"] == {"persist-credentials": False}
+    send = next(s for s in steps if "/posture" in s.get("run", ""))
+    assert send["env"]["SHA"] == "${{ github.sha }}" and send["env"]["TRIGGER"] == "${{ github.event_name }}"
+    assert send["env"]["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
+    assert all("${{" not in s["run"] for s in steps if "run" in s)
+    assert all(re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+(\.\d+)*", s["uses"]) for s in steps if "uses" in s)
+    # Only the step that sends holds the token.
+    assert [s.get("name") for s in steps if "secrets." in json.dumps(s)] == ["Send main to Theseus"]
+
+
 def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:
     manifest = json.loads(Path("deploy/github-app-manifest.json").read_text(encoding="utf-8"))
     assert manifest["default_permissions"] == {

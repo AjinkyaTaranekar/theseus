@@ -1,3 +1,5 @@
+<img src="docs/images/logo.svg" width="72" alt="Theseus logo: a web of nodes with one path traced to a red node at its centre">
+
 # Theseus
 
 Theseus reviews Terraform pull requests as a graph in FalkorDB. It shows which sensitive data a change makes
@@ -18,6 +20,7 @@ data.
 | PR | A pull request that changes Terraform or service code | One PR comment with cited paths and candidate fixes tested on graph copies; `/theseus apply <ID>` commits one |
 | Finding | An advisory, such as a compromised GitHub Action | A containment PR and the exact list of secrets to rotate |
 | Scan | `main` | The dangerous paths already there, and grants no code ever calls, each with a proven fix |
+| Posture | `main`, on every push, nightly and on demand | One dashboard: who reaches what, single points of failure, articulation points, the cost, advisories that affect `main`, and every PR review ([setup](docs/onboarding.md)) |
 
 The engine decides facts, deterministically, from FalkorDB. an LLM (GLM 5.3 through LiteLLM) proposes and explains fixes; Jev (TypeSafe)
 answers fast typed questions, such as how sensitive a resource is; a person approves. Anything outside the

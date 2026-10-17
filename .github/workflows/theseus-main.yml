@@ -1,0 +1,67 @@
+# The posture of main (issues O1 to O3): on every push to main that changes the world root, every night, and
+# on demand, plan main and send it to Theseus, which builds main's graph in FalkorDB, scans it, finds who
+# reaches what, single points of failure and the cost, and checks the advisory feed. The dashboard shows it.
+#
+# Unlike `Theseus`, this runs only main's own Terraform, which was reviewed before it merged, so one workflow
+# can plan and send. It never runs for a pull request.
+name: Theseus main
+
+on:
+  push:
+    branches: [main]
+    paths: ["demo-infra/**"]
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: theseus-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  posture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WORLD_ROOT: demo-infra
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+          terraform_wrapper: false
+
+      - name: Plan main
+        run: |
+          set -euo pipefail
+          bash tools/plan.sh "$WORLD_ROOT/terraform" main.plan.json
+
+      - name: Send main to Theseus
+        env:
+          THESEUS_URL: ${{ vars.THESEUS_URL }}
+          THESEUS_TOKEN: ${{ secrets.THESEUS_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          TRIGGER: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [ -z "$THESEUS_URL" ] || [ -z "$THESEUS_TOKEN" ]; then
+            echo "::error::Set the repo variable THESEUS_URL and the secret THESEUS_TOKEN"
+            exit 1
+          fi
+          jq -n --arg repo "$REPO" --arg sha "$SHA" --arg trigger "$TRIGGER" --slurpfile plan main.plan.json \
+            '{repo: $repo, sha: $sha, trigger: $trigger, plan: $plan[0]}' > request.json
+          curl --fail-with-body --silent --show-error --max-time 600 \
+            --retry 2 --retry-delay 10 --retry-all-errors \
+            -X POST "${THESEUS_URL%/}/posture" \
+            -H "Content-Type: application/json" \
+            -H "X-Theseus-Token: $THESEUS_TOKEN" \
+            --data-binary @request.json -o response.json
+          jq -r '"main at \(.sha[0:7]): \(.dangerous) dangerous paths, \(.unused_grants) unused grants, \(.findings | length) findings"' response.json

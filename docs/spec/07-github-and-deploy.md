@@ -95,7 +95,8 @@ Evidence links add the world root to each file (`blob/<head_sha>/demo-infra/terr
 | A PR changes nothing under `demo-infra/` | The App (`pull_request`) | No review: a `success` check, "Nothing under demo-infra changed" |
 | The Theseus workflow fails or times out before its review | `Theseus publish` (`POST /review-failed`) | The check fails, "Review could not run", with a link to the run, unless a verdict is already on the commit. A run cancelled by a newer push is left alone |
 | A PR is closed | The App (`pull_request`, `closed`) | Its graphs are deleted |
-| A push to `main` | The App (`push`) | A scan of `main` |
+| A push to `main` that changes `demo-infra/` | `Theseus main` (`push`) | The posture of `main`: its graph, the scan, who reaches what, single points of failure, articulation points, the cost, and a finding for each advisory that affects it. The dashboard updates |
+| Every night at 03:17 UTC, or **Run workflow** | `Theseus main` (`schedule`, `workflow_dispatch`) | The same posture run, so a new advisory is checked against `main` without a push |
 
 **Re-running** repeats the newest Theseus workflow run for the PR's head commit, so the plans are made
 again. If that run is still going, nothing more starts. A check on a PR that changes nothing under the world
@@ -208,6 +209,20 @@ chance of it.
 | S5 | No new access, but the PR states no purpose or its text steers the review |
 | S6 | No new access to sensitive data |
 
+## The organisation dashboard (issues O1 to O5)
+
+`GET /dashboard/{owner}/{repo}?k=` is one page for the repository: `main`'s posture (who reaches what,
+single points of failure, articulation points, choke points, grants no code uses, the cost and what could be
+saved), every PR review with its verdict and a link to its page, every finding with its link, and the setup
+steps Theseus can see done. Like the review page it is read from FalkorDB when it loads, and its link carries
+an HMAC of `dashboard:<repo>` with `THESEUS_TOKEN`; `POST /posture` returns it, and each review page links to
+it.
+
+**`Theseus main`** (`.github/workflows/theseus-main.yml`) plans `main` and sends the plan to `POST /posture` on
+every push to `main` that changes the world root, every night, and from **Run workflow**. It runs only
+`main`'s own Terraform, which was reviewed before it merged, so one workflow plans and sends; it never runs for
+a pull request. The advisory feed is `advisories/` (`THESEUS_ADVISORIES`): one JSON file per advisory.
+
 ## Demo PRs
 
 | Rule | Why |
@@ -244,6 +259,9 @@ by hand; that is not a candidate, just a new head that the Action analyzes again
 
 ## Finding and scan outputs (tasks FM6, C3)
 
+- **When:** a posture run of `main` (O1) opens both for each finding whose candidate K passes, once: a later
+  run finds the open PR and issue by branch and title and opens nothing new. The finding's dashboard card links
+  them. `api/contain.py`.
 - **Containment PR:** branch `theseus/contain-<finding-id>` from `main`, label `demo`, title and commit subject
   `fix: Contain <finding-id>`; it changes `demo-infra/terraform/ci.tf` only. The body holds the blast radius,
   the cut, the verification and the rotate list.
@@ -294,6 +312,7 @@ For a host with Docker and public ports 80 and 443. guest-box, where we run toda
 | `THESEUS_TOKEN` | | Shared secret the Action sends |
 | `THESEUS_REPOS` | empty | Repos the backend will act on (this repo, as `owner/theseus`); everything else is refused |
 | `THESEUS_WORLD_ROOT` | `demo-infra` | Folder read for analysis; the only folder the App may write to |
+| `THESEUS_ADVISORIES` | `advisories` | The advisory feed the posture run checks `main` against: one JSON file per advisory |
 | `DOMAIN` | | The public hostname: the Funnel name on guest-box (`guest-box.tail27b7c5.ts.net`), or Caddy's under Compose |
 
 ## The VM

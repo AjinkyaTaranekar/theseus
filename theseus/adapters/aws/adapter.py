@@ -8,12 +8,14 @@ from typing import Any
 
 from theseus.adapters.aws.access import derive_access_edges
 from theseus.adapters.aws.changes import ops_for
+from theseus.adapters.aws.cost import monthly_cost
 from theseus.adapters.aws.kinds import MODELED_TYPES, PROVIDER, RESOURCE_KINDS
 from theseus.adapters.aws.oidc import trust_edges
 from theseus.adapters.aws.ops import AddPolicy, AddRole, ops_schema, parse
 from theseus.adapters.aws.patch import apply_ops
 from theseus.adapters.aws.resources import structural_rows
 from theseus.contracts.adapters import Change, CiIdentity, IacResource, Locate, PatchTraits
+from theseus.contracts.posture import CostLine
 from theseus.contracts.result import GraphRows, PatchOp
 from theseus.errors import IngestError
 
@@ -112,3 +114,7 @@ class AwsAdapter:
     def ops_schema(self) -> dict[str, Any]:
         """The schema of the existing typed AWS operation catalog."""
         return ops_schema()
+
+    def monthly_cost(self, resources: list[IacResource]) -> list[CostLine]:
+        """List-price estimates from `cost.py`; a type it cannot price is left out."""
+        return monthly_cost(resources)
