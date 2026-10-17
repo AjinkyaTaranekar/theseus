@@ -379,7 +379,14 @@ def run_posture(world: World, deps: Deps, advisories: list[dict[str, Any]]) -> P
     requirements = config_requirements(world)
     lines = deps.adapters.cloud.monthly_cost(world.resources)
     outages = [deps.adapters.cloud.outages(world.resources, state.rows), deps.adapters.ci.outages(state.rows)]
-    found = posture(deps.store, state, requirements, actors(state), lines, outages)
+    files = world.iac_files
+
+    def locate(address: str) -> Evidence:
+        return deps.adapters.iac.locate(files, address, None)
+
+    found = posture(
+        deps.store, state, requirements, actors(state), lines, outages, len(world.code_files), locate
+    )
     findings = []
     for advisory in sorted(advisories, key=lambda a: str(a.get("id"))):
         if match_advisory(state.rows, advisory):
