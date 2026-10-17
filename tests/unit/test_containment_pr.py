@@ -206,6 +206,40 @@ def test_a_finding_without_a_passing_k_opens_nothing(
     assert fake.pulls == [] and fake.issues == [] and list(fake.branches) == ["main"]
 
 
+def vetoed(finding: AnalysisResult) -> AnalysisResult:
+    """The finding as Jev's veto leaves it: K still passes, but is not recommended and needs a closer look."""
+    return finding.model_copy(
+        update={
+            "candidates": [
+                c.model_copy(update={"recommended": False, "needs_closer_look": True})
+                for c in finding.candidates
+            ]
+        }
+    )
+
+
+def test_a_vetoed_k_still_opens_the_pr_and_the_pr_says_so(
+    gh: GitHub, fake: FakeGitHub, finding: AnalysisResult
+) -> None:
+    """A veto removes the recommendation, not the proposal: K passed the engine's check, and a person still
+    reviews and merges the PR. Holding it back would leave a compromised Action trusted on a model's guess."""
+    from theseus.api.contain import purpose_text
+
+    done = contain(gh, build_render(), REPO, MAIN, vetoed(finding), None)
+    assert done is not None and done.opened and done.issue is not None
+    [pr] = fake.pulls
+    [warning] = [line for line in pr["body"].splitlines() if line.startswith("**Needs a closer look.**")]
+    assert "`demo-org/docs-site/preview.yml` assuming `github-deploy`" in warning
+    # The warning is one of Theseus's notes, so the review of this PR never reads it as the PR's purpose.
+    assert "closer look" not in purpose_text(pr["body"])
+
+
+def test_a_recommended_k_carries_no_warning(gh: GitHub, fake: FakeGitHub, finding: AnalysisResult) -> None:
+    assert contain(gh, build_render(), REPO, MAIN, finding, None) is not None
+    [pr] = fake.pulls
+    assert "closer look" not in pr["body"]
+
+
 def test_the_commit_message_follows_the_commit_rules(finding: AnalysisResult) -> None:
     message = commit_message("GHSA-demo-0001", finding)
     assert _check.problems(message) == []
