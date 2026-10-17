@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import logging
 import threading
-import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -106,29 +105,26 @@ def build_try(store: GraphStore, settings: Settings, recordings: Path = RECORDIN
     run at a time: a fixture's graphs have fixed names, and two visitors must not load them at once. The
     recordings are read on the first visit, so missing ones fail that visit and never the server's startup.
 
-    A run takes tens of seconds against FalkorDB Cloud, so each preset's result is kept for TRY_KEEP_S: the
-    same fixtures and recordings give the same answer, and a visitor gets it at once."""
+    A run takes tens of seconds against FalkorDB Cloud, so each preset's result is kept: its fixtures and
+    recordings change only with a deploy, which restarts the server, so a kept answer is the one a new run
+    would give, and a visitor gets it at once."""
     replay = settings.model_copy(update={"theseus_mode": "replay"})
     lock = threading.Lock()
     models: list[tuple[ReplayedIntent, ReplayedJev]] = []
-    kept: dict[str, tuple[float, AnalysisResult]] = {}
+    kept: dict[str, AnalysisResult] = {}
 
     def run(preset: str) -> AnalysisResult:
         with lock:
-            hit = kept.get(preset)
-            if hit is not None and time.monotonic() - hit[0] < TRY_KEEP_S:
-                return hit[1]
+            if preset in kept:
+                return kept[preset]
             if not models:
                 models.append((ReplayedIntent(recordings), ReplayedJev(replay, recordings)))
             llm, jev = models[0]
             result = analyze_fixture(routes.FIXTURES / preset, store, jev, replay, llm)
-            kept[preset] = (time.monotonic(), result)
+            kept[preset] = result
             return result
 
     return run
-
-
-TRY_KEEP_S = 900
 
 
 def warm_try(run: routes.Try) -> None:
