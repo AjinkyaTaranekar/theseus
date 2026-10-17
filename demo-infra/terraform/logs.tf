@@ -29,7 +29,7 @@ resource "aws_cloudwatch_log_group" "analytics_export" {
 resource "aws_cloudwatch_log_group" "orders_api" {
   #checkov:skip=CKV_AWS_158:Default CloudWatch encryption; no payloads or credentials are logged
   name              = "/ecs/orders-api"
-  retention_in_days = 365
+  retention_in_days = 90
 }
 
 resource "aws_cloudwatch_log_group" "orders_worker" {
