@@ -1,7 +1,8 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
-PR mode reports all requirements, protects approved ones in a combined cut for actors with opened
-paths, and verifies applicable rule fixes on graph copies.
+PR mode reports all requirements, protects approved ones in a combined cut for actors with opened paths, and
+verifies applicable rule fixes on graph copies. Scan mode lists the grants the code never uses and verifies
+candidate U, which removes them.
 The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
@@ -15,9 +16,11 @@ from typing import Any
 
 from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
-from theseus.contracts.engine import Analysis, CandidateDraft, Deps, GraphState, World
+from theseus.contracts.adapters import IacResource
+from theseus.contracts.engine import Analysis, CandidateDraft, Deps, GraphState, RuleFix, World
 from theseus.contracts.result import (
     AnalysisResult,
+    Candidate,
     Coverage,
     Evidence,
     GraphRows,
@@ -35,7 +38,8 @@ from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.engine.simulate import simulate
 from theseus.engine.staging import staging_to_prod
-from theseus.errors import IngestError, ModelError
+from theseus.engine.usage import scan_headline, unused_fix, unused_grants
+from theseus.errors import IngestError, ModelError, PatchError
 from theseus.graph.algos import choke_points
 from theseus.graph.load import load_graph
 from theseus.importer.build import build_rows
@@ -122,6 +126,45 @@ def _listed(paths: list[PathRecord], state: GraphState) -> tuple[dict[str, Evide
     return cited, info
 
 
+def draft_for(
+    fix: RuleFix, state: GraphState, deps: Deps, base_resources: list[IacResource] | None = None
+) -> CandidateDraft | None:
+    """The fix as patch ops from the cloud adapter, or None when it cannot express one of its changes."""
+    operations = []
+    for change in fix.changes:
+        translated = deps.adapters.cloud.ops_for(
+            change, state.rows, state.world.resources, base_resources=base_resources
+        )
+        if not translated:
+            return None
+        operations.extend(translated)
+    unique = {op.model_dump_json(): op for op in operations}
+    return CandidateDraft(
+        id=fix.id,
+        source="rule",
+        proposed_by="theseus",
+        title=fix.title,
+        ops=[unique[k] for k in sorted(unique)],
+    )
+
+
+def breakage_scores(
+    candidates: list[Candidate], enforced: list[Requirement], state: GraphState, deps: Deps
+) -> tuple[dict[str, float], int]:
+    """Jev's chance that each fix breaks something the engine cannot see, and the milliseconds it took. Empty
+    without a Jev that scores breakage."""
+    start = time.perf_counter()
+    scores: dict[str, float] = {}
+    if hasattr(deps.jev, "breakage"):
+        calls = [
+            {"workload": edge.src, "resource": edge.dst, "access": str(edge.props.get("access", ""))}
+            for edge in state.rows.edges
+            if edge.type == "CALLS"
+        ]
+        scores = deps.jev.breakage(candidates, enforced, calls)
+    return scores, int((time.perf_counter() - start) * 1000)
+
+
 def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) -> AnalysisResult:
     """PR mode: both states loaded into the store and analyzed with the same actors and requirements, the
     config's and the PR's intent; then the headline says what the PR says against what the change grants."""
@@ -145,23 +188,8 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     cut = min_cut(deps.store, head_state, after, opened_actors, enforced) if opened_actors else None
     candidates = []
     for fix in rule_candidates(head_state, after, found.opened, cut, base=base_state, requirements=enforced):
-        operations = []
-        for change in fix.changes:
-            translated = deps.adapters.cloud.ops_for(
-                change, head_state.rows, head.resources, base_resources=base.resources
-            )
-            if not translated:
-                break
-            operations.extend(translated)
-        else:
-            unique = {op.model_dump_json(): op for op in operations}
-            draft = CandidateDraft(
-                id=fix.id,
-                source="rule",
-                proposed_by="theseus",
-                title=fix.title,
-                ops=[unique[key] for key in sorted(unique)],
-            )
+        draft = draft_for(fix, head_state, deps, base_resources=base.resources)
+        if draft is not None:
             candidates.append(
                 simulate(
                     deps.store,
@@ -172,16 +200,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
                     deps.adapters,
                 )
             )
-    risk_start = time.perf_counter()
-    scores = {}
-    if hasattr(deps.jev, "breakage"):
-        calls = [
-            {"workload": edge.src, "resource": edge.dst, "access": str(edge.props.get("access", ""))}
-            for edge in head_state.rows.edges
-            if edge.type == "CALLS"
-        ]
-        scores = deps.jev.breakage(candidates, enforced, calls)
-    risk_ms = int((time.perf_counter() - risk_start) * 1000)
+    scores, risk_ms = breakage_scores(candidates, enforced, head_state, deps)
     candidates = rank(candidates, scores)
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
     base_evidence, base_nodes = _listed(found.closed, base_state)
@@ -263,6 +282,57 @@ def run_finding(world: World, advisory: dict[str, Any], deps: Deps) -> AnalysisR
             "workflows": workflows,
             **urgency,
         },
+        evidence=dict(sorted(evidence.items())),
+        timings=Timings(engine_ms=total_ms - jev_ms, jev_ms=jev_ms, total_ms=total_ms),
+        coverage=coverage(world, state.rows, deps),
+        nodes=dict(sorted(nodes.items())),
+    )
+
+
+def run_scan(world: World, deps: Deps) -> AnalysisResult:
+    """Scan mode: `main` loaded and analyzed for every actor, the grants its code never uses that lie on a
+    dangerous path, their combined minimum cut, and candidate U to remove them, verified on a graph copy."""
+    start = time.perf_counter()
+    state, jev_ms = prepare_state(world, "main", deps)
+    load_graph(deps.store, state)
+    requirements = config_requirements(world)
+    analysis = analyze(deps.store, state, requirements, actors(state))
+    rows = {node.id: node for node in state.rows.nodes}
+    unused = unused_grants(deps.store, state, analysis)
+    holders = sorted({grant.workload for grant in unused})
+    enforced = approved(requirements, None, rows)
+    cut = min_cut(deps.store, state, analysis, holders, enforced) if holders else None
+    candidates: list[Candidate] = []
+    fix = unused_fix(state, unused)
+    try:
+        draft = draft_for(fix, state, deps) if fix is not None else None
+    except PatchError as e:
+        log.warning("candidate U cannot be written as patch ops: %s", e)
+        draft = None
+    if draft is not None:
+        candidates.append(simulate(deps.store, state, draft, holders, enforced, deps.adapters))
+    scores, risk_ms = breakage_scores(candidates, enforced, state, deps)
+    candidates = rank(candidates, scores)
+    all_evidence = step_evidence(state.rows)
+    evidence, nodes = _listed(analysis.dangerous, state)
+    cited = {grant.evidence for grant in unused} | {edge.evidence for edge in cut.cut if cut is not None}
+    evidence.update({key: all_evidence[key] for key in cited})
+    named = {grant.workload for grant in unused} | {grant.resource for grant in unused}
+    named |= {node for edge in (cut.cut if cut is not None else []) for node in (edge.src, edge.dst)}
+    nodes.update({n: NodeInfo(category=rows[n].category, sensitivity=rows[n].sensitivity) for n in named})
+    total_ms = int((time.perf_counter() - start) * 1000)
+    jev_ms += risk_ms
+    return AnalysisResult(
+        scenario=scenario_of(world),
+        mode="scan",
+        graphs={"main": state.name},
+        headline=scan_headline(unused, nodes),
+        unchanged=analysis.dangerous,
+        requirements=analysis.requirements,
+        unknowns=sorted(set(state.rows.unknowns)),
+        min_cut=cut,
+        candidates=candidates,
+        unused_grants=unused,
         evidence=dict(sorted(evidence.items())),
         timings=Timings(engine_ms=total_ms - jev_ms, jev_ms=jev_ms, total_ms=total_ms),
         coverage=coverage(world, state.rows, deps),
