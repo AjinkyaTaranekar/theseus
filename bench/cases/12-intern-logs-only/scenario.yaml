@@ -1,0 +1,4 @@
+description: Give Priya app log access
+mode: pr
+name: 12-intern-logs-only
+world: demo-infra

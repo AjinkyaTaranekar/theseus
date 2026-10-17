@@ -1,0 +1,4 @@
+description: Allow analysts to read raw data
+mode: pr
+name: 03-analyst-raw
+world: demo-infra

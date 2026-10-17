@@ -1,0 +1,5 @@
+description: A typo fix that also adds a customer export reading customer-db through
+  the DB secret.
+mode: pr
+name: 09-code-export
+world: demo-infra

@@ -1,0 +1,35 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  id-token: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/terraform-apply
+          aws-region: eu-west-1
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - run: terraform init && terraform apply -auto-approve
+        working-directory: terraform
+  release:
+    needs: apply
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111122223333:role/github-deploy
+          aws-region: eu-west-1
+      - name: Publish public files
+        run: aws s3 sync public/ s3://demo-company-files/public/
+      - name: Run migrations as prod-support
+        run: ./run-migrations --role-arn arn:aws:iam::111122223333:role/prod-support

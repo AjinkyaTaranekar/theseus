@@ -1,0 +1,4 @@
+description: Publish only the public prefix
+mode: pr
+name: 11-public-prefix-only
+world: demo-infra

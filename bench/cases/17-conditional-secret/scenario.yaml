@@ -1,0 +1,4 @@
+description: Restrict secret access by source IP
+mode: pr
+name: 17-conditional-secret
+world: demo-infra

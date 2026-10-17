@@ -1,0 +1,45 @@
+account: "111122223333"
+region: eu-west-1
+org: demo-org
+data_locations:
+  - {id: "s3://demo-app-logs/", bucket: demo-app-logs, prefix: ""}
+  - {id: "s3://demo-company-files/invoices/", bucket: demo-company-files, prefix: invoices/}
+  - {id: "s3://demo-company-files/public/", bucket: demo-company-files, prefix: public/}
+  - {id: "s3://demo-data-lake/raw/", bucket: demo-data-lake, prefix: raw/}
+  - {id: "s3://demo-data-lake/curated/", bucket: demo-data-lake, prefix: curated/}
+  - {id: "s3://demo-terraform-state/", bucket: demo-terraform-state, prefix: ""}
+sensitive_overrides:             # node ID -> class; a person's override always beats Jev
+  "s3://demo-terraform-state/": regulated
+  "s3://demo-data-lake/raw/": regulated   # Jev reads only the name and rates it internal
+  # Queues, the topic and the log groups carry events and request metadata, never customer data.
+  "sqs:order-events": internal
+  "sqs:order-events-dlq": internal
+  "sns:invoice-created": internal
+  "log-group:/aws/lambda/analytics-export": internal
+  "log-group:/aws/lambda/billing-api": internal
+  "log-group:/aws/lambda/billing-job": internal
+  "log-group:/aws/lambda/support-portal": internal
+  "log-group:/ecs/orders-api": internal
+  "log-group:/ecs/orders-worker": internal
+environments:                    # anything not listed is prod
+  staging:
+    - workflow:demo-org/docs-site/preview.yml
+    - workflow:demo-org/website/lint.yml
+requirements:
+  - {id: R1, principal: user:sam-support, access: read, resource: "s3://demo-app-logs/"}
+  - {id: R2, principal: user:sam-support, access: read, resource: "s3://demo-company-files/invoices/"}
+  - {id: R3, principal: user:sam-support, access: read, resource: "db:customer-db"}
+  - {id: R4, principal: workflow:demo-org/infra/deploy.yml, access: write, resource: "db:customer-db"}
+  - {id: R5, principal: workflow:demo-org/infra/deploy.yml, access: write, resource: "s3://demo-company-files/public/"}
+  - {id: R6, principal: workload:billing-api, access: read, resource: "db:customer-db"}
+  - {id: R7, principal: workload:billing-job, access: write, resource: "s3://demo-company-files/invoices/"}
+  - {id: R8, principal: workload:billing-job, access: read, resource: "dynamodb:demo-orders"}
+  - {id: R9, principal: workload:billing-job, access: read, resource: "secret:payments-api-key"}
+  - {id: R10, principal: workload:orders-api, access: write, resource: "dynamodb:demo-orders"}
+  - {id: R11, principal: workload:orders-worker, access: write, resource: "dynamodb:demo-orders"}
+  - {id: R12, principal: workload:analytics-export, access: read, resource: "dynamodb:demo-orders"}
+  - {id: R13, principal: workload:analytics-export, access: write, resource: "s3://demo-data-lake/raw/"}
+  - {id: R14, principal: workload:analytics-export, access: write, resource: "s3://demo-data-lake/curated/"}
+  - {id: R15, principal: user:alex-analyst, access: read, resource: "s3://demo-data-lake/curated/"}
+  - {id: R16, principal: user:jordan-platform, access: read, resource: "s3://demo-app-logs/"}
+  - {id: R17, principal: workflow:demo-org/infra/deploy.yml, access: write, resource: "s3://demo-terraform-state/"}

@@ -1,0 +1,4 @@
+description: Remove unused portal secret access
+mode: pr
+name: 14-remove-unused-secret
+world: demo-infra

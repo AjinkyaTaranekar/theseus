@@ -1,0 +1,4 @@
+description: Deny invoice reads
+mode: pr
+name: 16-unconditional-deny
+world: demo-infra

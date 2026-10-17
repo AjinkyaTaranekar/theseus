@@ -46,7 +46,7 @@ theseus = ["agent/templates/*.md", "web/*", "adapters/*/catalog.yaml"]
 [tool.ruff]
 line-length = 110
 target-version = "py312"
-extend-exclude = ["demo-infra", "fixtures"]
+extend-exclude = ["demo-infra", "fixtures", "bench/cases"]
 # tools/ and .githooks/ run on whatever `python` is on PATH, so keep them 3.10-compatible.
 per-file-target-version = { "tools/*.py" = "py310" }
 

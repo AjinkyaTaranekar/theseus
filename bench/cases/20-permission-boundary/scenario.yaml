@@ -1,0 +1,4 @@
+description: Add a permission boundary and secret grant
+mode: pr
+name: 20-permission-boundary
+world: demo-infra
