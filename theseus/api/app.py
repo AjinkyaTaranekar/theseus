@@ -28,12 +28,13 @@ from theseus.agent.llm import Llm, load_client
 from theseus.agent.replayed import RECORDINGS, ReplayedIntent, ReplayedJev
 from theseus.api import routes, webhooks
 from theseus.api.github import GitHub
-from theseus.cli import analyze_fixture
+from theseus.cli import analyze_fixture, load_advisories
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
+from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult, PatchOp
-from theseus.engine.pipeline import run_finding, run_pr, run_scan
+from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
 from theseus.errors import GraphError, IngestError, PatchError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
@@ -128,6 +129,26 @@ def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
     return scan
 
 
+def build_posture(store: GraphStore, jev: Any, settings: Settings) -> routes.PostureRun:
+    """The posture run behind `/posture` (O1 to O3): the world root at `main`'s commit, the workflow's plan of
+    it, then `run_posture` with the advisory feed. The files are laid out as `<world>/`, so the graph is
+    `demo-infra__main` and is replaced on every run."""
+
+    def run(gh: GitHub, repo: str, sha: str, plan: dict[str, Any]) -> PostureReport:
+        files = gh.world_files(repo, sha)
+        if "theseus.yaml" not in files:
+            raise IngestError(f"no {settings.theseus_world_root}/theseus.yaml at {sha[:7]}")
+        adapters = adapters_for(yaml.safe_load(files["theseus.yaml"]) or {})
+        deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+        advisories = load_advisories(Path(settings.theseus_advisories))
+        with TemporaryDirectory(prefix="theseus-posture-") as tmp:
+            world = load_world_from_files(files, plan, adapters, Path(tmp) / settings.theseus_world_root)
+            report = run_posture(world, deps, advisories)
+        return report.model_copy(update={"scan": report.scan.model_copy(update={"repo": repo})})
+
+    return run
+
+
 def build_finder(store: GraphStore, jev: Any, settings: Settings) -> routes.Finder:
     """Finding mode on a fixture folder (FM3 and FM4): its `base/` world and plan and its `advisory.json`,
     with live Jev for sensitivity and urgency. The advisory's text never becomes evidence."""
@@ -183,6 +204,7 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         app.state.review = build_review(app.state.store, llm, jev, settings)
         app.state.scan = build_scan(app.state.store, jev, settings)
         app.state.finder = build_finder(app.state.store, jev, settings)
+        app.state.posture = build_posture(app.state.store, jev, settings)
         app.state.results = webhooks.Results()
         app.state.render = build_render()
         app.state.try_preset = build_try(app.state.store, settings)

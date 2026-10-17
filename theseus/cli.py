@@ -1,7 +1,8 @@
-"""Command line: `python -m theseus analyze | finding | scan | serve`.
+"""Command line: `python -m theseus analyze | finding | scan | posture | serve`.
 
 `serve` runs the API (F3); `analyze`, `finding` and `scan` print a PR, finding or scan fixture's
-AnalysisResult as JSON (E3, FM3, C3). All of them need FalkorDB (rule 3). A composition root
+AnalysisResult as JSON (E3, FM3, C3); `posture` prints a world's posture report (O1 to O3). All of them
+need FalkorDB (rule 3). A composition root
 (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks adapters.
 """
 
@@ -25,12 +26,15 @@ from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
+from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
-from theseus.engine.pipeline import run_finding, run_pr, run_scan
+from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
 from theseus.errors import GraphError, TheseusError
 from theseus.graph.client import get_client
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world
+
+log = logging.getLogger(__name__)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -44,6 +48,10 @@ def build_parser() -> argparse.ArgumentParser:
         ("scan", "list dangerous paths and unused grants in main"),
     ):
         commands.add_parser(name, help=text).add_argument("fixture", help="a folder under fixtures/")
+    posture = commands.add_parser("posture", help="who reaches what, single points of failure, cost")
+    posture.add_argument("world", help="a world root with theseus.yaml, e.g. fixtures/unused-grant/base")
+    posture.add_argument("plan", help="its Terraform plan JSON, e.g. fixtures/unused-grant/base.plan.json")
+    posture.add_argument("--advisories", default=None, help="the advisory feed folder (THESEUS_ADVISORIES)")
     commands.add_parser("serve", help="run the API on http://localhost:8000; needs FalkorDB")
     return parser
 
@@ -59,6 +67,8 @@ def main(argv: list[str] | None = None) -> int:
         return finding(Path(args.fixture))
     if args.command == "scan":
         return scan(Path(args.fixture))
+    if args.command == "posture":
+        return posture(Path(args.world), Path(args.plan), args.advisories)
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
     return 2
 
@@ -160,6 +170,59 @@ def finding(fixture: Path) -> int:
         print(f"theseus finding: {e}", file=sys.stderr)
         return 1
     print(result.model_dump_json(indent=2, by_alias=True))
+    return 0
+
+
+def load_advisories(folder: Path) -> list[dict[str, Any]]:
+    """The advisory feed: one JSON object per file in `folder`, by file name. A file that is not one is
+    skipped with a warning, so one bad entry never stops a scan; no folder means no advisories."""
+    found: list[dict[str, Any]] = []
+    if not folder.is_dir():
+        log.info("no advisory feed at %s", folder)
+        return found
+    for path in sorted(folder.glob("*.json")):
+        try:
+            advisory = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError) as e:
+            log.warning("advisory %s cannot be read: %s", path.name, e)
+            continue
+        if not isinstance(advisory, dict) or not {"id", "action"} <= advisory.keys():
+            log.warning("advisory %s needs at least an id and an action; skipped", path.name)
+            continue
+        found.append(advisory)
+    return found
+
+
+def posture_world(
+    world_root: Path,
+    plan: Path,
+    store: GraphStore,
+    jev: Any,
+    settings: Settings,
+    advisories: list[dict[str, Any]],
+) -> PostureReport:
+    """The posture of a world root on disk and its plan, with this store and Jev."""
+    adapters = adapters_for(world_root)
+    world = load_world(world_root, json.loads(plan.read_text(encoding="utf-8")), adapters)
+    deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+    return run_posture(world, deps, advisories)
+
+
+def posture(world_root: Path, plan: Path, feed: str | None) -> int:
+    """Print the world's posture report as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
+    from theseus.agent.jev import Jev
+    from theseus.agent.llm import Llm
+
+    settings = get_settings()
+    try:
+        store = FalkorStore(get_client(settings))
+        advisories = load_advisories(Path(feed or settings.theseus_advisories))
+        jev = Jev(settings, llm=Llm(settings))
+        report = posture_world(world_root, plan, store, jev, settings, advisories)
+    except (TheseusError, OSError) as e:
+        print(f"theseus posture: {e}", file=sys.stderr)
+        return 1
+    print(report.model_dump_json(indent=2, by_alias=True))
     return 0
 
 

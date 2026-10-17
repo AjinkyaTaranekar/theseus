@@ -41,6 +41,8 @@ class Settings(BaseSettings):
     theseus_token: SecretStr | None = None
     theseus_repos: str = ""
     theseus_world_root: str = "demo-infra"
+    # The advisory feed the posture run checks main's workflows against: one JSON file per advisory.
+    theseus_advisories: str = "advisories"
     domain: str = ""
 
     @property

@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Theseus dashboard</title>
+<style>
+  :root {
+    --bg: #fafaf9; --card: #ffffff; --text: #1c1c1a; --muted: #6b6b66; --faint: #a3a39d;
+    --line: #e3e3de; --line-strong: #cfcfca; --accent: #d1005a; --accent-bg: #fff0f6;
+    --ok: #1a7f37; --ok-bg: #e9f7ee; --warn: #9a6700; --warn-bg: #fff6d6; --chip: #f1f1ee;
+    --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111110; --card: #1a1a19; --text: #ededea; --muted: #a3a39d; --faint: #6b6b66;
+      --line: #2c2c29; --line-strong: #3f3f3a; --accent: #ff4d94; --accent-bg: #33121f;
+      --ok: #3fb950; --ok-bg: #12301b; --warn: #d29922; --warn-bg: #3a2a07; --chip: #262624;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; color: var(--text); background: var(--bg);
+         font: 15px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif; }
+  a { color: inherit; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  header { border-bottom: 1px solid var(--line); background: var(--card); position: sticky; top: 0; z-index: 2; }
+  header .wrap { display: flex; align-items: center; gap: 14px; height: 56px; }
+  .brand { font-weight: 700; letter-spacing: -.01em; }
+  .where { color: var(--muted); font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+  nav { margin-left: auto; display: flex; gap: 2px; flex-wrap: wrap; }
+  nav a { font-size: 13px; color: var(--muted); text-decoration: none; padding: 6px 9px; border-radius: 6px; }
+  nav a:hover { background: var(--chip); color: var(--text); }
+
+  .hero { padding: 34px 0 6px; }
+  .hero h1 { font-size: 28px; line-height: 1.25; letter-spacing: -.02em; margin: 0 0 10px; max-width: 920px; }
+  .hero h1 em { font-style: normal; color: var(--accent); }
+  .hero p { margin: 0; color: var(--muted); font-size: 15px; max-width: 860px; }
+  .hero code, td code, .mono { font-family: var(--mono); font-size: 12.5px; }
+
+  .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; margin: 24px 0 8px; }
+  .kpi { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+         text-decoration: none; display: block; }
+  .kpi:hover { border-color: var(--line-strong); }
+  .kpi .n { font-size: 28px; font-weight: 700; letter-spacing: -.02em; line-height: 1.1; }
+  .kpi .l { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .kpi.bad .n { color: var(--accent); }
+  .kpi.good .n { color: var(--ok); }
+
+  section { padding: 30px 0 4px; scroll-margin-top: 64px; }
+  section > h2 { font-size: 13px; font-family: var(--mono); font-weight: 600; text-transform: uppercase;
+                 letter-spacing: .06em; color: var(--muted); margin: 0 0 4px; }
+  section > p.intro { margin: 0 0 14px; color: var(--muted); font-size: 14px; max-width: 860px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th { text-align: left; font: 600 11.5px/1 var(--mono); color: var(--muted); text-transform: uppercase;
+       letter-spacing: .05em; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; overflow-wrap: anywhere; }
+  tr:last-child td { border-bottom: 0; }
+  td.num { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; }
+  .sub { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; font: 600 11.5px/1 var(--mono); padding: 4px 8px; border-radius: 999px;
+           white-space: nowrap; }
+  .badge.blocked { color: var(--accent); background: var(--accent-bg); }
+  .badge.look { color: var(--warn); background: var(--warn-bg); }
+  .badge.clear, .badge.pass { color: var(--ok); background: var(--ok-bg); }
+  .badge.fail, .badge.invalid { color: var(--accent); background: var(--accent-bg); }
+  .badge.unknown, .badge.quiet { color: var(--muted); background: var(--chip); }
+  .chip { display: inline-block; font-size: 12.5px; padding: 2px 8px; border-radius: 4px; margin: 2px 4px 2px 0;
+          background: var(--chip); white-space: nowrap; }
+  .chip.regulated { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+  .chip.confidential { background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+  .chip.needed { background: transparent; border: 1px dashed var(--line-strong); color: var(--muted); }
+  .open { font-size: 13px; font-weight: 600; white-space: nowrap; text-decoration: none; color: var(--accent); }
+  .open:hover { text-decoration: underline; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .item { padding: 14px 16px; border-bottom: 1px solid var(--line); }
+  .item:last-child { border-bottom: 0; }
+  .item h3 { margin: 0 0 3px; font-size: 15px; overflow-wrap: anywhere; }
+  .item .what { font-size: 14px; }
+  .bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 8px; overflow: hidden; }
+  .bar span { display: block; height: 100%; background: var(--accent); }
+  .finding { padding: 16px 18px; }
+  .finding h3 { margin: 0; font-size: 16px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+  .finding dl { display: grid; grid-template-columns: 130px 1fr; gap: 6px 14px; margin: 12px 0 0; font-size: 14px; }
+  .finding dt { color: var(--muted); }
+  .finding dd { margin: 0; overflow-wrap: anywhere; }
+  .steps { list-style: none; margin: 0; padding: 0; }
+  .steps li { display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .steps li:last-child { border-bottom: 0; }
+  .tick { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
+          font: 700 12px/1 var(--mono); background: var(--chip); color: var(--muted); }
+  .tick.done { background: var(--ok); color: #fff; }
+  .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+  .run { padding: 14px 16px; }
+  .run h3 { margin: 0 0 6px; font-size: 15px; }
+  .run p { margin: 0 0 8px; font-size: 14px; color: var(--muted); }
+  .run code { display: block; font-family: var(--mono); font-size: 12.5px; background: var(--chip); border-radius: 6px;
+              padding: 6px 8px; margin-top: 4px; overflow-wrap: anywhere; }
+  .empty { padding: 18px 16px; color: var(--muted); font-size: 14px; }
+  .total { display: flex; align-items: baseline; gap: 12px; padding: 16px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .total .n { font-size: 26px; font-weight: 700; letter-spacing: -.02em; }
+  footer { padding: 30px 0 44px; color: var(--muted); font-size: 13px; }
+  .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
+  @media (max-width: 980px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .grid2 { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) {
+    .wrap { padding: 0 16px; }
+    nav { display: none; }
+    .hero h1 { font-size: 22px; }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .scroll { overflow-x: auto; }
+    .finding dl { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <span class="brand">Theseus</span>
+  <span class="where" id="where"></span>
+  <nav aria-label="Sections">
+    <a href="#prs">Pull requests</a><a href="#findings">Findings</a><a href="#reach">Who reaches what</a>
+    <a href="#weak">Weak points</a><a href="#cost">Cost</a><a href="#onboarding">Setup</a>
+  </nav>
+</div></header>
+
+<main class="wrap" id="main" hidden>
+  <div class="hero">
+    <h1 id="title"></h1>
+    <p id="lede"></p>
+  </div>
+  <div class="kpis" id="kpis"></div>
+
+  <section id="prs">
+    <h2>Pull requests</h2>
+    <p class="intro">Every pull request Theseus reviewed, newest first. A blocked PR cannot merge until its review is clear.</p>
+    <div class="card scroll" id="pr-table"></div>
+  </section>
+
+  <section id="findings">
+    <h2>Security findings</h2>
+    <p class="intro">Advisories that affect a workflow on main, checked on every push to main and every night. Each one says what a compromised workflow could reach, where to cut it off, and which secrets to rotate.</p>
+    <div id="finding-list"></div>
+  </section>
+
+  <section id="reach">
+    <h2>Who reaches what on main</h2>
+    <p class="intro">The blast radius of each person, workflow and service: the sensitive data it could reach today if it were compromised. Dashed items are access a requirement in <code>theseus.yaml</code> asks for.</p>
+    <div class="card scroll" id="reach-table"></div>
+  </section>
+
+  <section id="weak">
+    <h2>Weak points</h2>
+    <p class="intro" id="weak-intro"></p>
+    <div class="grid2">
+      <div class="card"><div class="item"><h3>Single points of failure</h3><div class="sub">On every route of something a service or person needs. If it breaks or is deleted, all of these stop working.</div></div><div id="spof"></div></div>
+      <div class="card"><div class="item"><h3>Articulation points</h3><div class="sub">Removing it splits the access graph in two or more pieces.</div></div><div id="art"></div></div>
+    </div>
+    <div class="grid2" style="margin-top:14px">
+      <div class="card"><div class="item"><h3>Choke points</h3><div class="sub">Roles the most routes pass through, by betweenness. Tightening one protects the most paths.</div></div><div id="choke"></div></div>
+      <div class="card"><div class="item"><h3>Grants no code uses</h3><div class="sub">Access a service holds but its code never calls. Removing it costs nothing.</div></div><div id="unused"></div></div>
+    </div>
+  </section>
+
+  <section id="cost">
+    <h2>Cost</h2>
+    <p class="intro" id="cost-intro"></p>
+    <div class="grid2">
+      <div class="card scroll" id="cost-table"></div>
+      <div class="card" id="savings"></div>
+    </div>
+  </section>
+
+  <section id="onboarding">
+    <h2>Setup</h2>
+    <p class="intro">What Theseus can see is connected for this repository, and how each part runs.</p>
+    <div class="grid2">
+      <div class="card"><ul class="steps" id="steps"></ul></div>
+      <div class="runs" id="runs"></div>
+    </div>
+  </section>
+</main>
+<footer class="wrap" id="footer"></footer>
+
+<script>
+"use strict";
+const KINDS = { user: "person", group: "group", role: "role", workload: "service", workflow: "CI workflow",
+                action: "GitHub Action", entry: "internet", secret: "secret", db: "database", dynamodb: "table",
+                sqs: "queue", sns: "topic", logs: "logs", kms: "key" };
+const CATEGORIES = { objectstorage: "storage", filestorage: "file share", blockstorage: "disk", database: "database",
+                     secret: "secret", encryptionkey: "key", aimodel: "AI model", logstore: "logs",
+                     messagequeue: "queue", messagetopic: "topic", datastream: "stream" };
+const HOLDS = { regulated: "customer data", confidential: "business data" };
+const RANK = { regulated: 0, confidential: 1 };
+
+const $ = (id) => document.getElementById(id);
+function el(tag, text, attrs) {
+  const node = document.createElement(tag);
+  if (text !== undefined && text !== null) node.textContent = text;
+  for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, v);
+  return node;
+}
+function add(parent, ...kids) { for (const k of kids) if (k) parent.append(k); return parent; }
+function nameOf(id) {
+  if (id === "entry:internet") return "anyone on the internet";
+  const url = id.indexOf("://");
+  if (url >= 0) return id.slice(url + 3);
+  const i = id.indexOf(":");
+  const name = i < 0 ? id : id.slice(i + 1);
+  return id.startsWith("workflow:") ? name.split("/").slice(-2).join("/") : name;
+}
+function kindOf(id, info) {
+  const cat = ((info && info.category) || "").toLowerCase();
+  if (CATEGORIES[cat]) return CATEGORIES[cat];
+  const prefix = id.split(":")[0];
+  return KINDS[prefix] || (id.includes("://") ? "storage" : "node");
+}
+function plural(n, word, many) { return `${n} ${n === 1 ? word : (many || word + "s")}`; }
+function list(items) {
+  if (items.length <= 1) return items.join("");
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}
+function ago(iso) {
+  if (!iso) return "";
+  const s = Math.max(0, (Date.now() - Date.parse(iso)) / 1000);
+  if (s < 90) return "just now";
+  if (s < 5400) return `${Math.round(s / 60)} minutes ago`;
+  if (s < 129600) return `${Math.round(s / 3600)} hours ago`;
+  return `${Math.round(s / 86400)} days ago`;
+}
+function usd(n) { return `$${(n || 0).toFixed(2)}`; }
+const TRIGGERS = { push: "a push to main", schedule: "the nightly run", workflow_dispatch: "a manual run", cli: "the command line" };
+
+function fail(text) {
+  $("main").hidden = true;
+  $("footer").replaceChildren(el("p", text, { class: "message" }));
+}
+
+async function main() {
+  const k = new URLSearchParams(location.search).get("k") || "";
+  let data;
+  try {
+    const res = await fetch(`${location.pathname.replace(/\/$/, "")}/data?k=${encodeURIComponent(k)}`, { cache: "no-store" });
+    if (!res.ok) throw new Error(String(res.status));
+    data = await res.json();
+  } catch (e) {
+    fail("This link doesn't open a dashboard. It may be mistyped or out of date.");
+    return;
+  }
+  render(data);
+}
+
+function render(data) {
+  const posture = data.posture;
+  const scan = posture ? posture.scan : null;
+  const p = posture ? posture.posture : null;
+  const info = (id) => ((p && p.nodes) || {})[id] || ((scan && scan.nodes) || {})[id] || {};
+  const chip = (id, needed) => {
+    const sens = info(id).sensitivity;
+    const cls = needed ? "chip needed" : `chip ${sens === "regulated" || sens === "confidential" ? sens : ""}`;
+    return el("span", nameOf(id), { class: cls, title: `${kindOf(id, info(id))}: ${id}` });
+  };
+  $("where").textContent = data.repo;
+  document.title = `${data.repo}: Theseus dashboard`;
+
+  // Hero -------------------------------------------------------------------------------------------------
+  const dangerous = scan ? scan.unchanged : [];
+  const exposed = [...new Set(dangerous.map((d) => d.actor))];
+  const blocked = data.reviews.filter((r) => r.verdict.level === "blocked");
+  const title = $("title");
+  if (!posture) {
+    title.textContent = "main hasn't been scanned yet.";
+  } else if (exposed.length) {
+    add(title, document.createTextNode(`${plural(exposed.length, "person or service", "people and services")} on main can reach `),
+        el("em", "sensitive data that nothing requires"), document.createTextNode("."));
+  } else {
+    title.textContent = "Nothing on main reaches sensitive data it doesn't need.";
+  }
+  const g = data.main_graph;
+  let lede = "";
+  if (posture) {
+    lede = `Built from main at ${posture.sha.slice(0, 7)}`;
+    if (g) lede += ` as a FalkorDB graph of ${g.nodes} nodes and ${g.edges} edges`;
+    lede += `, by ${TRIGGERS[posture.trigger] || posture.trigger} ${ago(posture.updated_at)}. `;
+  }
+  lede += `${plural(data.reviews.length, "pull request")} reviewed, ${blocked.length} blocked.`;
+  $("lede").textContent = lede;
+
+  // KPIs -------------------------------------------------------------------------------------------------
+  const kpi = (n, label, href, tone) => {
+    const a = el("a", null, { class: `kpi ${tone || ""}`, href });
+    return add(a, el("div", String(n), { class: "n" }), el("div", label, { class: "l" }));
+  };
+  const spofs = p ? p.single_points.length : 0;
+  const unused = scan ? scan.unused_grants.length : 0;
+  add($("kpis"),
+    kpi(dangerous.length, "paths to sensitive data nothing requires", "#reach", dangerous.length ? "bad" : "good"),
+    kpi(`${blocked.length}/${data.reviews.length}`, "pull requests blocked", "#prs", blocked.length ? "bad" : ""),
+    kpi(data.findings.length, data.findings.length === 1 ? "advisory affects main" : "advisories affect main", "#findings", data.findings.length ? "bad" : "good"),
+    kpi(spofs, "single points of failure", "#weak"),
+    kpi(unused, "grants no code uses", "#weak", unused ? "" : "good"),
+    kpi(p ? usd(p.cost.monthly_usd) : "–", "a month, estimated", "#cost"));
+
+  // Pull requests ----------------------------------------------------------------------------------------
+  if (!data.reviews.length) {
+    $("pr-table").append(el("div", "No pull request has been reviewed yet.", { class: "empty" }));
+  } else {
+    const t = el("table");
+    const head = add(el("tr"), el("th", "PR"), el("th", "Review"), el("th", "What it would do"), el("th", "Fixes"), el("th", ""));
+    t.append(add(el("thead"), head));
+    const body = el("tbody");
+    for (const r of data.reviews) {
+      const pr = add(el("td"), el("div", `#${r.number}`, { class: "mono" }));
+      if (r.title) pr.append(el("div", r.title, { class: "sub" }));
+      const review = add(el("td"), el("span", r.verdict.heading.replace(/^\S+\s/, ""), { class: `badge ${r.verdict.level}` }));
+      if (r.severity !== null && r.severity !== undefined) review.append(el("div", `S${r.severity}`, { class: "sub mono", title: "S0 is the most severe, S6 the least" }));
+      if (r.updated_at) review.append(el("div", ago(r.updated_at), { class: "sub" }));
+      const what = el("td");
+      if (r.opened.length) {
+        const actors = [...new Set(r.opened.map((o) => nameOf(o.actor)))];
+        what.append(el("div", `Would let ${list(actors)} reach:`));
+        const chips = el("div");
+        for (const id of [...new Set(r.opened.map((o) => o.target))]) chips.append(chip(id));
+        what.append(chips);
+      } else {
+        what.append(el("div", r.headline || "Nothing new reaches sensitive data."));
+      }
+      if (r.beyond_intent) what.append(el("div", `Its code reads ${plural(r.beyond_intent, "thing")} the PR doesn't mention.`, { class: "sub" }));
+      const fixes = el("td");
+      for (const f of r.fixes) fixes.append(el("span", `${f.id} ${f.verdict}`, { class: `badge ${f.verdict}`, title: f.title, style: "margin:0 4px 4px 0" }));
+      if (!r.fixes.length) fixes.append(el("span", "none needed", { class: "sub" }));
+      const link = el("td");
+      if (r.url) link.append(el("a", "Review →", { class: "open", href: r.url }));
+      body.append(add(el("tr"), pr, review, what, fixes, link));
+    }
+    t.append(body);
+    $("pr-table").append(t);
+  }
+
+  // Findings ---------------------------------------------------------------------------------------------
+  if (!data.findings.length) {
+    $("finding-list").append(add(el("div", null, { class: "card" }), el("div", "No advisory in the feed affects a workflow on main.", { class: "empty" })));
+  }
+  for (const f of data.findings) {
+    const card = el("div", null, { class: "card finding" });
+    const h = add(el("h3"), el("span", f.id, { class: "mono" }), el("span", f.action, { class: "sub mono" }));
+    if (typeof f.urgency === "number") h.append(el("span", `urgency ${f.urgency.toFixed(2)}`, { class: `badge ${f.urgency >= 0.7 ? "blocked" : "look"}` }));
+    card.append(h);
+    const dl = el("dl");
+    const row = (k, v) => add(dl, el("dt", k), v);
+    row("Workflows", el("dd", list(f.workflows.map(nameOf)) || "none"));
+    const reaches = el("dd");
+    for (const id of f.reaches) reaches.append(chip(id));
+    if (!f.reaches.length) reaches.textContent = "nothing sensitive";
+    row("Could reach", reaches);
+    row("Cut it off at", el("dd", f.cut.length ? f.cut.map((c) => `${nameOf(c.src)} → ${nameOf(c.dst)}`).join("; ") : "no single cut", { class: "" }));
+    row("Rotate", el("dd", f.rotate.length ? list(f.rotate.map(nameOf)) : "nothing"));
+    card.append(dl);
+    if (f.url) card.append(add(el("div", null, { style: "margin-top:12px" }), el("a", "Open finding →", { class: "open", href: f.url })));
+    $("finding-list").append(card);
+  }
+
+  // Who reaches what -------------------------------------------------------------------------------------
+  const reach = p ? p.reach : [];
+  if (!reach.length) {
+    $("reach-table").append(el("div", posture ? "Nobody reaches sensitive data." : "Waiting for the first scan of main.", { class: "empty" }));
+  } else {
+    const t = el("table");
+    t.append(add(el("thead"), add(el("tr"), el("th", "Who"), el("th", "Could reach"), el("th", "Routes"))));
+    const body = el("tbody");
+    const risky = new Set(dangerous.map((d) => `${d.actor}|${d.target}`));
+    for (const r of reach) {
+      const who = add(el("td"), el("div", nameOf(r.actor), { style: "font-weight:600" }), el("div", kindOf(r.actor, info(r.actor)), { class: "sub" }));
+      const what = el("td");
+      for (const id of r.targets) what.append(chip(id, r.required.includes(id) && !risky.has(`${r.actor}|${id}`)));
+      const notNeeded = r.targets.filter((id) => risky.has(`${r.actor}|${id}`)).length;
+      if (notNeeded) what.append(el("div", `${plural(notNeeded, "of these", "of these")} nothing requires.`, { class: "sub" }));
+      body.append(add(el("tr"), who, what, el("td", String(r.paths), { class: "num" })));
+    }
+    t.append(body);
+    $("reach-table").append(t);
+  }
+
+  // Weak points ------------------------------------------------------------------------------------------
+  $("weak-intro").textContent = p
+    ? `Computed on main's graph from ${plural(p.dependencies, "dependency", "dependencies")}: each call a service's code makes and each access theseus.yaml requires.`
+    : "Waiting for the first scan of main.";
+  const items = (box, rows, empty) => {
+    if (!rows.length) { box.append(el("div", empty, { class: "empty" })); return; }
+    const max = Math.max(...rows.map((r) => r.n), 1);
+    for (const r of rows) {
+      const item = add(el("div", null, { class: "item" }), add(el("h3"), document.createTextNode(nameOf(r.id) + " "), el("span", kindOf(r.id, info(r.id)), { class: "sub" })));
+      item.append(el("div", r.what, { class: "what" }));
+      if (r.detail) item.append(el("div", r.detail, { class: "sub" }));
+      const bar = el("div", null, { class: "bar" });
+      bar.append(el("span", null, { style: `width:${Math.round((100 * r.n) / max)}%` }));
+      item.append(bar);
+      box.append(item);
+    }
+  };
+  items($("spof"), (p ? p.single_points : []).slice(0, 6).map((s) => {
+    const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))];
+    const what = [...new Set(s.breaks.map((b) => nameOf(b.resource)))];
+    return { id: s.id, n: s.breaks.length, what: `${plural(s.breaks.length, "dependency", "dependencies")} stop: ${list(who)} lose ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
+  }), "No node is the only route to anything that is needed.");
+  items($("art"), (p ? p.articulation : []).slice(0, 6).map((a) => ({
+    id: a.id, n: a.cut_off, what: `Cuts off ${plural(a.cut_off, "node")} from the rest.`, detail: `Pieces left: ${a.pieces.join(", ")}`,
+  })), "Removing any one node leaves the graph in one piece.");
+  items($("choke"), (scan ? scan.choke_points : []).slice(0, 5).map((c) => ({
+    id: c.id, n: c.score, what: `Betweenness ${Number(c.score).toFixed(3)}`,
+  })), "No role carries more routes than another.");
+  const grants = scan ? scan.unused_grants : [];
+  const box = $("unused");
+  if (!grants.length) box.append(el("div", "Every grant to sensitive data is used by the code that holds it.", { class: "empty" }));
+  for (const u of grants) {
+    const item = add(el("div", null, { class: "item" }), el("h3", `${nameOf(u.workload)} can ${u.access} ${nameOf(u.resource)}`));
+    item.append(el("div", `Its code never ${u.access === "write" ? "writes to" : "reads"} it.`, { class: "sub" }));
+    box.append(item);
+  }
+  const fixU = scan ? (scan.candidates || []).find((c) => c.id === "U") : null;
+  if (fixU) box.append(add(el("div", null, { class: "item" }), el("span", `Fix U ${fixU.verdict}`, { class: `badge ${fixU.verdict}` }), el("span", ` ${fixU.title}`, { class: "sub" })));
+
+  // Cost -------------------------------------------------------------------------------------------------
+  const cost = p ? p.cost : null;
+  $("cost-intro").textContent = cost ? cost.note : "Waiting for the first scan of main.";
+  if (cost) {
+    const fixed = cost.lines.filter((l) => l.monthly_usd > 0);
+    const usage = cost.lines.filter((l) => l.usage_billed);
+    const top = add(el("div", null, { class: "total" }), el("span", usd(cost.monthly_usd), { class: "n" }), el("span", `a month for ${plural(fixed.length, "resource")} with a fixed price; ${usage.length} more are billed only by use.`, { class: "sub" }));
+    $("cost-table").append(top);
+    const t = el("table");
+    t.append(add(el("thead"), add(el("tr"), el("th", "Resource"), el("th", "What it counts"), el("th", "Month"))));
+    const body = el("tbody");
+    for (const l of fixed) body.append(add(el("tr"), add(el("td"), el("code", l.address)), el("td", l.basis, { class: "sub" }), el("td", usd(l.monthly_usd), { class: "num" })));
+    t.append(body);
+    $("cost-table").append(t);
+    const s = $("savings");
+    add(s, add(el("div", null, { class: "item" }), el("h3", "How to save"), el("div", "What the graph shows could go, and what it would save.", { class: "sub" })));
+    if (cost.savings.length) {
+      for (const v of cost.savings) s.append(add(el("div", null, { class: "item" }), el("h3", `${nameOf(v.id)}: ${usd(v.monthly_usd)} a month`), el("div", v.reason, { class: "sub" })));
+    } else {
+      s.append(add(el("div", null, { class: "item" }), el("h3", "No left-over resources"), el("div", "Every data store is reached by someone or called by code, so none is idle by the graph's account.", { class: "sub" })));
+    }
+    if (grants.length) s.append(add(el("div", null, { class: "item" }), el("h3", `${plural(grants.length, "grant")} to remove for free`), el("div", "Access no code uses: removing it shrinks the blast radius and breaks nothing.", { class: "sub" })));
+    const biggest = fixed[0];
+    if (biggest) s.append(add(el("div", null, { class: "item" }), el("h3", `Largest line: ${biggest.address}`), el("div", `${usd(biggest.monthly_usd)} a month for ${biggest.basis}. Check it is sized for its load.`, { class: "sub" })));
+  }
+
+  // Setup ------------------------------------------------------------------------------------------------
+  for (const step of data.onboarding) {
+    const li = add(el("li"), el("span", step.done ? "✓" : "", { class: `tick ${step.done ? "done" : ""}` }));
+    li.append(add(el("div"), el("div", step.step, { style: "font-weight:600" }), el("div", step.detail, { class: "sub" })));
+    $("steps").append(li);
+  }
+  const runs = [
+    ["Pull requests", "Every push to a PR that changes the infrastructure is reviewed again. To ask again, comment:", "/theseus review"],
+    ["Apply a fix", "A person with write access approves a fix that passed, and Theseus commits it:", "/theseus apply B"],
+    ["main", "On every push to main, every night at 03:17 UTC, and from Actions → Theseus main → Run workflow.", "python -m theseus posture <world> <plan>"],
+    ["Advisories", "Each scan of main checks the advisory feed. One finding by hand:", "python -m theseus finding fixtures/compromised-action"],
+  ];
+  for (const [h, text, code] of runs) $("runs").append(add(el("div", null, { class: "card run" }), el("h3", h), el("p", text), el("code", code)));
+
+  $("footer").textContent = "Theseus reads the graph from FalkorDB when this page loads. Costs are estimates at list price.";
+  $("main").hidden = false;
+}
+
+main();
+</script>
+</body>
+</html>

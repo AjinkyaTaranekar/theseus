@@ -82,6 +82,7 @@ def test_a_document_round_trips_next_to_the_graphs(falkor: FalkorStore) -> None:
         falkor.put_doc(key, '{"a": 1}')
         falkor.put_doc(key, '{"a": 2}')
         assert falkor.get_doc(key) == '{"a": 2}'
+        assert falkor.docs(f"{PREFIX}d") == [key] and falkor.docs(f"{PREFIX}none") == []
     finally:
         falkor._query(DOCS, "MATCH (d:Doc {key: $key}) DELETE d", {"key": key})
 

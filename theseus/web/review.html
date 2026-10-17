@@ -34,6 +34,8 @@
   .badge.blocked { color: var(--accent); background: var(--accent-bg); }
   .badge.look { color: var(--warn); background: var(--warn-bg); }
   .badge.clear { color: var(--ok); background: var(--ok-bg); }
+  .dash { font-size: 13px; color: var(--muted); text-decoration: none; white-space: nowrap; }
+  .dash:hover { color: var(--text); }
 
   .hero { padding: 36px 0 8px; }
   .hero h1 { font-size: 30px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 10px; max-width: 900px; }
@@ -106,6 +108,7 @@
   <span class="brand">Theseus</span>
   <span class="where" id="where"></span>
   <span class="badge" id="badge" hidden></span>
+  <a class="dash" id="dash" hidden>Dashboard →</a>
 </div></header>
 
 <main class="wrap" id="main" hidden>
@@ -277,6 +280,7 @@ function render(data) {
   badge.className = `badge ${data.verdict.level}`;
   badge.textContent = (finding ? { blocked: "At risk", look: "Needs a look", clear: "Not exposed" }
     : { blocked: "Merge blocked", look: "Needs a look", clear: "Safe to merge" })[data.verdict.level];
+  if (data.dashboard) { const dash = $("dash"); dash.href = data.dashboard; dash.hidden = false; }
   $("main").hidden = false;
 
   // The finding, in one sentence and one line under it.
