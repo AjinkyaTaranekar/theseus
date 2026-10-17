@@ -370,6 +370,26 @@ class GitHub:
         log.info("%s: opened issue #%s, %s", repo, created["number"], title)
         return created, True
 
+    def pull_patches(self, repo: str, number: int) -> dict[str, str]:
+        """Each file the PR changes and its patch (the diff GitHub shows), by repo path."""
+        self._require(repo)
+        return {f["filename"]: f.get("patch") or "" for f in self._pages(repo, f"/pulls/{number}/files")}
+
+    def has_review_with(self, repo: str, number: int, marker: str) -> bool:
+        """Whether a review on the PR already carries this marker in its text."""
+        self._require(repo)
+        return any(marker in (r.get("body") or "") for r in self._pages(repo, f"/pulls/{number}/reviews"))
+
+    def post_review(
+        self, repo: str, number: int, head_sha: str, body: str, comments: list[dict[str, Any]]
+    ) -> int:
+        """Posts a review that only comments, on the head commit, with these line comments. Returns its ID."""
+        self._require(repo)
+        payload = {"commit_id": head_sha, "event": "COMMENT", "body": body, "comments": comments}
+        made = self._repo(repo, "POST", f"/pulls/{number}/reviews", json=payload).json()
+        log.info("%s#%d: posted review %s with %d comment(s)", repo, number, made["id"], len(comments))
+        return int(made["id"])
+
     def reply(self, repo: str, number: int, body: str) -> int:
         """Posts a new comment on the PR, as the answer to a command, and returns its ID."""
         self._require(repo)

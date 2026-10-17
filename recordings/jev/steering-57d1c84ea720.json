@@ -4,14 +4,14 @@
       "calibrated": true,
       "choice": null,
       "confidence": null,
-      "noul": 0.16,
+      "noul": 0.15,
       "probabilities": {},
       "source": "jev",
       "type": "noul"
     }
   },
   "model": "jev-1.13.0",
-  "ms": 208,
+  "ms": 198,
   "request": {
     "model": "jev-latest",
     "questions": {

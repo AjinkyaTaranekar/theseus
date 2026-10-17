@@ -868,8 +868,17 @@ def test_main_s_posture_is_sent_with_its_own_commit_and_event(main_flow: dict[An
     assert send["env"]["THESEUS_TOKEN"] == "${{ secrets.THESEUS_TOKEN }}"
     assert all("${{" not in s["run"] for s in steps if "run" in s)
     assert all(re.fullmatch(r"[\w.-]+/[\w.-]+@v\d+(\.\d+)*", s["uses"]) for s in steps if "uses" in s)
-    # Only the step that sends holds the token.
-    assert [s.get("name") for s in steps if "secrets." in json.dumps(s)] == ["Send main to Theseus"]
+    # Only the steps that send hold the token.
+    assert [s.get("name") for s in steps if "secrets." in json.dumps(s)] == [
+        "Send main to Theseus",
+        "Check the providers' status feeds",
+    ]
+
+
+def test_the_status_feeds_are_checked_nightly_and_on_demand_not_on_a_push(main_flow: dict[Any, Any]) -> None:
+    check = next(s for s in steps_of(main_flow) if "/incidents/check" in s.get("run", ""))
+    assert check["if"] == "github.event_name != 'push'"
+    assert check["env"]["TRIGGER"] == "${{ github.event_name }}" and "${{" not in check["run"]
 
 
 def test_the_app_manifest_asks_for_what_spec_07_lists() -> None:

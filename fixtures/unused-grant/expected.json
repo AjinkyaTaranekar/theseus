@@ -1,16 +1,27 @@
 {
-  "scenario": "unused-grant",
+  "candidates": {
+    "U": "pass"
+  },
+  "min_cut": {
+    "cut": [
+      [
+        "role:shared-lambda",
+        "CAN",
+        "secret:payments-api-key"
+      ],
+      [
+        "role:support-portal",
+        "CAN",
+        "secret:prod-db-credentials"
+      ]
+    ],
+    "cuttable": true,
+    "value": 2
+  },
   "mode": "scan",
+  "recommended": "U",
   "requirements": {
     "R1": "satisfied",
-    "R2": "satisfied",
-    "R3": "satisfied",
-    "R4": "satisfied",
-    "R5": "satisfied",
-    "R6": "satisfied",
-    "R7": "satisfied",
-    "R8": "satisfied",
-    "R9": "satisfied",
     "R10": "satisfied",
     "R11": "satisfied",
     "R12": "satisfied",
@@ -18,28 +29,36 @@
     "R14": "satisfied",
     "R15": "satisfied",
     "R16": "satisfied",
-    "R17": "satisfied"
+    "R17": "satisfied",
+    "R18": "satisfied",
+    "R19": "satisfied",
+    "R2": "satisfied",
+    "R20": "satisfied",
+    "R21": "satisfied",
+    "R3": "satisfied",
+    "R4": "satisfied",
+    "R5": "satisfied",
+    "R6": "satisfied",
+    "R7": "satisfied",
+    "R8": "satisfied",
+    "R9": "satisfied"
   },
+  "scenario": "unused-grant",
   "unused_grants": [
+    [
+      "workload:invoice-mailer",
+      "secret:payments-api-key",
+      "read"
+    ],
+    [
+      "workload:receipt-renderer",
+      "secret:payments-api-key",
+      "read"
+    ],
     [
       "workload:support-portal",
       "secret:prod-db-credentials",
       "read"
     ]
-  ],
-  "min_cut": {
-    "value": 1,
-    "cuttable": true,
-    "cut": [
-      [
-        "role:support-portal",
-        "CAN",
-        "secret:prod-db-credentials"
-      ]
-    ]
-  },
-  "candidates": {
-    "U": "pass"
-  },
-  "recommended": "U"
+  ]
 }

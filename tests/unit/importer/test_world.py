@@ -31,7 +31,7 @@ def test_world_reads_fixture_and_counts_skipped_types() -> None:
     config = yaml.safe_load((root / "theseus.yaml").read_text())
     plan = json.loads((root.parent / "base.plan.json").read_text())
     world = load_world(root, plan, adapters(config))
-    assert len(world.resources) == 122
+    assert len(world.resources) == 137  # 15 of them in legacy.tf
     # C1's skipped files: the network, the platform services, and each bucket's settings.
     assert world.skipped_types == {
         "aws_apigatewayv2_api": 1,
@@ -62,7 +62,7 @@ def test_world_reads_fixture_and_counts_skipped_types() -> None:
         "aws_vpc_security_group_egress_rule": 1,
         "aws_vpc_security_group_ingress_rule": 1,
     }
-    assert len(world.iac_files) == 12 and len(world.ci_files) == 4 and len(world.code_files) == 23
+    assert len(world.iac_files) == 13 and len(world.ci_files) == 5 and len(world.code_files) == 27
     assert all(
         not Path(path).is_absolute()
         for files in [world.iac_files, world.ci_files, world.code_files]

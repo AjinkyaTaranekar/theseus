@@ -6,7 +6,7 @@
 **The PR says:** stub.\
 **It asked for:** read **demo-app-logs/** · **It would get:** **customer-db**, **demo-company-files/invoices/** and **prod-db-credentials**\
 **How:** **priya-intern** is in **support-engineers** → can become **prod-support** → can read **prod-db-credentials** → opens **customer-db**.\
-**Fix:** reply `/theseus apply B` to commit fix B (Candidate B). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
+**Fix:** reply `/theseus apply` to commit the fix (candidate B). Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
 
 ```mermaid
 flowchart LR
@@ -62,18 +62,17 @@ How **priya-intern** reaches **prod-db-credentials**
 </details>
 
 <details>
-<summary><b>All 4 fixes Theseus tested</b>, each on a copy of the graph</summary>
+<summary><b>The fix that passes</b>, tested on a copy of the graph</summary>
 
 **Smallest change:** No single permission can be removed without breaking required access.
 
-| ID | Fix | Dangerous paths | Required access | Code calls | Verdict |
-| --- | --- | --- | --- | --- | --- |
-| A | Candidate A (rule) | all closed | kept | kept | fail |
-| **B** | **Candidate B (stub)** | **all closed** | **kept** | **kept** | **pass** |
-| C | Candidate C (rule) | all closed | kept | kept | unknown |
-| D | Candidate D (rule) | all closed | kept | kept | fail |
+| Fix | Dangerous paths | Required access | Code calls | Verdict |
+| --- | --- | --- | --- | --- |
+| **Candidate B (stub)** | **all closed** | **kept** | **kept** | **pass** |
 
-Reply `/theseus apply B` to commit a fix.
+Theseus also tried 3 other fixes that don't pass: candidate A (fail), candidate C (couldn't be checked) and candidate D (fail).
+
+Reply `/theseus apply` to commit it.
 
 </details>
 

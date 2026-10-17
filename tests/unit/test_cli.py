@@ -146,7 +146,9 @@ def test_scan_reads_a_scan_fixture_through_the_real_adapters() -> None:
     result = cli.scan_fixture(Path("fixtures/unused-grant"), store, RecordedJev(), get_settings())
     assert result.mode == "scan" and result.graphs == {"main": "fx__unused-grant__main"}
     assert [(g.workload, g.resource, g.access) for g in result.unused_grants] == [
-        ("workload:support-portal", "secret:prod-db-credentials", "read")
+        ("workload:invoice-mailer", "secret:payments-api-key", "read"),
+        ("workload:receipt-renderer", "secret:payments-api-key", "read"),
+        ("workload:support-portal", "secret:prod-db-credentials", "read"),
     ]
     assert [(c.id, c.verdict) for c in result.candidates] == [("U", "pass")]
 
@@ -185,7 +187,7 @@ def test_posture_reads_a_world_and_raises_the_advisory_s_finding() -> None:
         get_settings(),
         advisories,
     )
-    assert [(f.finding or {})["id"] for f in report.findings] == ["GHSA-demo-0001"]
+    assert [(f.finding or {})["id"] for f in report.findings] == ["GHSA-demo-0001", "GHSA-demo-0002"]
     assert report.posture.reach and report.posture.cost.monthly_usd > 0
 
 

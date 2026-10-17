@@ -77,6 +77,68 @@ class CostSummary(Contract):
     note: str = ""
 
 
+# What a posture run keeps to answer an outage later (contracts/incident.py) ---------------------------
+
+Effect = Literal["down", "degraded"]
+
+
+class ServiceTag(Contract):
+    """A node that a provider's service runs or serves, and what an outage of that service does to it.
+    `region` is None for a global service."""
+
+    node: str
+    provider: str
+    service: str
+    region: str | None = None
+    effect: Effect = "down"
+    why: str
+    address: str = ""
+
+
+class ServiceTerm(Contract):
+    """A service an incident can name: its code, its display name, and the words a headline may use."""
+
+    provider: str
+    service: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+    provider_names: list[str] = Field(default_factory=list)
+
+
+class RegionTerm(Contract):
+    code: str
+    name: str
+    aliases: list[str] = Field(default_factory=list)
+
+
+class OutageMap(Contract):
+    """What one adapter knows about outages in a world: its tags, and the services and regions it names."""
+
+    tags: list[ServiceTag] = Field(default_factory=list)
+    terms: list[ServiceTerm] = Field(default_factory=list)
+    regions: list[RegionTerm] = Field(default_factory=list)
+
+
+class DependencyRoutes(Contract):
+    """A dependency and every valid route that serves it, each from the principal to the resource."""
+
+    dependency: Dependency
+    routes: list[list[str]] = Field(default_factory=list)
+
+
+class OutageBasis(Contract):
+    """What a posture run keeps to answer incidents later without the engine."""
+
+    tags: list[ServiceTag] = Field(default_factory=list)
+    terms: list[ServiceTerm] = Field(default_factory=list)
+    regions: list[RegionTerm] = Field(default_factory=list)
+    routes: list[DependencyRoutes] = Field(default_factory=list)
+    # Workload -> workload calls (REQUESTS): a caller of something down loses what it calls.
+    requests: list[tuple[str, str]] = Field(default_factory=list)
+    cost: dict[str, float] = Field(default_factory=dict)
+    nodes: dict[str, NodeInfo] = Field(default_factory=dict)
+
+
 class Posture(Contract):
     reach: list[Reach] = Field(default_factory=list)
     dependencies: int = 0
@@ -86,6 +148,8 @@ class Posture(Contract):
     cost: CostSummary = Field(default_factory=CostSummary)
     # Every node named above, for plain names on the dashboard: shown, not compared.
     nodes: dict[str, NodeInfo] = Field(default_factory=dict)
+    # What an incident is answered from later, without the engine (contracts/incident.py).
+    outage: OutageBasis = Field(default_factory=OutageBasis)
 
 
 class PostureReport(Contract):

@@ -66,7 +66,10 @@
           gap: 4px; padding: 6px 8px; text-align: center; transition: opacity .2s, border-color .2s; }
   .tile svg.icon { width: 20px; height: 20px; stroke: currentColor; fill: none; stroke-width: 1.6;
                    stroke-linecap: round; stroke-linejoin: round; color: var(--muted); }
-  .tile .kind { font: 11px/1 var(--mono); color: var(--muted); text-transform: lowercase; }
+  .tile .kind { font: 11px/1 var(--mono); color: var(--muted); }
+  .tile .svc { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center; }
+  .tile .svc svg { width: 18px; height: 18px; stroke: #fff; fill: none; stroke-width: 1.8;
+                   stroke-linecap: round; stroke-linejoin: round; }
   .tile .name { font-size: 12.5px; font-weight: 600; line-height: 1.2; max-width: 116px; overflow: hidden;
                 text-overflow: ellipsis; white-space: nowrap; }
   .tile.exposed { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
@@ -98,6 +101,11 @@
   details summary { cursor: pointer; font-weight: 600; }
   details ul { margin: 10px 0 0; padding-left: 20px; color: var(--muted); }
   #full { min-height: 360px; }
+  #fixgraph { min-height: 360px; }
+  .fixops { padding: 12px 16px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--muted); }
+  .fixops ul { margin: 6px 0 0; padding-left: 18px; color: var(--text); }
+  .fixops li { margin: 3px 0; overflow-wrap: anywhere; }
+  .fixops code { font-family: var(--mono); font-size: 12.5px; }
   footer { padding: 28px 0 40px; color: var(--muted); font-size: 13px; }
   .message { padding: 80px 0; color: var(--muted); font-size: 16px; }
   @media (max-width: 720px) {
@@ -117,6 +125,7 @@
   <span class="brand"><svg viewBox="0 0 32 32" aria-hidden="true"><g fill="none" stroke="#686d76" stroke-width="1.2" stroke-linejoin="round"><polygon points="16,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10"/><polygon points="16,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5"/><path d="M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10"/></g><g fill="#9a9fa8"><circle cx="16" cy="4" r="1.4"/><circle cx="26.39" cy="10" r="1.4"/><circle cx="26.39" cy="22" r="1.4"/><circle cx="16" cy="28" r="1.4"/><circle cx="5.61" cy="10" r="1.4"/></g><path d="M5.61 22L5.61 10L16 16" fill="none" stroke="#6e9fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.61" cy="22" r="2" fill="#6e9fff"/><circle cx="16" cy="16" r="3.2" fill="#f2495c"/></svg>Theseus</span>
   <span class="where" id="where"></span>
   <span class="badge" id="badge" hidden></span>
+  <a class="dash" id="ghpr" hidden target="_blank" rel="noopener">Open PR on GitHub</a>
   <a class="dash" id="dash" hidden>Dashboard</a>
 </div></header>
 
@@ -137,6 +146,8 @@
     </div>
     <div class="stage" id="stage"><div class="canvas" id="canvas"></div></div>
     <div id="full" hidden></div>
+    <div id="fixgraph" hidden></div>
+    <div class="fixops" id="fixops" hidden></div>
   </div>
 
   <section id="todo-section" hidden>
@@ -217,12 +228,30 @@ function nameOf(id) {
   const i = id.indexOf(":");
   return i < 0 ? id : id.slice(i + 1);
 }
+// The service each node is, coloured by its AWS architecture category, with a plain glyph: identity and
+// secrets red, storage green, databases purple, compute orange, messaging pink, CI neutral.
+const SERVICES = {
+  user: ["IAM user", "#DD344C", "user"], group: ["IAM group", "#DD344C", "group"], role: ["IAM role", "#DD344C", "role"],
+  secret: ["Secrets Manager", "#DD344C", "secret"], kms: ["KMS key", "#DD344C", "secret"],
+  db: ["RDS", "#C925D1", "database"], dynamodb: ["DynamoDB", "#C925D1", "database"],
+  sqs: ["SQS", "#E7157B", "queue"], sns: ["SNS", "#E7157B", "topic"], logs: ["CloudWatch Logs", "#E7157B", "logs"],
+  workload: ["Lambda / ECS", "#ED7100", "service"], workflow: ["GitHub Actions", "#24292F", "CI workflow"],
+  action: ["GitHub Action", "#24292F", "GitHub Action"], entry: ["Internet", "#5C6068", "internet"],
+};
+function serviceOf(id, info) {
+  if (id.startsWith("s3://")) return ["S3", "#7AA116", "storage"];
+  const prefix = id.split(":")[0];
+  if (SERVICES[prefix]) return SERVICES[prefix];
+  return [kindOf(id, info), "#5C6068", kindOf(id, info)];
+}
 function kindOf(id, info) {
   const prefix = id.split(":")[0];
   if (KINDS[prefix]) return KINDS[prefix];
   const cat = ((info && info.category) || "").toLowerCase().replace(/_/g, "");
   return CATEGORIES[cat] || "data";
 }
+function plural(n, word) { return `${n} ${n === 1 ? word : word + "s"}`; }
+function add(parent, ...kids) { for (const k of kids) if (k) parent.append(k); return parent; }
 function short(id) {
   // A storage location reads best as its folder; the full name is in the tooltip.
   const full = nameOf(id), folder = full.endsWith("/");
@@ -290,6 +319,12 @@ function render(data) {
   badge.textContent = (finding ? { blocked: "At risk", look: "Needs a look", clear: "Not exposed" }
     : { blocked: "Merge blocked", look: "Needs a look", clear: "Safe to merge" })[data.verdict.level];
   if (data.dashboard) { const dash = $("dash"); dash.href = data.dashboard; dash.hidden = false; }
+  if (!finding && data.repo && data.number) {
+    const pr = $("ghpr");
+    pr.href = `https://github.com/${data.repo.split("/").map(encodeURIComponent).join("/")}/pull/${encodeURIComponent(data.number)}`;
+    pr.textContent = `PR #${data.number} on GitHub`;
+    pr.hidden = false;
+  }
   $("main").hidden = false;
 
   // The finding, in one sentence and one line under it.
@@ -375,10 +410,15 @@ function render(data) {
   const cols = Math.max(1, ...[...place.values()].map((v) => v.col + 1));
 
   function drawBoard(mode) {
-    $("stage").hidden = mode === "full";
+    const fix = mode.startsWith("fix:") ? mode.slice(4) : null;
+    $("stage").hidden = mode === "full" || !!fix;
     $("full").hidden = mode !== "full";
+    $("fixgraph").hidden = !fix;
+    $("fixops").hidden = !fix;
     for (const id of ["before", "after", "full"]) $(`v-${id}`).setAttribute("aria-pressed", String(mode === id));
+    for (const b of document.querySelectorAll("button[data-fix]")) b.setAttribute("aria-pressed", String(b.dataset.fix === fix));
     if (mode === "full") { drawFull(); return; }
+    if (fix) { drawFix(fix); return; }
     const canvas = $("canvas");
     canvas.replaceChildren();
     if (!opened.length) {
@@ -422,9 +462,13 @@ function render(data) {
       const kind = kindOf(id, info(id));
       const tile = el("div", null, { class: "tile", title: id });
       tile.style.left = `${pos.x}px`; tile.style.top = `${pos.y}px`;
-      const icon = svg("svg", { class: "icon", viewBox: "0 0 24 24", "aria-hidden": "true" });
-      icon.append(svg("path", { d: ICONS[kind] || ICONS.other }));
-      tile.append(icon, el("div", kind, { class: "kind" }), el("div", short(id), { class: "name" }));
+      const [service, color, glyph] = serviceOf(id, info(id));
+      const badge = el("div", null, { class: "svc", "aria-hidden": "true" });
+      badge.style.background = color;
+      const icon = svg("svg", { viewBox: "0 0 24 24" });
+      icon.append(svg("path", { d: ICONS[glyph] || ICONS[kind] || ICONS.other }));
+      badge.append(icon);
+      tile.append(badge, el("div", service, { class: "kind" }), el("div", short(id), { class: "name" }));
       const sens = info(id).sensitivity;
       if (p.col === 0) tile.classList.add("actor");
       if (before && outOfReach.has(id)) tile.classList.add("off");
@@ -568,6 +612,131 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     $("v-before").before($("v-after"));
     $("v-before").hidden = !cut.length;
   }
+  // Each fix, drawn on the graph copy the engine verified it on, against the PR's head: what it cuts (red,
+  // dashed), what it adds (green), and the route that still gives the actor what the PR asked for (blue).
+  // Only the fixes that pass: the others are named in the comment, so the page offers what is good.
+  const fixes = finding ? [] : (r.candidates || []).filter((c) => c.verdict === "pass");
+  const fixCache = new Map();
+  for (const fx of fixes) {
+    const b = el("button", fixes.length === 1 ? "With the fix" : `With fix ${fx.id}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
+                                                    title: `${fx.title}: ${fx.verdict}${fx.recommended ? ", recommended" : ""}` });
+    b.addEventListener("click", () => drawBoard(`fix:${fx.id}`));
+    $("v-full").before(b);
+  }
+  const ekey = (e) => `${e.src}|${e.type}|${e.dst}`;
+  function routeIn(g, from, to) {
+    // The shortest access route in this graph, as edges; null when there is none.
+    const out = new Map();
+    for (const e of g.edges) if (ACCESS_TYPES.has(e.type)) { if (!out.has(e.src)) out.set(e.src, []); out.get(e.src).push(e); }
+    const back = new Map([[from, null]]);
+    const queue = [from];
+    while (queue.length) {
+      const at = queue.shift();
+      if (at === to) break;
+      for (const e of out.get(at) || []) if (!back.has(e.dst)) { back.set(e.dst, e); queue.push(e.dst); }
+    }
+    if (!back.has(to)) return null;
+    const route = [];
+    for (let at = to; back.get(at); at = back.get(at).src) route.unshift(back.get(at));
+    return route;
+  }
+  let fixCy = null;
+  async function drawFix(id) {
+    const head = data.graphs.head;
+    if (!fixCache.has(id)) {
+      $("note").textContent = `Loading fix ${id}'s graph from FalkorDB…`;
+      const k = new URLSearchParams(location.search).get("k") || "";
+      try {
+        const res = await fetch(`${location.pathname.replace(/\/$/, "")}/fixes/${encodeURIComponent(id)}?k=${encodeURIComponent(k)}`, { cache: "no-store" });
+        fixCache.set(id, res.ok ? await res.json() : null);
+      } catch (e) { fixCache.set(id, null); }
+    }
+    const fx = fixCache.get(id);
+    if (!fx || !head) { $("note").textContent = "This fix's graph isn't in the store any more."; return; }
+    const headEdges = new Map(head.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
+    const fixEdges = new Map(fx.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
+    const added = [...fixEdges.values()].filter((e) => !headEdges.has(ekey(e)));
+    const openedKeys = new Set(opened.flatMap((p) => p.steps.map((s) => `${s.from}|${s.type}|${s.to}`)));
+    const onRoute = new Set(opened.flatMap(routeOf));
+    const removed = [...headEdges.values()].filter((e) => !fixEdges.has(ekey(e)) && (onRoute.has(e.src) || onRoute.has(e.dst)));
+    const asked = ((r.intent && r.intent.grants) || []).map((g) => routeIn(fx, g.principal, g.resource)).filter(Boolean);
+    const keptKeys = new Set(asked.flat().map(ekey));
+    const still = opened.filter((p) => routeIn(fx, p.actor, p.target));
+    const show = [...opened.flatMap((p) => p.steps.map((s) => ({ src: s.from, type: s.type, dst: s.to }))), ...added, ...removed, ...asked.flat()];
+    const links = new Map();
+    for (const e of show) links.set(ekey(e), e);
+    const ids = new Set([...links.values()].flatMap((e) => [e.src, e.dst]));
+    const nodeOf = new Map([...head.nodes, ...fx.nodes].map((n) => [n.id, n]));
+    const kind = (nid) => kindOf(nid, info(nid).category ? info(nid) : nodeOf.get(nid) || {});
+    const cols = LANES.map(() => []);
+    for (const nid of ids) cols[lane(nid)].push(nid);
+    const pos = new Map();
+    cols.forEach((list, c) => list.sort().forEach((nid, i) => pos.set(nid, { x: c * 230, y: i * 76 })));
+    const tallest = Math.max(1, ...cols.map((l) => l.length));
+    cols.forEach((list) => { const shift = ((tallest - list.length) * 76) / 2; list.forEach((nid) => { pos.get(nid).y += shift; }); });
+    const box = $("fixgraph");
+    const graphW = (LANES.length - 1) * 230 + 160 + 60, graphH = (tallest - 1) * 76 + 42 + 70 + 60;
+    const scale = Math.min(1, box.clientWidth / graphW);
+    box.style.height = `${Math.ceil(graphH * scale) + 20}px`;
+    const state = (e) => (!fixEdges.has(ekey(e)) ? "cut" : !headEdges.has(ekey(e)) ? "added" : keptKeys.has(ekey(e)) ? "kept" : "same");
+    const reachable = new Set(still.map((p) => p.target));
+    const go = () => {
+      if (fixCy) fixCy.destroy();
+      const style = getComputedStyle(document.documentElement);
+      const c = (name) => style.getPropertyValue(name).trim();
+      fixCy = cytoscape({
+        container: box,
+        elements: [
+          ...LANES.map((label, i) => ({ data: { id: `lane${i}`, label, lane: 1 }, position: { x: i * 230, y: -70 } })),
+          ...[...ids].map((nid) => ({ data: { id: nid, label: `${kind(nid)}\n${short(nid)}`, isnew: nodeOf.has(nid) && !head.nodes.some((n) => n.id === nid) ? 1 : 0,
+                                             exposed: opened.some((p) => p.target === nid) ? (reachable.has(nid) ? 2 : 1) : 0 }, position: pos.get(nid) })),
+          ...[...links.values()].map((e, i) => ({ data: { id: `f${i}`, source: e.src, target: e.dst, state: state(e) } })),
+        ],
+        style: [
+          { selector: "node", style: { shape: "round-rectangle", width: 160, height: 44, "background-color": c("--card"), "border-width": 1,
+              "border-color": c("--tile-line"), label: "data(label)", "text-wrap": "wrap", "text-valign": "center", "font-size": 11,
+              color: c("--muted"), "text-max-width": 150, "font-family": "Inter, system-ui, sans-serif" } },
+          { selector: "node[exposed = 1]", style: { "border-color": c("--faint"), "border-style": "dashed", color: c("--faint") } },
+          { selector: "node[exposed = 2]", style: { "border-color": c("--accent"), "border-width": 2.5, color: c("--text") } },
+          { selector: "node[isnew = 1]", style: { "border-color": c("--ok"), "border-width": 2.5, color: c("--text") } },
+          { selector: "node[lane = 1]", style: { "background-opacity": 0, "border-width": 0, "font-size": 11, "font-weight": 600,
+              color: c("--muted"), "text-transform": "uppercase", width: 160, height: 22 } },
+          { selector: "edge", style: { width: 1.2, "line-color": c("--tile-line"), "target-arrow-color": c("--tile-line"),
+              "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.8 } },
+          { selector: "edge[state = 'cut']", style: { "line-color": c("--accent"), "target-arrow-color": c("--accent"), "line-style": "dashed", width: 2.2 } },
+          { selector: "edge[state = 'added']", style: { "line-color": c("--ok"), "target-arrow-color": c("--ok"), width: 2.6 } },
+          { selector: "edge[state = 'kept']", style: { "line-color": c("--primary"), "target-arrow-color": c("--primary"), width: 2.6 } },
+        ],
+        layout: { name: "preset", padding: 30, fit: true },
+        userZoomingEnabled: false, userPanningEnabled: false, boxSelectionEnabled: false, autoungrabify: true,
+      });
+    };
+    const verdict = fx.verdict === "pass" ? "passes" : fx.verdict === "fail" ? "fails" : `is ${fx.verdict}`;
+    const which = fixes.length === 1 ? "The fix" : `Fix ${fx.id}`;
+    const viaNew = asked.length && asked.flat().every((e) => !headEdges.has(ekey(e)));
+    const keeps = asked.length ? ` ${nameOf(r.intent.grants[0].principal)} can still ${access([r.intent.grants[0].access])} ${short(r.intent.grants[0].resource)}, the access the PR asked for, ${viaNew ? "through the new links" : "along the blue links"}.` : "";
+    $("note").textContent = `${which} ${verdict}: it cuts ${plural(removed.length, "link")} (red, dashed) and adds ${plural(added.length, "link")} (green). ` +
+      (still.length ? `${plural(still.length, "way")} in ${still.length === 1 ? "is" : "are"} still open.` : `None of the ${plural(opened.length, "way")} in remains.`) + keeps;
+    const ops = $("fixops");
+    const list = el("ul");
+    for (const op of fx.ops || []) {
+      const args = op.args || {};
+      const who = args.name || args.role || args.principal || args.user || args.policy_address || "";
+      list.append(add(el("li"), el("code", op.op.replace(/_/g, " ")), document.createTextNode(who ? ` ${who}` : ""),
+        document.createTextNode(args.group ? ` from ${args.group}` : args.trust_principals ? `, trusted only by ${args.trust_principals.map(nameOf).join(", ")}` : "")));
+    }
+    ops.replaceChildren(el("div", `What ${which.toLowerCase()} changes, ${fx.verdict === "pass" ? "checked on a copy of the graph" : `and why it doesn't pass: ${fx.reason || fx.verdict}`}:`), list);
+    if (fx.verdict === "pass") {
+      const command = fixes.length === 1 ? "/theseus apply" : `/theseus apply ${fx.id}`;
+      ops.append(el("div", `Commit Theseus's suggestion on the PR, or reply ${command} to commit it.`, { style: "margin-top:8px" }));
+    }
+    if (typeof cytoscape !== "undefined") { go(); return; }
+    const s = el("script", null, { src: CYTOSCAPE.src, integrity: CYTOSCAPE.integrity, crossorigin: "anonymous", referrerpolicy: "no-referrer" });
+    s.onload = go;
+    s.onerror = () => { $("note").textContent = "The graph library didn't load. Try again in a moment."; };
+    document.head.append(s);
+  }
+
   $("v-before").addEventListener("click", () => drawBoard("before"));
   $("v-after").addEventListener("click", () => drawBoard("after"));
   $("v-full").addEventListener("click", () => drawBoard("full"));
