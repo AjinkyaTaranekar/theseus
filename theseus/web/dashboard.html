@@ -265,9 +265,11 @@ function panel(title, span, opts) {
 function sparkline(values, color) {
   const s = svg("svg", { viewBox: "0 0 100 28", preserveAspectRatio: "none", "aria-hidden": "true" });
   if (!values || values.length < 2) { s.append(svg("line", { x1: 0, y1: 26, x2: 100, y2: 26, stroke: "#33363c", "stroke-width": 1, "vector-effect": "non-scaling-stroke" })); return s; }
-  const max = Math.max(...values, 1), min = Math.min(...values, 0);
-  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${26 - ((v - min) / (max - min || 1)) * 22}`);
-  s.append(svg("polygon", { points: `0,28 ${pts.join(" ")} 100,28`, fill: color, opacity: 0.12 }));
+  const max = Math.max(...values), min = Math.min(...values);
+  // A flat series sits mid-height, as Grafana draws one; otherwise it spans the panel's height.
+  const y = (v) => (max === min ? 16 : 25 - ((v - min) / (max - min)) * 20);
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${y(v)}`);
+  s.append(svg("polygon", { points: `0,28 ${pts.join(" ")} 100,28`, fill: color, opacity: 0.08 }));
   s.append(svg("polyline", { points: pts.join(" "), fill: "none", stroke: color, "stroke-width": 1.6, "vector-effect": "non-scaling-stroke" }));
   return s;
 }
