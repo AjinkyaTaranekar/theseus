@@ -303,13 +303,19 @@ function render(data) {
   const isNew = (step) => { const ev = (r.evidence || {})[step.evidence]; return !!ev && changed.has(ev.address); };
   const opened = [...r.opened].sort(byRank);
   const already = [...(r.unchanged || [])].sort(byRank);
+  // A PR that opens nothing but whose code now reads sensitive data: draw the route that code uses. The
+  // access was there before; what is new is the code using it.
+  const codeUse = r.opened.length ? [] : r.use_beyond_intent || [];
+  const codeRoutes = codeUse.flatMap((u) => already.filter((p) => p.actor === u.workload && p.target === u.resource).slice(0, 1));
+  const drawn = opened.length ? opened : codeRoutes;
+  const codeMode = !opened.length && codeRoutes.length > 0;
   const finding = r.mode === "finding";
   const advisory = r.finding || {};
   const actionId = advisory.action || "";
   const cut = r.min_cut && r.min_cut.cuttable ? r.min_cut.cut || [] : [];
   const cutKeys = new Set(cut.map((c) => `${c.src}|${c.type}|${c.dst}`));
   const rotate = new Set(r.rotate || []);
-  const marked = (step) => (finding ? cutKeys.has(`${step.from}|${step.type}|${step.to}`) : isNew(step));
+  const marked = (step) => (finding ? cutKeys.has(`${step.from}|${step.type}|${step.to}`) : codeMode || isNew(step));
 
   document.title = finding ? `${advisory.id} · Theseus` : `${data.repo} #${data.number} · Theseus`;
   $("where").textContent = finding ? `${advisory.id} · ${data.repo}` : `${data.repo} #${data.number} · ${data.head_sha.slice(0, 7)}`;
@@ -375,7 +381,7 @@ function render(data) {
   const routeOf = (p) => (p.steps.length ? [p.steps[0].from, ...p.steps.map((s) => s.to)] : [p.actor]);
   const lead = finding && actionId ? [actionId] : [];
   const quiet = finding ? (advisory.workflows || []).filter((w) => !opened.some((p) => p.actor === w)) : [];
-  const routes = [...opened.map((p) => [...lead, ...routeOf(p)]), ...quiet.map((w) => [...lead, w])];
+  const routes = [...drawn.map((p) => [...lead, ...routeOf(p)]), ...quiet.map((w) => [...lead, w])];
   for (const route of routes) {
     let row = null;
     route.forEach((id, col) => {
@@ -392,21 +398,21 @@ function render(data) {
   if (lead.length) for (const w of advisory.workflows || []) {
     edges.set(`${actionId}|RUNS_IN|${w}`, { step: { from: actionId, type: "RUNS_IN", to: w, evidence: null }, fresh: false });
   }
-  for (const p of opened) for (const s of p.steps) {
+  for (const p of drawn) for (const s of p.steps) {
     const key = `${s.from}|${s.type}|${s.to}`;
     if (!edges.has(key)) edges.set(key, { step: s, fresh: marked(s) });
   }
-  // Past a step this PR adds, nothing was reachable before it.
+  // Past a step this PR adds, nothing was reachable before it. A route the code starts using was there.
   const outOfReach = new Set();
-  for (const p of opened) {
+  for (const p of codeMode ? [] : drawn) {
     const i = p.steps.findIndex(marked);
     p.steps.slice(i < 0 ? p.steps.length - 1 : i).forEach((s) => outOfReach.add(s.to));
     if (!p.steps.length) outOfReach.add(p.target);
   }
-  const exposed = new Set(opened.map((p) => p.target));
+  const exposed = new Set(drawn.map((p) => p.target));
   // A secret that opens another exposed target is tagged by what it opens.
   const keyTo = new Map();
-  for (const p of opened) for (const s of p.steps) if (s.type === "UNLOCKS" && exposed.has(s.to)) keyTo.set(s.from, s.to);
+  for (const p of drawn) for (const s of p.steps) if (s.type === "UNLOCKS" && exposed.has(s.to)) keyTo.set(s.from, s.to);
   const cols = Math.max(1, ...[...place.values()].map((v) => v.col + 1));
 
   function drawBoard(mode) {
@@ -421,7 +427,7 @@ function render(data) {
     if (fix) { drawFix(fix); return; }
     const canvas = $("canvas");
     canvas.replaceChildren();
-    if (!opened.length) {
+    if (!drawn.length) {
       canvas.style.width = "auto"; canvas.style.height = "auto";
       canvas.append(el("p", "Nothing new to draw: this PR opens no way in to sensitive data.", { class: "note" }));
       $("note").textContent = "";
@@ -504,8 +510,12 @@ function render(data) {
     // A long route is scaled down to fit the stage rather than cut off at its right edge.
     const room = $("stage").clientWidth - 48;
     canvas.style.zoom = room > 0 && width > room ? String(room / width) : "";
-    const actor = nameOf(opened[0].actor);
-    $("note").textContent = finding
+    const actor = nameOf(drawn[0].actor);
+    const use = codeUse[0];
+    $("note").textContent = codeMode
+      ? (before ? `Today, ${actor} could already take this route, but no code does.`
+                : `If merged: ${actor}'s code takes this route to read ${nameOf(drawn[0].target)}${use && use.file ? `, at ${use.file}:${use.line}` : ""}. The PR doesn't mention it.`)
+      : finding
       ? (before ? "With that one link cut, none of the highlighted data is reachable."
                 : `${opened.length} ${opened.length === 1 ? "way" : "ways"} in from the compromised Action.`)
       : before ? `Today, ${actor} can't reach the highlighted data.`
