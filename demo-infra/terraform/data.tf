@@ -96,3 +96,17 @@ resource "aws_dynamodb_table" "orders" {
     enabled = true
   }
 }
+
+resource "aws_s3_bucket_policy" "company_files_public" {
+  bucket = "demo-company-files"
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "PublicRead"
+      Effect    = "Allow"
+      Principal = "*"
+      Action    = "s3:GetObject"
+      Resource  = "arn:aws:s3:::demo-company-files/*"
+    }]
+  })
+}
