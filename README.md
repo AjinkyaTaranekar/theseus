@@ -194,10 +194,11 @@ the `FALKORDB_*` settings.
 ```
 
 > **Known gap.** In replay mode on a fresh clone, the CLI (`python -m theseus analyze fixtures/intern`, and
-> `finding` and `scan`) stops with `no recording sensitivity-...`: it looks up Jev's recording by a hash of the
-> whole request, and the demo world gained resources after that recording was made. The Try-it page and the
-> tests look recordings up by content and are not affected. A fix is in progress; until it lands, run the CLI
-> with `THESEUS_MODE=live` and the Jev and LLM keys in `.env`.
+> `finding`, `scan`, `posture` and `incident`) stops with `no recording sensitivity-...`: it looks up Jev's
+> recording by a hash of the whole request, and the demo world gained resources after that recording was made.
+> The Try-it page and the tests look recordings up by content and are not affected.
+> [PR #132](https://github.com/AjinkyaTaranekar/theseus/pull/132) makes the CLI do the same; until it merges, run
+> the CLI with `THESEUS_MODE=live` and the Jev and LLM keys in `.env`.
 
 To review your own pull requests, install the GitHub App and add `theseus.yaml` and the workflows:
 [docs/onboarding.md](docs/onboarding.md). Every setting is in [`.env.example`](.env.example).
