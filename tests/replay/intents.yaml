@@ -43,6 +43,7 @@ vocabulary:
     - workload:support-portal
   targets:
     - db:customer-db
+    - db:orders-migration-db
     - dynamodb:demo-orders
     - log-group:/aws/lambda/analytics-export
     - log-group:/aws/lambda/billing-api
