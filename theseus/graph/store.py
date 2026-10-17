@@ -87,6 +87,9 @@ class MemoryStore:
     def docs(self, prefix: str) -> list[str]:
         return sorted(k for k in self._docs if k.startswith(prefix))
 
+    def read_docs(self, prefix: str) -> dict[str, str]:
+        return {k: self._docs[k] for k in self.docs(prefix)}
+
     def apply_delta(self, graph: str, delta: GraphDelta) -> None:
         rows = self._rows(graph)
         gone_edges = set(delta.remove_edges)
@@ -290,6 +293,17 @@ class FalkorStore:
             {"prefix": prefix},
         )
         return [row[0] for row in found]
+
+    def read_docs(self, prefix: str) -> dict[str, str]:
+        """Every document whose key starts with `prefix`, by key, in one query."""
+        if DOCS not in self.list_graphs():
+            return {}
+        found = self._query(
+            DOCS,
+            "MATCH (d:Doc) WHERE d.key STARTS WITH $prefix RETURN d.key, d.text ORDER BY d.key",
+            {"prefix": prefix},
+        )
+        return {row[0]: row[1] for row in found}
 
     def _add(self, graph: str, nodes: list[NodeRow], edges: list[EdgeRow]) -> None:
         by_labels: dict[tuple[str, ...], list[dict[str, Any]]] = defaultdict(list)
