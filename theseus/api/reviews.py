@@ -29,6 +29,7 @@ from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import PATH_TYPES
 from theseus.engine.incident import blast
+from theseus.engine.pr_graphs import delete_pr_graphs, drop_stale_fixes, world_name
 from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
 
@@ -40,9 +41,10 @@ CACHE_SIZE = 64
 
 
 class ReviewStore(Protocol):
-    """The two things the page needs from a store, besides the graphs it already holds."""
+    """What the page and a PR's graphs need from a store, besides the graphs it already holds."""
 
     def view(self, graph: str) -> dict[str, list[dict[str, Any]]]: ...
+    def delete(self, graph: str) -> None: ...
     def put_doc(self, key: str, text: str) -> None: ...
     def get_doc(self, key: str) -> str | None: ...
     def docs(self, prefix: str) -> list[str]: ...
@@ -145,9 +147,11 @@ def save(
     result: AnalysisResult,
     title: str = "",
     updated_at: str = "",
+    closed: bool = False,
 ) -> None:
     """Keeps the PR's newest result for its page, with its verdict and the base and head commits and world
-    root its links need; the PR's title and when it was reviewed are for the dashboard."""
+    root its links need; the PR's title and when it was reviewed are for the dashboard. Graphs the result no
+    longer names are dropped, all of the PR's when `closed`."""
     base_sha, head_sha = shas
     doc = {
         "repo": repo,
@@ -163,6 +167,37 @@ def save(
     store.put_doc(key(repo, number), json.dumps(doc, sort_keys=True))
     _cache.clear(key(repo, number))
     log.info("%s#%d: kept the review of %s for its page", repo, number, head_sha[:7])
+    _tidy(store, world_root, repo, number, result, closed)
+
+
+def _tidy(
+    store: ReviewStore, world_root: str, repo: str, number: int, result: AnalysisResult, closed: bool
+) -> None:
+    """Leaves the store holding what the newest review names, once its page is kept: a PR keeps its base, its
+    head and one fix graph for each candidate the review lists, so a fix an earlier review listed and this one
+    does not is dropped; a PR that is already closed keeps no graphs at all. Housekeeping never fails a
+    review: a store that cannot delete leaves graphs for `python -m theseus prune`, and says so."""
+    try:
+        if closed:
+            removed = delete_pr_graphs(store, world_name(world_root), number)
+        else:
+            head = result.graphs.get("head", "")
+            removed = drop_stale_fixes(store, head, [c.id for c in result.candidates])
+    except GraphError as e:
+        log.warning("%s#%d: could not tidy its graphs; prune will: %s", repo, number, e)
+        return
+    if removed:
+        log.info("%s#%d: deleted %d graph(s) it no longer needs: %s", repo, number, len(removed), removed)
+
+
+def drop_graphs(store: ReviewStore, world_root: str, repo: str, number: int) -> list[str]:
+    """Deletes a closed PR's graphs and returns their names. Its review stays in the documents graph, so the
+    page keeps its text and the dashboard its history; the page's cached read is forgotten, so the next
+    visit says the graphs are gone. Raises GraphError when the store cannot delete."""
+    removed = delete_pr_graphs(store, world_name(world_root), number)
+    _cache.clear(key(repo, number))
+    log.info("%s#%d: closed; deleted %d graph(s): %s", repo, number, len(removed), removed)
+    return removed
 
 
 def finding_url(settings: Settings, finding_id: str) -> str | None:
@@ -224,7 +259,9 @@ def page_doc(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
     with ThreadPoolExecutor(max_workers=2) as pool:
         views = list(pool.map(read, [name for _, name in named]))
     graphs = {side: view for (side, _), view in zip(named, views, strict=True) if view is not None}
-    page = {**doc, "graphs": graphs}
+    # The sides the review names and the store no longer holds: a closed PR loses its graphs, not its review.
+    removed = sorted(side for side, _ in named if side not in graphs)
+    page = {**doc, "graphs": graphs, "graphs_removed": removed}
     _cache.put(store, doc_key, "", page)
     log.info("%s: read the page in %d ms", doc_key, (time.perf_counter() - started) * 1000)
     return page

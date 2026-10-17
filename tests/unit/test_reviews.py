@@ -269,3 +269,68 @@ def _fresh_cache(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 def test_the_default_clock_is_not_the_wall_clock() -> None:
     cache: Any = reviews.ReadCache()
     assert cache.clock.__name__ == "monotonic"
+
+
+# A PR's graphs while it is open and after it closes -------------------------------------------------------
+
+
+def test_a_review_whose_graphs_are_all_gone_says_so(clock: Clock) -> None:
+    store = seeded()
+    page = reviews.page_doc(store, KEY)
+    assert page is not None and page["graphs_removed"] == []
+    for graph in (BASE, HEAD):
+        store.delete(graph)
+    reviews._cache.clear(KEY)
+    gone = reviews.page_doc(store, KEY)
+    assert gone is not None and gone["graphs"] == {} and gone["graphs_removed"] == ["base", "head"]
+    assert gone["result"]["candidates"][0]["id"] == "B"  # the review itself is still there
+
+
+def test_a_review_that_names_no_graphs_has_nothing_removed(clock: Clock) -> None:
+    store = seeded()
+    store.put_doc(KEY, doc({}))
+    page = reviews.page_doc(store, KEY)
+    assert page is not None and page["graphs_removed"] == []
+
+
+def test_closing_a_pr_deletes_its_graphs_keeps_its_review_and_clears_its_cache(clock: Clock) -> None:
+    store = seeded()
+    store.load("acme__pr70-head", rows("other"))
+    first = reviews.page_doc(store, KEY)
+    assert first is not None and list(first["graphs"]) == ["head", "base"]
+
+    removed = reviews.drop_graphs(store, "acme", "acme/infra", 7)
+
+    assert removed == [BASE, FIX_B, HEAD]
+    assert store.list_graphs() == ["acme__pr70-head"]
+    assert store.get_doc(KEY) == doc()
+    page = reviews.page_doc(store, KEY)  # not the cached read, which still held both graphs
+    assert page is not None and page["graphs"] == {} and page["graphs_removed"] == ["base", "head"]
+    assert page["number"] == 7 and page["result"]["candidates"]
+
+
+def test_saving_a_review_drops_the_fix_graphs_it_no_longer_lists(clock: Clock) -> None:
+    from theseus.api import routes
+
+    graphs = {"base": "acme__pr42-base", "head": "acme__pr42-head"}
+    result = routes.stub_for("sample", "pr").model_copy(update={"graphs": graphs})
+    listed = [f"acme__pr42-fix-{c.id.lower()}" for c in result.candidates]
+    assert listed, "the sample review lists candidates"
+    store = SpyStore()
+    # An earlier review of the PR left fixes S and K, which this one no longer lists; PR 420 is another PR.
+    for name in (*graphs.values(), *listed, "acme__pr42-fix-s", "acme__pr42-fix-k", "acme__pr420-fix-s"):
+        store.load(name, rows("a"))
+
+    reviews.save(store, "acme/infra", 42, ("b" * 40, "h" * 40), "demo-infra", result)
+
+    assert store.list_graphs() == sorted([*graphs.values(), *listed, "acme__pr420-fix-s"])
+    assert store.get_doc(reviews.key("acme/infra", 42)) is not None
+
+
+def test_saving_a_result_with_no_head_graph_deletes_nothing(clock: Clock) -> None:
+    from theseus.api import routes
+
+    result = routes.stub_for("sample", "pr").model_copy(update={"graphs": {}})
+    store = seeded()
+    reviews.save(store, "acme/infra", 7, ("b" * 40, "h" * 40), "demo-infra", result)
+    assert store.list_graphs() == sorted([BASE, HEAD, FIX_B])

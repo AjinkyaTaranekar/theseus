@@ -7,6 +7,8 @@ in memory and the model and Jev replay, so nothing touches the network.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import re
 from collections.abc import Iterator
@@ -34,6 +36,7 @@ REPO = "demo-org/theseus"
 APP_ID, INSTALLATION = 123, 42
 HEAD, BASE = "a" * 40, "b" * 40
 TOKEN = "theseus-token-not-real"
+SECRET = "webhook-secret-not-real"
 SIDES = {HEAD: FIXTURE / "head", BASE: FIXTURE / "base"}
 
 
@@ -48,20 +51,24 @@ class FakeRepo:
         self.queries = 0
         self.repo_labels: list[dict[str, Any]] = []
         title, _, body = (FIXTURE / "pr.md").read_text(encoding="utf-8").partition("\n")
-        pr = {"number": 7, "title": title.removeprefix("# "), "body": body.strip()}
+        pr = {"number": 7, "title": title.removeprefix("# "), "body": body.strip(), "state": "open"}
         pr |= {"head": {"sha": HEAD}, "base": {"sha": BASE}}
+        self.pr = pr
         self.router = respx.Router(base_url=API, assert_all_called=False)
         r = self.router
         r.get(f"/repos/{REPO}/installation").mock(return_value=httpx.Response(200, json={"id": INSTALLATION}))
         r.post(f"/app/installations/{INSTALLATION}/access_tokens").mock(
             return_value=httpx.Response(201, json={"token": "ghs_x", "expires_at": "2099-01-01T00:00:00Z"})
         )
-        r.get(f"/repos/{REPO}/pulls/7").mock(return_value=httpx.Response(200, json=pr))
+        r.get(f"/repos/{REPO}/pulls/7").mock(side_effect=lambda req: httpx.Response(200, json=self.pr))
         r.get(url__regex=rf"/repos/{REPO}/git/trees/(?P<sha>\w+)").mock(side_effect=self._tree)
         r.get(url__regex=rf"/repos/{REPO}/contents/(?P<path>[^?]+)").mock(side_effect=self._contents)
         r.post("/graphql").mock(side_effect=self._graphql)
         r.get(f"/repos/{REPO}/issues/7/comments").mock(side_effect=lambda req: self._page(req, self.comments))
         r.post(f"/repos/{REPO}/issues/7/comments").mock(side_effect=self._comment)
+        r.patch(url__regex=rf"/repos/{REPO}/issues/comments/(?P<cid>\d+)$").mock(
+            side_effect=self._edit_comment
+        )
         r.get(url__regex=rf"/repos/{REPO}/commits/(?P<sha>\w+)/check-runs").mock(
             side_effect=self._list_checks
         )
@@ -124,6 +131,11 @@ class FakeRepo:
         self.comments.append(comment)
         return httpx.Response(201, json=comment)
 
+    def _edit_comment(self, request: httpx.Request, cid: str) -> httpx.Response:
+        comment = next(c for c in self.comments if c["id"] == int(cid))
+        comment["body"] = json.loads(request.content)["body"]
+        return httpx.Response(200, json=comment)
+
     def _list_checks(self, request: httpx.Request, sha: str) -> httpx.Response:
         runs = [c for c in self.checks if c["head_sha"] == sha]
         return httpx.Response(200, json={"total_count": len(runs), "check_runs": runs})
@@ -152,6 +164,7 @@ def settings(tmp_path: Path) -> Settings:
         _env_file=None,
         github_app_id=str(APP_ID),
         github_app_private_key_path=path,
+        github_webhook_secret=SECRET,
         theseus_token=TOKEN,
         theseus_repos=REPO,
         domain="theseus.example",
@@ -353,3 +366,119 @@ def test_a_pr_never_reviewed_has_no_page(client: TestClient, settings: Settings)
 
     k = reviews.signature(settings, REPO, 9)
     assert client.get(f"/reviews/demo-org/theseus/9/data?k={k}").status_code == 404
+
+
+# A PR's graphs while it is open and after it closes -------------------------------------------------------
+
+WORLD = "demo-infra"
+SEVEN = [
+    "demo-infra__pr7-base",
+    "demo-infra__pr7-fix-a",
+    "demo-infra__pr7-fix-c",
+    "demo-infra__pr7-fix-d",
+    "demo-infra__pr7-head",
+]
+
+
+def webhook(client: TestClient, payload: dict[str, Any]) -> httpx.Response:
+    body = json.dumps(payload).encode()
+    signature = "sha256=" + hmac.new(SECRET.encode(), body, hashlib.sha256).hexdigest()
+    headers = {
+        "X-GitHub-Event": "pull_request",
+        "X-Hub-Signature-256": signature,
+        "Content-Type": "application/json",
+    }
+    return client.post("/webhooks/github", content=body, headers=headers)
+
+
+def closed_event(number: int = 7) -> dict[str, Any]:
+    pr = {"number": number, "head": {"sha": HEAD}, "state": "closed", "merged": False}
+    return {"action": "closed", "repository": {"full_name": REPO}, "number": number, "pull_request": pr}
+
+
+def page_data(client: TestClient, repo: FakeRepo) -> tuple[str, dict[str, Any]]:
+    route, _, query = (
+        page_link(repo.comments[0]["body"]).removeprefix("https://theseus.example").partition("?")
+    )
+    return f"{route}?{query}", client.get(f"{route}/data?{query}").json()
+
+
+def test_the_graphs_the_pipeline_makes_are_the_graphs_a_closed_pr_deletes(
+    client: TestClient, store: MemoryStore, settings: Settings
+) -> None:
+    from theseus.engine import pr_graphs
+
+    assert post(client).status_code == 200
+    assert store.list_graphs() == SEVEN
+    assert pr_graphs.pr_graphs(store.list_graphs(), pr_graphs.world_name(settings.theseus_world_root), 7) == (
+        SEVEN
+    )
+
+
+def test_a_second_review_replaces_a_prs_graphs_instead_of_adding_to_them(
+    client: TestClient, store: MemoryStore
+) -> None:
+    assert post(client).status_code == 200
+    first = {name: store.view(name) for name in store.list_graphs()}
+    assert post(client).status_code == 200  # a push: the same names are loaded again
+    assert store.list_graphs() == SEVEN
+    assert {name: store.view(name) for name in store.list_graphs()} == first
+
+
+def test_a_review_that_lists_fewer_fixes_than_the_one_before_leaves_only_its_own(
+    client: TestClient, store: MemoryStore
+) -> None:
+    from theseus.contracts.result import GraphRows
+
+    store.load("demo-infra__pr7-fix-k", GraphRows())  # a fix the last review listed and this one does not
+    store.load("demo-infra__pr70-fix-k", GraphRows())  # another PR's
+    assert post(client).status_code == 200
+    assert store.list_graphs() == [*SEVEN, "demo-infra__pr70-fix-k"]
+
+
+def test_closing_the_pr_deletes_its_graphs_keeps_its_review_and_the_page_says_so(
+    client: TestClient, repo: FakeRepo, store: MemoryStore
+) -> None:
+    from theseus.contracts.result import GraphRows
+
+    assert post(client).status_code == 200
+    store.load("demo-infra__main", GraphRows())
+    store.load("demo-infra__pr8-head", GraphRows())
+    route, before = page_data(client, repo)
+    assert sorted(before["graphs"]) == ["base", "head"] and before["graphs_removed"] == []
+
+    assert webhook(client, closed_event()).status_code == 204
+
+    assert store.list_graphs() == ["demo-infra__main", "demo-infra__pr8-head"]
+    query = route.partition("?")[2]
+    after = client.get(f"{route.partition('?')[0]}/data?{query}").json()
+    assert after["graphs"] == {} and after["graphs_removed"] == ["base", "head"]
+    # The review itself is what the page and the dashboard keep.
+    assert after["result"] == before["result"] and after["verdict"] == before["verdict"]
+    assert after["head_sha"] == HEAD and len(after["result"]["opened"]) == 3
+    assert client.get(f"{route.partition('?')[0]}/fixes/A?{query}").status_code == 404
+
+
+def test_reopening_the_pr_rebuilds_its_graphs(client: TestClient, repo: FakeRepo, store: MemoryStore) -> None:
+    assert post(client).status_code == 200
+    assert webhook(client, closed_event()).status_code == 204
+    assert store.list_graphs() == []
+
+    assert post(client).status_code == 200  # the Action's review of the reopened PR
+
+    assert store.list_graphs() == SEVEN
+    _, data = page_data(client, repo)
+    assert sorted(data["graphs"]) == ["base", "head"] and data["graphs_removed"] == []
+
+
+def test_a_review_of_a_pr_that_is_already_closed_keeps_its_comment_and_page_but_no_graphs(
+    client: TestClient, repo: FakeRepo, store: MemoryStore
+) -> None:
+    """Someone edits a closed PR's description, or re-runs its check: the Action reviews it again."""
+    repo.pr["state"] = "closed"
+    assert post(client).status_code == 200
+    assert repo.comments and repo.checks
+    assert store.list_graphs() == []
+    _, data = page_data(client, repo)
+    assert data["graphs"] == {} and data["graphs_removed"] == ["base", "head"]
+    assert len(data["result"]["opened"]) == 3

@@ -53,6 +53,7 @@ FIXTURES = Path("fixtures")
 SAMPLE = Path("tests/data/stub_expected.json")
 FIXTURE_NAME = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 REVIEW_COMMAND = "/theseus review"
+# The pull_request actions that start a review. `closed` starts none: `_on_closed` deletes the PR's graphs.
 PR_ACTIONS = frozenset({"opened", "reopened", "synchronize", "edited"})
 
 # What the `Theseus` check says while a review runs (07, "When Theseus reviews"): a title and a summary. The
@@ -481,6 +482,9 @@ def analyze(
                 result,
                 title=str(pr.get("title") or ""),
                 updated_at=now(),
+                # A review of a PR that is already closed (its description was edited, its check re-run)
+                # keeps no graphs: nothing will close it again to delete them.
+                closed=pr.get("state") == "closed",
             )
             gh.upsert_comment(req.repo, req.pr_number, comment)
             gh.set_labels(req.repo, req.pr_number, labels_for(result), MANAGED)
@@ -1274,6 +1278,14 @@ def _on_pull_request(gh: GitHub, repo: str, payload: dict[str, Any]) -> None:
     _nothing_changed(gh, repo, number, head)
 
 
+def _on_closed(store: reviews.ReviewStore, settings: Settings, repo: str, payload: dict[str, Any]) -> None:
+    """A PR closed or merged: its base, head and fix graphs are deleted. Its review stays in the documents
+    graph, so its page keeps its text and the dashboard its history; reopening it reviews it again and
+    rebuilds the graphs. The event carries the number, so GitHub is not called."""
+    number = int((payload.get("pull_request") or {})["number"])
+    reviews.drop_graphs(store, settings.theseus_world_root, repo, number)
+
+
 HANDLERS = {"check_run": _on_check_run, "pull_request": _on_pull_request}
 EVENTS = frozenset({"issue_comment", *HANDLERS})
 
@@ -1292,7 +1304,8 @@ async def github_webhook(
     """The App's events, checked against GITHUB_WEBHOOK_SECRET before anything is read: `/theseus apply <ID>`
     commits a fix that passed; `/theseus review` and Re-run on the check run the review again; a PR that
     changes the world root shows its check in progress while the Action plans it, and one that changes
-    nothing there gets a `success` check. Every other event is accepted and ignored."""
+    nothing there gets a `success` check; a PR that is closed has its graphs deleted and keeps its review.
+    Every other event is accepted and ignored."""
     if settings.github_webhook_secret is None:
         raise HTTPException(503, "GITHUB_WEBHOOK_SECRET is not set on the server")
     body = await request.body()
@@ -1308,9 +1321,15 @@ async def github_webhook(
         # the next delivery is read meanwhile instead of GitHub giving up on it.
         if x_github_event == "issue_comment":
             await run_in_threadpool(_on_comment, gh, repo, payload, Fixing(results, store, render))
+        elif x_github_event == "pull_request" and payload.get("action") == "closed":
+            await run_in_threadpool(_on_closed, store, settings, repo, payload)
         else:
             await run_in_threadpool(HANDLERS[x_github_event], gh, repo, payload)
     except GitHubError as e:
         log.error("webhook %s for %s: %s", x_github_event, repo, e)
         raise HTTPException(502, str(e)) from e
+    except GraphError as e:
+        # The delivery fails, so it shows in GitHub's list and can be redelivered; `prune` also clears it.
+        log.error("webhook %s for %s: %s", x_github_event, repo, e)
+        raise HTTPException(502, "the graph store did not answer") from e
     return Response(status_code=204)

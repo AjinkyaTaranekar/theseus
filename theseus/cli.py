@@ -1,8 +1,9 @@
-"""Command line: `python -m theseus analyze | finding | scan | posture | incident | serve`.
+"""Command line: `python -m theseus analyze | finding | scan | posture | incident | prune | serve`.
 
 `serve` runs the API (F3); `analyze`, `finding` and `scan` print a PR, finding or scan fixture's
 AnalysisResult as JSON (E3, FM3, C3); `posture` prints a world's posture report (O1 to O3), and
-`incident` an outage's blast radius on it. All of them need FalkorDB (rule 3). A composition root
+`incident` an outage's blast radius on it; `prune` lists, and with `--yes` deletes, the graphs closed and
+merged PRs left behind. All of them need FalkorDB (rule 3). A composition root
 (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks adapters.
 """
 
@@ -23,6 +24,7 @@ from theseus.adapters.aws.adapter import AwsAdapter
 from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.api.github import GitHub
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
@@ -31,8 +33,10 @@ from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.engine.incident import blast, read_incident
 from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
+from theseus.engine.pr_graphs import PrunePlan, merge_states, plan_prune, world_name
 from theseus.errors import GraphError, TheseusError
-from theseus.graph.client import get_client
+from theseus.graph.client import Memory, get_client, memory
+from theseus.graph.load import delete_graph
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world
 
@@ -62,6 +66,12 @@ def build_parser() -> argparse.ArgumentParser:
     outage.add_argument("--service", help="instead of a headline: a service code, e.g. lambda")
     outage.add_argument("--region", help="a region code; every region when left out")
     outage.add_argument("--degraded", action="store_true", help="degraded rather than down")
+    pruning = commands.add_parser(
+        "prune", help="delete the graphs of closed and merged PRs; a dry run unless --yes"
+    )
+    pruning.add_argument(
+        "--yes", action="store_true", help="delete exactly the graphs listed; without it, only list them"
+    )
     commands.add_parser("serve", help="run the API on http://localhost:8000; needs FalkorDB")
     return parser
 
@@ -81,6 +91,8 @@ def main(argv: list[str] | None = None) -> int:
         return posture(Path(args.world), Path(args.plan), args.advisories)
     if args.command == "incident":
         return incident(Path(args.world), Path(args.plan), args)
+    if args.command == "prune":
+        return prune(args.yes)
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
     return 2
 
@@ -274,6 +286,90 @@ def incident(world_root: Path, plan: Path, args: argparse.Namespace) -> int:
         update["severity"] = "degraded"
     report = blast(basis, found.model_copy(update=update))
     print(report.model_dump_json(indent=2))
+    return 0
+
+
+# What one review graph costs on FalkorDB Cloud, on average: the 49 graphs leaked by tests took about 40 MB. A
+# graph's own size cannot be read (`GRAPH.MEMORY USAGE` says 0), so the dry run estimates, and `--yes`
+# measures with the server's memory before and after.
+GRAPH_MB = 0.8
+
+
+def _read_memory(db: Any) -> Memory | None:
+    """The server's memory, or None (with a warning) when it will not say: pruning does not need it."""
+    try:
+        return memory(db)
+    except GraphError as e:
+        log.warning("%s", e)
+        return None
+
+
+def _memory_line(reading: Memory | None) -> str:
+    if reading is None:
+        return "FalkorDB's memory is not available."
+    limit = f" of {reading.limit_mb:.1f} MB" if reading.limit_mb else ""
+    return f"{reading.used_mb:.1f} MB used{limit}"
+
+
+def _count(n: int, noun: str) -> str:
+    return f"{n} {noun}" if n == 1 else f"{n} {noun}s"
+
+
+def describe_prune(world: str, repos: list[str], plan: PrunePlan, reading: Memory | None) -> str:
+    """What `prune` found, to read before running it with `--yes`: each closed or merged PR with its graphs
+    named, what it keeps (counts only), and the memory."""
+    asked = ", ".join(repos)
+    lines = [f"World {world}; asking GitHub about {asked}.", f"FalkorDB: {_memory_line(reading)}", ""]
+    if plan.delete:
+        lines.append("Graphs of closed and merged PRs:")
+        for group in plan.delete:
+            lines.append(f"  #{group.number} {group.state}")
+            lines.extend(f"    {name}" for name in group.graphs)
+        total = len(plan.names)
+        lines.append(f"That is {_count(total, 'graph')}, about {total * GRAPH_MB:.1f} MB.")
+    else:
+        lines.append("Nothing to delete: no closed or merged PR has graphs.")
+    if plan.keep:
+        lines += ["", "Kept:"]
+        for group in plan.keep:
+            why = "not in GitHub's list" if group.state == "unknown" else group.state
+            lines.append(f"  #{group.number} {why}: {_count(len(group.graphs), 'graph')}")
+    return "\n".join(lines)
+
+
+def prune(yes: bool) -> int:
+    """List the graphs of closed and merged PRs, and with `yes` delete exactly those, by name, printing the
+    memory before and after. Exit 1 when THESEUS_REPOS, FalkorDB or GitHub fail: nothing is deleted then. The
+    PRs' states come from GitHub in this run, so a PR reopened since an earlier dry run keeps its graphs."""
+    settings = get_settings()
+    try:
+        if not settings.repos:
+            raise TheseusError("THESEUS_REPOS lists no repository to ask which PRs are closed")
+        db = get_client(settings)
+        store = FalkorStore(db)
+        gh = GitHub(settings)
+        states = merge_states(gh.pull_states(repo) for repo in settings.repos)
+        world = world_name(settings.theseus_world_root)
+        plan = plan_prune(store.list_graphs(), world, states)
+        before = _read_memory(db)
+        print(describe_prune(world, settings.repos, plan, before))
+        print()
+        if not yes:
+            print("Dry run: nothing was deleted. Run it again with --yes to delete the graphs listed above.")
+            return 0
+        for name in plan.names:
+            delete_graph(store, name)
+            print(f"deleted {name}")
+        after = _read_memory(db)
+    except (TheseusError, OSError) as e:
+        print(f"theseus prune: {e}", file=sys.stderr)
+        return 1
+    print(f"Deleted {_count(len(plan.names), 'graph')}.")
+    if before is not None and after is not None:
+        limit = f" ({after.limit_mb:.1f} MB limit)" if after.limit_mb else ""
+        print(f"Memory: {before.used_mb:.1f} MB before, {after.used_mb:.1f} MB after{limit}.")
+    else:
+        print("Memory: the server's memory is not available, so there is no before and after.")
     return 0
 
 
