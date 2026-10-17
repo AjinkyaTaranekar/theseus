@@ -6,6 +6,7 @@ and fails if it cannot, so the API never runs without FalkorDB however it is lau
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
@@ -29,11 +30,11 @@ from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import Deps, GraphStore
 from theseus.contracts.result import AnalysisResult
-from theseus.engine.pipeline import run_pr
+from theseus.engine.pipeline import run_finding, run_pr, run_scan
 from theseus.errors import GraphError, IngestError
 from theseus.graph.client import get_client, server_version
 from theseus.graph.store import FalkorStore
-from theseus.importer.world import load_world_from_files
+from theseus.importer.world import load_world, load_world_from_files
 
 log = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ log = logging.getLogger(__name__)
 def adapters_for(config: dict[str, Any]) -> Adapters:
     """AWS, Terraform, GitHub Actions and Python, configured from the world's theseus.yaml."""
     return Adapters(
-        iac=TerraformAdapter(), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
+        iac=TerraformAdapter(config), cloud=AwsAdapter(config), ci=GithubAdapter(), code=PythonAdapter()
     )
 
 
@@ -73,6 +74,39 @@ def build_review(store: GraphStore, llm: Any, jev: Any, settings: Settings) -> r
         return result.model_copy(update={"repo": repo, "pr_number": number})
 
     return review
+
+
+def build_scan(store: GraphStore, jev: Any, settings: Settings) -> routes.Scan:
+    """The real scan behind `/scan` (task C3): a scan fixture's world, its plan, then `run_scan`."""
+
+    def scan(fixture: str) -> AnalysisResult:
+        root = routes.FIXTURES / fixture
+        config = yaml.safe_load((root / "base" / "theseus.yaml").read_text(encoding="utf-8")) or {}
+        adapters = adapters_for(config)
+        plan = json.loads((root / "base.plan.json").read_text(encoding="utf-8"))
+        deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+        return run_scan(load_world(root / "base", plan, adapters), deps)
+
+    return scan
+
+
+def build_finder(store: GraphStore, jev: Any, settings: Settings) -> routes.Finder:
+    """Finding mode on a fixture folder (FM3 and FM4): its `base/` world and plan and its `advisory.json`,
+    with live Jev for sensitivity and urgency. The advisory's text never becomes evidence."""
+
+    def finder(fixture: Path) -> AnalysisResult:
+        base = fixture / "base"
+        try:
+            config = yaml.safe_load((base / "theseus.yaml").read_text(encoding="utf-8")) or {}
+            plan = json.loads((fixture / "base.plan.json").read_text(encoding="utf-8"))
+            advisory = json.loads((fixture / "advisory.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, yaml.YAMLError) as e:
+            raise IngestError(f"cannot read the finding fixture {fixture.name}") from e
+        adapters = adapters_for(config)
+        deps = Deps(store=store, adapters=adapters, llm=None, jev=jev, settings=settings)
+        return run_finding(load_world(base, plan, adapters), advisory, deps)
+
+    return finder
 
 
 def connect_falkordb() -> Any:
@@ -107,7 +141,10 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
             load_client()
         llm = Llm(settings)
         app.state.store = FalkorStore(app.state.falkordb)
-        app.state.review = build_review(app.state.store, llm, Jev(settings, llm=llm), settings)
+        jev = Jev(settings, llm=llm)
+        app.state.review = build_review(app.state.store, llm, jev, settings)
+        app.state.scan = build_scan(app.state.store, jev, settings)
+        app.state.finder = build_finder(app.state.store, jev, settings)
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)

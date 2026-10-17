@@ -1,0 +1,7 @@
+--- terraform/theseus_fixes.tf
++++ terraform/theseus_fixes.tf
+@@ -0,0 +1,4 @@
++resource "aws_iam_user_group_membership" "theseus_add_membership_3931a7f0f516" {
++  groups = [aws_iam_group.support.name]
++  user = aws_iam_user.priya.name
++}

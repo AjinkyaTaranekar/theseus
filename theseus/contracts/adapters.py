@@ -80,6 +80,15 @@ class Change(Contract):
     kind: Literal["remove_edge", "narrow_grant", "restrict_trust", "deny_principal"]
     eid: str
     values: list[str] = Field(default_factory=list)
+    # Optional exact evidence selection: a revert must not remove pre-existing grant statements.
+    evidence: list[Evidence] = Field(default_factory=list)
+    added_only: bool = False
+
+
+class PatchTraits(Contract):
+    """Adapter-verified properties of the statements an operation adds."""
+
+    adds_broad_wildcard: bool
 
 
 Locate = Callable[[str, str | None], Evidence]
@@ -119,12 +128,23 @@ class CloudAdapter(Protocol):
         """Principal and resource nodes, and MEMBER_OF, CAN_ASSUME, TRUSTS, RUNS_AS, CAN and UNLOCKS edges."""
         ...
 
-    def ops_for(self, change: Change, rows: GraphRows, resources: list[IacResource]) -> list[PatchOp]:
+    def ops_for(
+        self,
+        change: Change,
+        rows: GraphRows,
+        resources: list[IacResource],
+        *,
+        base_resources: list[IacResource] | None = None,
+    ) -> list[PatchOp]:
         """Patch ops that make `change`, or [] when this cloud cannot express it."""
         ...
 
     def apply_ops(self, resources: list[IacResource], ops: list[PatchOp]) -> list[IacResource]:
         """The patched resources. Raises PatchError when an op cannot apply."""
+        ...
+
+    def patch_traits(self, ops: list[PatchOp]) -> PatchTraits:
+        """Validated added-statement breadth, independent of model-provided metadata."""
         ...
 
     def ops_schema(self) -> dict[str, Any]:

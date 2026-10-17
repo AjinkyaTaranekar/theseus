@@ -1,0 +1,16 @@
+--- terraform/policies.tf
++++ terraform/policies.tf
+@@ -17,12 +17,7 @@
+   name = "data-lake-curated-read"
+   policy = jsonencode({
+     Version = "2012-10-17"
+-    Statement = [{
+-      Sid      = "ReadCurated"
+-      Effect   = "Allow"
+-      Action   = "s3:GetObject"
+-      Resource = "arn:aws:s3:::demo-data-lake/curated/*"
+-    }]
++    Statement = []
+   })
+ }
+ 

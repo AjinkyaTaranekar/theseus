@@ -65,3 +65,9 @@ def test_the_intern_pr_lists_its_choke_point_roles() -> None:
     result = analyze("intern")
     ids = [c.id for c in result.choke_points]
     assert ids and ids[:1] == ["role:prod-support"] and all(i.startswith("role:") for i in ids)
+
+
+def test_rule_fixes_match_the_intern_answer_key() -> None:
+    result = project(analyze("intern"))
+    wanted = expected("intern")["candidates"]
+    assert {k: result["candidates"][k] for k in ("A", "C", "D")} == {k: wanted[k] for k in ("A", "C", "D")}

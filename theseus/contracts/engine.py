@@ -314,7 +314,14 @@ class RuleCandidates(Protocol):
     """`engine/candidates.py: rule_candidates` (E6)."""
 
     def __call__(
-        self, state: GraphState, analysis: Analysis, opened: list[PathRecord], cut: MinCut | None
+        self,
+        state: GraphState,
+        analysis: Analysis,
+        opened: list[PathRecord],
+        cut: MinCut | None,
+        *,
+        base: GraphState | None = None,
+        requirements: list[Requirement] | None = None,
     ) -> list[RuleFix]:
         """Rules A, C, D and S that apply to these paths, sorted by ID."""
         ...

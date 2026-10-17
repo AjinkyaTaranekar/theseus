@@ -14,7 +14,7 @@ from theseus.adapters.aws.adapter import AwsAdapter
 from theseus.adapters.aws.catalog import load_catalog
 from theseus.adapters.terraform.adapter import TerraformAdapter
 from theseus.contracts.adapters import Change, IacResource
-from theseus.contracts.result import Evidence, GraphRows
+from theseus.contracts.result import Evidence, GraphRows, PatchOp
 from theseus.errors import IngestError, PatchError
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -170,10 +170,11 @@ def test_s3_locations_cannot_name_a_different_bucket() -> None:
 def test_patch_handoffs_are_explicit() -> None:
     adapter = AwsAdapter(CONFIG)
     assert adapter.ops_schema()["oneOf"]
-    with pytest.raises(PatchError, match="E6"):
+    with pytest.raises(PatchError, match="edge ID"):
         adapter.ops_for(Change(kind="remove_edge", eid="e1"), GraphRows(), [])
-    with pytest.raises(PatchError, match="E5"):
-        adapter.apply_ops([], [])
+    assert adapter.apply_ops([], []) == []
+    with pytest.raises(PatchError, match="unknown aws op"):
+        adapter.apply_ops([], [PatchOp(provider="aws", op="not_an_operation")])
 
 
 def test_a_known_secret_arn_is_used_instead_of_a_representative_suffix() -> None:

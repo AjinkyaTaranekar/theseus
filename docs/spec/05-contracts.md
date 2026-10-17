@@ -130,7 +130,8 @@ An eid is stable within one build only, so anything compared across builds names
 | `CutEdge` | `eid: str`, `src: str`, `type: EdgeType`, `dst: str`, `evidence: str` |
 | `MinCut` | `sources: list[str]`, `sinks: list[str]`, `value: int`, `cuttable: bool`, `cut: list[CutEdge]` |
 | `PatchOp` | `provider: str`, `op: str`, `args: dict`. The cloud adapter owns the catalog and validates `args`; AWS's is `04-engine.md` section 13 |
-| `Candidate` | `id: str`, `source: Literal["rule","llm","human"]`, `proposed_by: str` (`theseus`, the model string, or a person's login), `title: str`, `ops: list[PatchOp]`, `verdict: Literal["pass","fail","unknown","invalid"]`, `reason: str`, `paths_left: list[str]`, `new_paths: list[str]`, `requirements_broken: list[str]`, `calls_broken: list[str]`, `unknown: list[str]`, `recommended: bool`, `needs_closer_look: bool`, `seconds: float` |
+| `RankingFacts` | `unknown_steps: int >= 0`, `permissions_removed: int >= 0`, `adds_broad_wildcard: bool`; computed by simulation, absent on unverified results |
+| `Candidate` | `id: str`, `source: Literal["rule","llm","human"]`, `proposed_by: str` (`theseus`, the model string, or a person's login), `title: str`, `ops: list[PatchOp]`, `verdict: Literal["pass","fail","unknown","invalid"]`, `reason: str`, `paths_left: list[str]`, `new_paths: list[str]`, `requirements_broken: list[str]`, `calls_broken: list[str]`, `unknown: list[str]`, `recommended: bool`, `needs_closer_look: bool`, `seconds: float`, `ranking_facts: RankingFacts \| None` |
 | `UnusedGrant` | `workload: str`, `resource: str`, `access: Access`, `eid: str`, `evidence: str` |
 | `BeyondIntent` | `workload: str`, `resource: str`, `access: Access`, `file: str`, `line: int`, `unlocks: list[str]` |
 | `StagingToProd` | `actor: str`, `target: str`, `path_id: str` |
@@ -155,7 +156,7 @@ An eid is stable within one build only, so anything compared across builds names
 | `diff` | base `Analysis`, head `Analysis` | `PathDiff`: opened, closed, unchanged | `engine/analyze.py` |
 | `min_cut` | store, `GraphState`, `Analysis`, sources, requirements | `MinCut` | `engine/mincut.py` |
 | `simulate` | store, head `GraphState`, a `CandidateDraft`, actors, requirements, the adapters | `Candidate` | `engine/simulate.py` |
-| `rule_candidates`, `rank` | `GraphState`, analysis, opened paths, cut; candidates and Jev's break scores by ID | `RuleFix` list; ranked `Candidate` list | `engine/candidates.py` |
+| `rule_candidates`, `rank` | `GraphState`, analysis, opened paths, cut, optional keyword-only base and approved requirements; candidates and Jev's break scores by ID | `RuleFix` list; ranked `Candidate` list | `engine/candidates.py` |
 | `blast_radius`, `rotate_list` | store, `GraphState`, matched workflows | paths; resource IDs of category `secret`, sorted | `engine/finding.py` |
 | `containment` | `GraphState`, `Analysis`, cut, requirements | `RuleFix` K, or none when no trust is cut | `engine/finding.py` |
 | `staging_to_prod` | `Analysis`, `GraphState` | `StagingToProd` list | `engine/staging.py` (task FM4) |
@@ -201,7 +202,7 @@ build them.
 | Protocol | v1 | Methods | Tasks |
 | --- | --- | --- | --- |
 | `IacAdapter` | `TerraformAdapter` | `read(root, plan) -> IacRead` (resources, unknown fields, files); `locate(files, address, part) -> Evidence`; `render(files, ops) -> files` | E1, E9 |
-| `CloudAdapter` | `AwsAdapter` | `name`, `modeled_types`, `resource_kinds` (kind to category); `rows(resources, identities, locate) -> GraphRows`; `ops_for(change, rows, resources) -> ops`; `apply_ops(resources, ops) -> resources`; `ops_schema()` | E1, E2, E5, E6, FM1 |
+| `CloudAdapter` | `AwsAdapter` | `name`, `modeled_types`, `resource_kinds` (kind to category); `rows(resources, identities, locate) -> GraphRows`; `ops_for(change, rows, resources, *, base_resources=None) -> ops`; `apply_ops(resources, ops) -> resources`; `ops_schema()`; `patch_traits(ops) -> PatchTraits` (validated `adds_broad_wildcard: bool`) | E1, E2, E5, E6, FM1 |
 | `CiAdapter` | `GithubAdapter` | `read(files) -> CiRead` (Workflow and Action nodes, `USES` edges, each workflow's `CiIdentity`) | E1, FM1 |
 | `CodeAdapter` | `PythonAdapter` | `read(files, rows, resources) -> CodeRead` (`CALLS`, `REQUESTS`, `HAS_ENV` edges, unknowns, calls skipped) | E1, C2 |
 

@@ -7,13 +7,15 @@ from copy import deepcopy
 from typing import Any
 
 from theseus.adapters.aws.access import derive_access_edges
+from theseus.adapters.aws.changes import ops_for
 from theseus.adapters.aws.kinds import MODELED_TYPES, PROVIDER, RESOURCE_KINDS
 from theseus.adapters.aws.oidc import trust_edges
-from theseus.adapters.aws.ops import ops_schema
+from theseus.adapters.aws.ops import AddPolicy, AddRole, ops_schema, parse
+from theseus.adapters.aws.patch import apply_ops
 from theseus.adapters.aws.resources import structural_rows
-from theseus.contracts.adapters import Change, CiIdentity, IacResource, Locate
+from theseus.contracts.adapters import Change, CiIdentity, IacResource, Locate, PatchTraits
 from theseus.contracts.result import GraphRows, PatchOp
-from theseus.errors import IngestError, PatchError
+from theseus.errors import IngestError
 
 log = logging.getLogger(__name__)
 
@@ -59,13 +61,53 @@ class AwsAdapter:
             unknowns=sorted(set(unknowns)),
         )
 
-    def ops_for(self, change: Change, rows: GraphRows, resources: list[IacResource]) -> list[PatchOp]:
-        """Cloud patch ops once E6 implements their selection; currently raises PatchError."""
-        raise PatchError("AWS change selection belongs to E6")
+    def ops_for(
+        self,
+        change: Change,
+        rows: GraphRows,
+        resources: list[IacResource],
+        *,
+        base_resources: list[IacResource] | None = None,
+    ) -> list[PatchOp]:
+        """Catalog operations for an evidenced graph change, or none when it cannot be expressed."""
+        return ops_for(change, rows, resources, base_resources=base_resources)
 
     def apply_ops(self, resources: list[IacResource], ops: list[PatchOp]) -> list[IacResource]:
-        """Patched resources once E5 implements mutation; currently raises PatchError."""
-        raise PatchError("AWS patch application belongs to E5")
+        """Independent patched resources, or PatchError when an operation cannot apply."""
+        return apply_ops(resources, ops, account=self.config["account"])
+
+    def patch_traits(self, ops: list[PatchOp]) -> PatchTraits:
+        """Whether an added statement uses unrestricted actions, identities or resource scope."""
+        broad = False
+        for operation in ops:
+            parsed = parse(operation)
+            if isinstance(parsed, AddRole):
+                broad |= any("*" in value or "?" in value for value in parsed.trust_principals)
+            if not isinstance(parsed, (AddPolicy, AddRole)):
+                continue
+            for statement in parsed.statements:
+                broad |= any("*" in value or "?" in value for value in statement.actions)
+                for resource in statement.resources:
+                    parts = resource.split(":", 5)
+                    if len(parts) != 6:
+                        broad |= "*" in resource or "?" in resource
+                        continue
+                    # Exact bucket prefixes and a named secret's generated suffix are bounded scopes.
+                    header, tail = parts[:5], parts[5]
+                    broad |= any("*" in value or "?" in value for value in header)
+                    if parts[2] == "s3":
+                        bucket, _, prefix = tail.partition("/")
+                        broad |= not bucket or "*" in bucket or "?" in bucket
+                        broad |= bool(prefix) and (
+                            not prefix.rstrip("*") or "*" in prefix.rstrip("*") or "?" in prefix
+                        )
+                    elif parts[2] == "secretsmanager":
+                        name = tail.removeprefix("secret:")
+                        bounded = name.endswith("-*") and bool(name[:-2])
+                        broad |= "?" in name or "*" in (name[:-2] if bounded else name)
+                    else:
+                        broad |= "*" in tail or "?" in tail
+        return PatchTraits(adds_broad_wildcard=broad)
 
     def ops_schema(self) -> dict[str, Any]:
         """The schema of the existing typed AWS operation catalog."""
