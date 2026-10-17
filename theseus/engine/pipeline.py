@@ -378,7 +378,8 @@ def run_posture(world: World, deps: Deps, advisories: list[dict[str, Any]]) -> P
     scan, state = _scan(world, deps)
     requirements = config_requirements(world)
     lines = deps.adapters.cloud.monthly_cost(world.resources)
-    found = posture(deps.store, state, requirements, actors(state), lines)
+    outages = [deps.adapters.cloud.outages(world.resources, state.rows), deps.adapters.ci.outages(state.rows)]
+    found = posture(deps.store, state, requirements, actors(state), lines, outages)
     findings = []
     for advisory in sorted(advisories, key=lambda a: str(a.get("id"))):
         if match_advisory(state.rows, advisory):

@@ -15,7 +15,7 @@ from typing import Any, Literal, Protocol
 
 from pydantic import Field
 
-from theseus.contracts.posture import CostLine
+from theseus.contracts.posture import CostLine, OutageMap
 from theseus.contracts.result import Contract, EdgeRow, Evidence, GraphRows, PatchOp
 
 # What crosses the boundary ------------------------------------------------------------------------
@@ -156,6 +156,11 @@ class CloudAdapter(Protocol):
         """An estimated monthly cost at list price for each resource this cloud can price (issue O3)."""
         ...
 
+    def outages(self, resources: list[IacResource], rows: GraphRows) -> OutageMap:
+        """Which of the graph's nodes each of this cloud's services runs or serves, and what an outage of it
+        does to them; and the services and regions an incident can name."""
+        ...
+
 
 class CiAdapter(Protocol):
     """Reads one CI system's pipeline files."""
@@ -163,6 +168,10 @@ class CiAdapter(Protocol):
     name: str
 
     def read(self, files: dict[str, str]) -> CiRead: ...
+
+    def outages(self, rows: GraphRows) -> OutageMap:
+        """Which pipeline nodes this CI system runs, and the services an incident can name."""
+        ...
 
 
 class CodeAdapter(Protocol):
