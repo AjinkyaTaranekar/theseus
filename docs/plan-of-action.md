@@ -419,18 +419,145 @@ A sample `expected.json` for the intern scenario. It holds only the fields we co
 
 **The video carries the story and the README carries the proof.** Record a backup clip at each gate (tasks G1 to G3), so a late failure never costs a beat.
 
-### Video script, about 3 minutes
+### Video script, 3:00 target
 
-| Time | On screen | Voice-over |
+**Video script for P4 / [#3](https://github.com/AjinkyaTaranekar/theseus/issues/3).**
+The story follows the implemented four beats, then shows the organisation dashboard. Speak only the
+voice-over column; the screen directions and evidence below are for the operator and editor.
+
+Use one narrator for continuity and one operator for the captures. Narrator and operator names await the
+team's choice. Capture the interactions first, then record the narration against the edited sequence.
+The eight slots total 180 seconds, including pauses to read the graph. This is a timing budget, not a measured
+read-aloud. P4 stays open until a person reads this version aloud and records the duration below.
+
+| Time | On screen and edit | Voice-over |
 | --- | --- | --- |
-| 0:00 to 0:15 | The intern PR: "Add Priya to support-engineers so she can read prod logs", with Checkov passing | "This PR passes every check we have." |
-| 0:15 to 0:40 | Theseus's PR comment: intent versus effect, and a Mermaid path to the customer database, each step with its file and line | "Your PR says logs. Your change grants the customer database." |
-| 0:40 to 1:05 | The MaxFlow result, the fix table, the LLM's `intern-onboarding` role verified, the Deny option shown as UNKNOWN | "The math rules out deleting a permission. The agent designs a new role, and the graph proves it." |
-| 1:05 to 1:20 | A reviewer types `/theseus apply B`, the commit lands, the check turns green | "Nothing changes until a person says so." |
-| 1:20 to 1:50 | The compromised-Action advisory, the trace through the staging workflow, the containment PR and the list of secrets to rotate | "A compromised Action, a few hops from your database. One PR contains it, and you rotate only what it could reach." |
-| 1:50 to 2:15 | `support-portal`'s role can read the database secret, but its code never asks for it, so the cut lands on that grant | "Your code never uses this grant. Remove it, and nothing breaks." |
-| 2:15 to 2:40 | The FalkorDB graph list, the MaxFlow call, the MCP tool trace, timings, the benchmark against Checkov | "FalkorDB does the work: one graph per state, and algorithms as the agent's tools." |
-| 2:40 to 3:00 | The roadmap, the limits and the Try-it link | "One graph, three teams. AWS only today, and UNKNOWN when unsure. Try it yourself." |
+| 0:00–0:12 | Open the intern PR at its Terraform diff, then the Checkov result for that same head. Overlay: **One group membership. Three new paths.** | An intern needs production logs. Checkov passes this group-membership change. But it also opens a route to the customer database. |
+| 0:12–0:34 | Theseus's comment: the consequence, what the PR says, then the graph. Follow Priya → support-engineers → prod-support → prod-db-credentials → customer-db. Open one evidence link; briefly show all three targets. | Theseus compares what the pull request says, what Terraform allows, and what the code calls. In FalkorDB, it traces Priya through the group and role, to a secret that unlocks customer-db. Every hop links to its source line. |
+| 0:34–1:01 | Show the protected minimum cut, value **1,000,000**, and the four candidate verdicts: A fail, B pass, C UNKNOWN, D fail. Open B's proposed patch operations from the saved review data, then its tool trace. Overlay: **Models propose. The engine checks.** | Deleting access would also remove the logs she needs. The agent uses graph tools to propose a scoped role instead. Each fix is tested on its own graph copy. The engine checks dangerous paths, required access, and resolved code calls. An unsupported conditional Deny gets UNKNOWN. |
+| 1:01–1:18 | Use the G2 capture: the reviewer inspects B, comments `/theseus apply B`, the App's commit appears, then the rerun's final **Theseus** check succeeds. Cut waiting time; keep the reviewed and resulting heads legible. | A reviewer inspects the fix and asks Theseus to apply it. The App commits to the reviewed branch, and the check runs again. The model cannot approve its own proposal. |
+| 1:18–1:46 | Label **Synthetic advisory; assumed compromise**. From the finding page, follow preview.yml → github-deploy → prod-support → secret → customer-db. Show containment K, its `ci.tf` diff and the rotation issue. Keep the PR visibly awaiting review. | Now assume a workflow using this affected Action is compromised. Its staging trust reaches production data. Theseus verifies a narrower trust policy and opens a containment pull request for human review. It lists prod-db-credentials for rotation because that workflow could read it. |
+| 1:46–2:10 | Show the unused grant in the dashboard or saved scan, its `LegacyDbSecret` evidence and U's passing verdict. Cut to the `code-pr` result: a typo PR, new secret and database calls, cited lines. Overlay: **Within the modeled requirements and resolved calls.** | The graph finds a database-secret grant with no resolved call from support-portal. Removing it preserves the modeled requirements and resolved calls. But when a typo-fix pull request starts reading that secret, Theseus flags the new use, even though IAM permissions did not change. |
+| 2:10–2:35 | Organisation dashboard: posture of main, a linked review and finding, reach, a single point of failure and cost marked **estimate**. Cut to the state graphs, `GRAPH.COPY`, actual flow call and the recorded MCP trace. | The dashboard brings together main's access, reviews, findings, single points of failure, and estimated cost. FalkorDB stores each state and runs the path queries and maximum flow. Copies isolate proposed fixes. The tool trace shows what the agent actually asked and what the engine returned. |
+| 2:35–3:00 | End card: **FalkorDB Graph Hacks · Track 01**; **Engine decides facts · Models propose · A person approves**; public Try-it and repository links, verified before export. Small text: **Synthetic infrastructure · AWS IAM subset · Python code · Network exposure not modeled**. | Theseus reviews changes before merge and helps contain risks already present. Today it supports a defined AWS IAM subset and Python code. Unsupported rules stay UNKNOWN. The demo uses synthetic infrastructure. Try the live graph engine with recorded model responses. The engine decides facts, models propose, and a person approves. |
+
+#### Evidence behind the shots
+
+Use the actual output at the recorded commit. Candidate B's name and operations can vary: show the scoped role
+it produced, rather than relabeling it `intern-onboarding`. A `pass` result still needs human review.
+The comment shows verdicts and a tool trace; it does not expose the numeric protected cut or a rendered
+Terraform diff. For the cut value and B's patch operations, open the saved review's signed `/data` response
+and inspect `result.min_cut` and `result.candidates`. Keep its `head_sha` visible so the details belong to the
+same take. The actual Terraform diff is available on the App's resulting commit after apply; do not imply
+that the current review page provides a pre-apply diff preview. U's cited policy and operations are in the
+saved scan result; the dashboard's unused-grant table shows the grant and U verdict, not the full evidence.
+
+| Shot | Evidence already available | What still needs capture or verification |
+| --- | --- | --- |
+| Intern and Checkov | [PR #85](https://github.com/AjinkyaTaranekar/theseus/pull/85), head `01ae50f1fb2152d61003b6bff769b1c755832b0b`: the App comment reports 365 Checkov checks passed, three opened paths, B pass, C unknown, A/D fail and an engine tool trace. [Intern golden tests](../tests/golden/test_intern.py) and [cut tests](../tests/golden/test_mincut_fixtures.py) pin the modeled outcomes. | G1: a fresh demo branch, the same-head Checkov artifact and comment, the source link and a saved clip. The existing PR is a reference take, not evidence that G1's recording is complete. |
+| Apply and green check | [Apply PR #102](https://github.com/AjinkyaTaranekar/theseus/pull/102) and [follow-up #115](https://github.com/AjinkyaTaranekar/theseus/pull/115) are merged; [webhook tests](../tests/unit/test_webhooks.py) cover permission, head and verdict checks. | G2: a person approves B on a fresh demo PR, then captures the commit and final **Theseus** success on the new head. At audit time #85's **Theseus** conclusion is failure; its workflow job called `review` succeeding does not mean the security check passed. |
+| Containment and rotation | [PR #111](https://github.com/AjinkyaTaranekar/theseus/pull/111) is open and changes only `demo-infra/terraform/ci.tf`; [issue #112](https://github.com/AjinkyaTaranekar/theseus/issues/112) lists `prod-db-credentials`. [Finding golden tests](../tests/golden/test_compromised_action.py) verify K, retained required access and the rotate list. | G3: capture the finding, K and the open reviewable PR. Creating the PR does not merge it or rotate a secret. This synthetic scenario needs no real AWS account or secret rotation. |
+| Unused grant and code PR | [Unused-grant golden tests](../tests/golden/test_unused_grant.py) pin U pass with no broken calls; [code-PR tests](../tests/golden/test_code_pr.py) pin the new secret and database calls and blocked check. | G3: capture the deployed posture/scan and code-PR result, with evidence. Preserve the distinction between an unused grant in base and new use in the separate code-PR head. |
+| Dashboard and graph tools | [Dashboard PR #109](https://github.com/AjinkyaTaranekar/theseus/pull/109), [redesign #114](https://github.com/AjinkyaTaranekar/theseus/pull/114), [dashboard tests](../tests/e2e/test_dashboard.py), [graph algorithms](../theseus/graph/algos.py), [store](../theseus/graph/store.py) and [MCP registry](../theseus/mcp/tools.py). | Open links from the current App comment/dashboard. The dashboard shows the commit actually scanned. Capture real calls and responses; do not invent a tool selection or retry for the story. |
+| Try-it and limits | [Try-it PR #95](https://github.com/AjinkyaTaranekar/theseus/pull/95), [preset tests](../tests/unit/test_try.py) and [world limits](spec/02-demo-world.md#what-the-world-leaves-out). | Test the public URL from outside the operator's signed-in session. Try-it offers the three PR presets (`intern`, `public-bucket`, `code-pr`), with recorded models and live engine/FalkorDB; it does not offer finding or scan presets. |
+
+The maximum-flow implementation has a logged Python Edmonds–Karp fallback; inspect the take's logs before
+attributing its flow calculation to FalkorDB. If that fallback was used, replace the dashboard segment's
+algorithm sentence with: **“FalkorDB stores each state and runs the path queries. This run computes maximum
+flow with the Python fallback.”** Choke-point ranking uses exact Brandes in Python; articulation points use
+Tarjan in Python. Do not describe either as a database algorithm in this video.
+
+#### Recording handoff
+
+1. **Prepare the take (G1–G3).** Use current deployed `main` and a new `demo/<scenario>-<take>` branch whose
+   changes stay in `demo-infra/`. Keep the intern review and fix together at their actual heads. Record the
+   commit SHA, deployment, graph names, check URLs and clip paths with the take. Opening a branch or posting
+   `/theseus apply B` is a gate action for the team, not part of preparing this local script.
+2. **Arrange the screens.** Use one browser size, hide unrelated tabs and notifications, and enlarge the
+   relevant card, graph or diff. Follow one route per shot. Keep node names, verdicts and cited source lines
+   readable; use cuts instead of dragging viewers across the entire graph.
+3. **Record the evidence first.** G1 supplies the opening; G2 supplies the apply sequence; G3 supplies finding,
+   U and code-use clips. Capture the dashboard and graph/tool details after those results exist. Save each
+   original take before editing. Do not merge the intern demo into main to obtain a green-check shot.
+4. **Edit the waits.** A plan or model call can take longer than its slot. Cut to the real completed result,
+   label elapsed-time cuts, and keep the head and candidate identity consistent. Narration makes no latency
+   promise: #85's comment reports 88.7 seconds, not the old plan's roughly 20-second PoC figure.
+5. **Handle a failed take.** Use the saved G1/G2/G3 clip of that same operation and label it **Recorded run**.
+   A saved finding page proves the saved result, not a new run. If no apply-success clip exists, replace that
+   slot with B's verified patch operations and say **“This fix is verified on a graph copy and awaits a reviewer’s apply
+   command.”** Do not show a fabricated green check. If unused-grant or code-use capture fails, use a clearly
+   labeled fixture recording or move the claim out of the spoken script and re-time the edit.
+6. **Keep the model boundary visible.** Label Try-it **Recorded model responses; live engine and FalkorDB**.
+   A fixture command is a fallback only after its complete invocation has succeeded in that environment;
+   CLI and `/scan` replay coverage is not interchangeable with Try-it's content-based replay helpers.
+   `/scan` without a fixture currently returns 501, so it cannot demonstrate automatic repo scan-fix PRs.
+   The `/posture` path opens containment PRs; a standalone finding result does not itself prove PR creation.
+7. **Export (S6).** Check readable captions, clear speech and matching source/head IDs. Add the Try-it and
+   repository URLs only after the team verifies judge access; private signed review links are not the public
+   end-card link. Use only these synthetic fixtures. Leave benchmark and large-graph numbers out until S2's
+   report exists; results on this demo are not a measured detection rate.
+
+#### P4 read-aloud and sign-off
+
+| Item | Status and owning task |
+| --- | --- |
+| Narrator / operator | Pending the team's choice; one narrator and one operator recommended |
+| Spoken word count and estimated pace | 314 whitespace-separated words; about 2:31 at 125 words/minute, leaving about 0:29 for pauses in the 3:00 edit. Every segment fits its slot at that pace. Recount after wording changes. |
+| Actual read-aloud duration | Pending a human read of this exact version; record `m:ss`, reader and version/commit |
+| Edit duration (S6) | Target 3:00; verify after inserting the actual clips and pauses. This is a later video-production check, not a P4 merge requirement. |
+| Other teammate review | Pending: explain the protected cut, B/K/U verification, UNKNOWN and the synthetic-compromise assumption |
+
+Read it aloud once at a comfortable pace, pausing at each evidence link and verdict. Trim wording before
+speeding up the narration. The final read and exported video, rather than a words-per-minute estimate, decide
+whether the timing works. This documentation can be reviewed now. To merge it as the completed P4 task, record the narrator/operator
+choice and actual read-aloud duration, obtain the other teammate's diff review, and pass the PR's required
+CI checks. G1–G3 recordings, S2's benchmark and the final S6 video are separate tasks; they do not block the
+P4 script merge. Until P4's human steps are recorded, keep its eventual PR in draft so `Closes #3` cannot
+prematurely mark the task complete.
+
+### Board audit and remaining handoffs for this video
+
+**Snapshot: 17 October 2026.** Read all 54 issues (42 closed, 12 open), all 59 PR records, the task dependency
+CSV, briefs, relevant specs, code and tests. The implementation baseline is `origin/main` at `9e98a0e`, whose
+[CI](https://github.com/AjinkyaTaranekar/theseus/actions/runs/39026784111) and
+[deploy](https://github.com/AjinkyaTaranekar/theseus/actions/runs/39027147161) succeeded. The completed
+[Theseus main run](https://github.com/AjinkyaTaranekar/theseus/actions/runs/39026660205) scanned the earlier
+`7b41127` head. These are historical run results, not a claim that the current public site was tested here.
+
+The authenticated CLI lacks `read:project`, so project columns and cards could not be read. The audit uses
+issue states, explicit dependencies, PR merge targets and Git history; it does not infer a board column from
+an issue being open or closed. No issue, assignment, label or project status was changed. Rows below cover
+every issue in this snapshot. Closed implementation issues still need their gate's recorded demonstration.
+
+| Issues / work | Repository and dependency check | Consequence for P4 and the team |
+| --- | --- | --- |
+| [#1 P1](https://github.com/AjinkyaTaranekar/theseus/issues/1), [#2 P3](https://github.com/AjinkyaTaranekar/theseus/issues/2), [#4 P5](https://github.com/AjinkyaTaranekar/theseus/issues/4), [#5 P6](https://github.com/AjinkyaTaranekar/theseus/issues/5) — closed | Prep, scenario review, access and registration/IP tasks. P3 landed through #45; it is P4's only declared prerequisite. | P4 can proceed. Closed human tasks are recorded issue states, not checks repeated by this script audit. |
+| [#7 F1](https://github.com/AjinkyaTaranekar/theseus/issues/7), [#8 F2](https://github.com/AjinkyaTaranekar/theseus/issues/8), [#9 F4](https://github.com/AjinkyaTaranekar/theseus/issues/9), [#10 F3](https://github.com/AjinkyaTaranekar/theseus/issues/10), [#11 F5](https://github.com/AjinkyaTaranekar/theseus/issues/11), [#12 F7](https://github.com/AjinkyaTaranekar/theseus/issues/12), [#63 demo hardening](https://github.com/AjinkyaTaranekar/theseus/issues/63) — closed | Package/CI, contracts, generated world, deployment, human answer keys and GitHub integration exist. F5 follows F4/P3; ingestion and analysis use these contracts and fixtures. | Use the existing world and evidence. No fixture regeneration, schema changes or moved source lines are needed for the video script. |
+| [#13 E1](https://github.com/AjinkyaTaranekar/theseus/issues/13), [#14 E2](https://github.com/AjinkyaTaranekar/theseus/issues/14), [#15 E3](https://github.com/AjinkyaTaranekar/theseus/issues/15), [#16 A1](https://github.com/AjinkyaTaranekar/theseus/issues/16), [#17 A2](https://github.com/AjinkyaTaranekar/theseus/issues/17), [#18 A3](https://github.com/AjinkyaTaranekar/theseus/issues/18), [#19 A4](https://github.com/AjinkyaTaranekar/theseus/issues/19), [#20 A5](https://github.com/AjinkyaTaranekar/theseus/issues/20) — closed | Importer + IAM + FalkorDB analysis, recorded model wrappers, intent/effect, rendering and real analyze are in main. E3 consumes E1/E2/F3/F5; A5 combines E3/A3/A4/F7. | Supplies G1 and the first two shots; PR #85 is existing live evidence, while a new gate clip is still due. |
+| [#21 FM1](https://github.com/AjinkyaTaranekar/theseus/issues/21), [#22 C1](https://github.com/AjinkyaTaranekar/theseus/issues/22), [#31 C2](https://github.com/AjinkyaTaranekar/theseus/issues/31) — closed | Workflow/OIDC ingestion and Python services/code reader are present; C2 consumes F2/C1, FM1 consumes F4/E2. | Supplies the Action/trust path and the code-use evidence. No new language reader or network-exposure edge is needed. |
+| [#24 E4](https://github.com/AjinkyaTaranekar/theseus/issues/24), [#25 E5](https://github.com/AjinkyaTaranekar/theseus/issues/25), [#26 E6](https://github.com/AjinkyaTaranekar/theseus/issues/26), [#27 E9](https://github.com/AjinkyaTaranekar/theseus/issues/27), [#28 A6](https://github.com/AjinkyaTaranekar/theseus/issues/28), [#29 A7](https://github.com/AjinkyaTaranekar/theseus/issues/29), [#30 A9](https://github.com/AjinkyaTaranekar/theseus/issues/30) — closed | Cuts, graph-copy simulation, rule fixes, Terraform rendering, MCP, the model's fix and apply are integrated. A7 needs E5/A6; apply needs F7/E9. Actual cut code also uses approved intent (A3), although #24's issue body lists only E3. Both dependencies are now in main. | Supplies G2. Read B's proposed operations and verify the current head before the human apply action; rule or replay tests alone cannot supply the green-check clip. |
+| [#32 FM3](https://github.com/AjinkyaTaranekar/theseus/issues/32), [#33 FM4](https://github.com/AjinkyaTaranekar/theseus/issues/33), [#35 FM6](https://github.com/AjinkyaTaranekar/theseus/issues/35) — closed | Finding depends on FM1/E3; extras use E4/A2; containment adds E5/E9/A9. Stacked PRs #113 → #109 → #108 reach main; #111/#112 are actual resulting artifacts. | Supplies G3's finding shot. Show an assumed compromise, a verified proposed trust edit, and an unmerged PR; do not claim the incident is already contained. |
+| [#36 C3](https://github.com/AjinkyaTaranekar/theseus/issues/36), [#37 C4](https://github.com/AjinkyaTaranekar/theseus/issues/37) — closed | Usage weighting, U and use-beyond-intent exist with golden tests. #91 closed without a merge; C3's commit `f6caaed` is nevertheless an ancestor of main. C4 is integrated via #101/#108. | Supplies G3's two code shots. A closed PR is not the only way code reaches main; judge readiness comes from the actual implementation and captures. |
+| [#40 S4](https://github.com/AjinkyaTaranekar/theseus/issues/40) — closed | Try-it's PR #95 is merged. `build_try` uses recorded model answers with the selected graph store; production uses FalkorDB. | Provides the public call to action and a PR-fixture fallback. It is not a replacement for finding/scan gate captures. |
+| [#57 incomplete replies](https://github.com/AjinkyaTaranekar/theseus/issues/57), [#58 API retries](https://github.com/AjinkyaTaranekar/theseus/issues/58) — closed | Shared LLM validation and status-based retry fixes landed through #67/#68. | Existing reliability work; no new model/dependency change for P4. Avoid staging a retry that the displayed tool trace did not perform. |
+| [#103 O1](https://github.com/AjinkyaTaranekar/theseus/issues/103), [#104 O2](https://github.com/AjinkyaTaranekar/theseus/issues/104), [#105 O3](https://github.com/AjinkyaTaranekar/theseus/issues/105), [#106 O4](https://github.com/AjinkyaTaranekar/theseus/issues/106), [#107 O5](https://github.com/AjinkyaTaranekar/theseus/issues/107) — closed | Posture, dependency loss/articulation, cost estimates, dashboard and onboarding are integrated via #109/#108 and the redesign. O1 consumes C3/FM3/FM4; O2/O3/O4 consume O1; O5 consumes O4. These additions are not in the original task CSV. | Give the implemented dashboard a short synthesis shot. Label cost as an estimate without usage data; showing a single point of failure does not demonstrate failover simulation. |
+| [#3 P4](https://github.com/AjinkyaTaranekar/theseus/issues/3) — open | P3 is closed. This local script replaces the old eight one-line narration cues with a timed script, proof map and handoff. | Human work remaining: choose narrator/operator, read this version aloud, record duration and review wording. Then #42 can consume the script. |
+| [#6 P7](https://github.com/AjinkyaTaranekar/theseus/issues/6) — open | P3 is closed; both teammates still need the judge-question rehearsal. | Rehearse capacities, residual cut, UNKNOWN, OIDC assumptions, model boundaries and limits using the current code; remove old performance/benchmark promises when answering. |
+| [#23 G1](https://github.com/AjinkyaTaranekar/theseus/issues/23) — open | A5 is closed; the reference PR has a real review. Missing proof for closure: both teammates witness the fresh run and save its clip. | Capture same-head Checkov, three paths and linked evidence; record clip path and head. This unlocks G2. |
+| [#34 G2](https://github.com/AjinkyaTaranekar/theseus/issues/34) — open | E4/E6/A7/A9 are closed; G1 is still open. | After G1, inspect B and capture human apply → commit → rerun → final Theseus success on that commit. Save the clip; never substitute the workflow job's success. This unlocks G3. |
+| [#38 G3](https://github.com/AjinkyaTaranekar/theseus/issues/38) — open | FM4/FM6/C3/C4 are closed; G2 is still open. | After G2, capture finding/K/rotate plus U and code-use. Record which runs are live and which are fixtures, and save the clips. This unlocks final S5/S6 proof. |
+| [#39 S2](https://github.com/AjinkyaTaranekar/theseus/issues/39) — open | E4/E5 are closed; `bench/` contains only `.gitkeep` at this baseline. The `s2-proof` worktree points at main; its name is not a benchmark report. | Can run alongside gate preparation. Follow its brief: humans own benchmark answer keys; produce catches/misses and VM medians in `bench/report.md`. Until then, omit accuracy and large-graph speed claims. S2 is not a declared prerequisite of P4 or S6. |
+| [#41 S5](https://github.com/AjinkyaTaranekar/theseus/issues/41) — open | Existing local commit `6b96567` on `s5-readme` contains the submission README; it is not on main. G2/G3 are still open. | Preserve that work. Once the gates provide evidence, review setup, links, limits and measured results against the chosen release; add the real GIF/clip. Do not rewrite its README in P4. |
+| [#42 S6](https://github.com/AjinkyaTaranekar/theseus/issues/42) — open | Needs G3 and P4, both open. | Edit the gate clips against this script, record the selected narrator, verify duration/captions/links, upload and record the URL. Script preparation can finish before the gate captures. |
+| [#43 S7](https://github.com/AjinkyaTaranekar/theseus/issues/43) — open | Needs S5 and S6, both open. | After their review, the humans choose the submitted commit, verify public access, tag and submit naming Track 01. No publication or release action is part of this local script change. |
+| [#44 S8](https://github.com/AjinkyaTaranekar/theseus/issues/44) — open | Needs S6. Its brief says publish after submission. | Draft from the verified script/results, then publish after S7 with the final demo/repo links. It does not block the demo. |
+| [#69 future design](https://github.com/AjinkyaTaranekar/theseus/issues/69) — open | Service-to-service traversal, exposure and other-language proposals require human agreement on graph/schema changes; they are outside the four-beat implementation. | Keep these as future work. Do not add them as dependencies or suggest the current graph proves internet-to-service network reachability. |
+| [#112 rotate list](https://github.com/AjinkyaTaranekar/theseus/issues/112) — open | This is an output of the synthetic advisory flow, linked from #111. | Show it as a proposed rotation checklist, not unfinished product implementation or proof that any real secret was rotated. |
+
+**Working order:** finish P4's human read-aloud while preparing G1; then G1 → G2 → G3; then finish S5 and S6,
+which can proceed together once their shared gates are evidenced; then S7; then S8 publication. P7 and S2 can
+run beside the gate work. The runtime modules already exist: the immediate gaps are evidence, rehearsal,
+benchmark work and release artifacts. Neither #69 nor the demo's rotation issue belongs on that critical path.
 
 ### README outline
 
