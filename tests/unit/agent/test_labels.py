@@ -69,7 +69,12 @@ def test_severity_follows_the_first_rule_that_holds(result: AnalysisResult, leve
 
 
 def test_the_intern_pr_is_s1_blocked_on_regulated_data_and_grants_more_than_it_says() -> None:
-    assert names(pr(opened=[DB, INVOICES])) == ["S1", "blocked", "grants more than it says", "regulated data"]
+    assert names(pr(opened=[DB, INVOICES])) == [
+        "S1 high",
+        "blocked",
+        "grants more than it says",
+        "regulated data",
+    ]
 
 
 def test_a_pr_that_asks_for_what_it_gets_is_not_labelled_as_granting_more() -> None:
@@ -81,13 +86,18 @@ def test_a_pr_that_asks_for_what_it_gets_is_not_labelled_as_granting_more() -> N
 
 def test_steering_text_and_the_other_verdicts() -> None:
     assert names(pr(intent=INTENT.model_copy(update={"suspicious": True}))) == [
-        "S5",
+        "S5 unclear text",
         "clear",
         "steering text",
     ]
-    assert names(pr(unknowns=["x"])) == ["S4", "needs a look"]
-    assert names(pr()) == ["S6", "clear"]
-    assert names(pr(opened=[INVOICES])) == ["S2", "blocked", "confidential data", "grants more than it says"]
+    assert names(pr(unknowns=["x"])) == ["S4 unchecked", "needs a look"]
+    assert names(pr()) == ["S6 none", "clear"]
+    assert names(pr(opened=[INVOICES])) == [
+        "S2 medium",
+        "blocked",
+        "confidential data",
+        "grants more than it says",
+    ]
 
 
 def test_every_label_is_theseus_s_own_and_fits_github() -> None:
@@ -96,4 +106,12 @@ def test_every_label_is_theseus_s_own_and_fits_github() -> None:
         assert label.name.startswith(PREFIX) and len(label.name) <= 50
         assert len(label.description) <= 100 and len(label.color) == 6
         int(label.color, 16)
-    assert [label.name for label in SEVERITY] == [f"{PREFIX}S{n}" for n in range(7)]
+    words = ["critical", "high", "medium", "low", "unchecked", "unclear text", "none"]
+    assert [label.name for label in SEVERITY] == [f"{PREFIX}S{n} {w}" for n, w in enumerate(words)]
+
+
+def test_the_old_severity_names_are_managed_so_a_review_removes_them() -> None:
+    from theseus.agent.labels import MANAGED, RETIRED
+
+    assert [label.name for label in RETIRED] == [f"{PREFIX}S{n}" for n in range(7)]
+    assert {x.name for x in (*LABELS, *RETIRED)} == {x.name for x in MANAGED}

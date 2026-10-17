@@ -25,15 +25,21 @@ def _label(name: str, color: str, description: str) -> Label:
 # Severity: S0 is the most severe, S6 the least. The first rule that holds decides it. Code that reads data
 # beyond intent counts like a path to that data: it is use, not only the chance of it.
 SEVERITY = (
-    _label("S0", "b60205", "Severity S0: anyone on the internet can reach regulated data"),
+    _label("S0 critical", "b60205", "Severity S0: anyone on the internet can reach regulated data"),
     _label(
-        "S1", "d93f0b", "Severity S1: an insider reaches regulated data, or the internet confidential data"
+        "S1 high",
+        "d93f0b",
+        "Severity S1: an insider reaches regulated data, or the internet confidential data",
     ),
-    _label("S2", "e99695", "Severity S2: a new path or code read reaches confidential data"),
-    _label("S3", "fbca04", "Severity S3: a new path or code read reaches data of unknown sensitivity"),
-    _label("S4", "fef2c0", "Severity S4: Theseus could not check part of the change"),
-    _label("S5", "c5def5", "Severity S5: no new access, but the PR's text is unclear or steers the review"),
-    _label("S6", "0e8a16", "Severity S6: no new access to sensitive data"),
+    _label("S2 medium", "e99695", "Severity S2: a new path or code read reaches confidential data"),
+    _label("S3 low", "fbca04", "Severity S3: a new path or code read reaches data of unknown sensitivity"),
+    _label("S4 unchecked", "fef2c0", "Severity S4: Theseus could not check part of the change"),
+    _label(
+        "S5 unclear text",
+        "c5def5",
+        "Severity S5: no new access, but the PR's text is unclear or steers the review",
+    ),
+    _label("S6 none", "0e8a16", "Severity S6: no new access to sensitive data"),
 )
 VERDICT = {
     "blocked": _label("blocked", "b60205", "Theseus blocked the merge: a new way to sensitive data"),
@@ -50,6 +56,10 @@ BEYOND = _label(
 STEERING = _label("steering text", "5319e7", "Text in the PR tries to steer the review")
 
 LABELS: tuple[Label, ...] = (*SEVERITY, *VERDICT.values(), *CLASS.values(), BEYOND, STEERING)
+# The severity labels' names before they said their level in words: removed from a PR on its next review.
+RETIRED: tuple[Label, ...] = tuple(_label(f"S{i}", s.color, s.description) for i, s in enumerate(SEVERITY))
+# Every label the App may remove from a PR: the ones it sets, and the ones it used to.
+MANAGED: tuple[Label, ...] = (*LABELS, *RETIRED)
 
 
 def _reached(result: AnalysisResult) -> set[tuple[bool, str | None]]:

@@ -771,8 +771,9 @@ def test_unknowns_and_what_theseus_checked_are_folded() -> None:
     assert "| 1 | `explain_path` | P1: 5 hops to db:customer-db | 12 |" in inside
     assert "| `user:priya-intern` | `s3://demo-app-logs/` (internal) | 2 |" in inside
     assert (
-        "Read 46 resources, modeled 31; skipped 15 of types Theseus does not model, such as"
-        " `aws_cloudwatch_metric_alarm` (6), `aws_sns_topic` (5) and `aws_kms_alias` (2)."
+        "Read 46 resources: the 31 that grant or hold access are in the graph, and the other 15 carry no"
+        " access Theseus models, such as `aws_cloudwatch_metric_alarm` (6), `aws_sns_topic` (5) and"
+        " `aws_kms_alias` (2)."
     ) in inside
     assert "Took 9.6 s: engine 1.2 s, LLM 8.0 s, Jev 0.3 s." in inside
     assert "Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`." in inside

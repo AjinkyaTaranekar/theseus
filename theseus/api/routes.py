@@ -31,7 +31,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
-from theseus.agent.labels import LABELS, labels_for
+from theseus.agent.labels import MANAGED, labels_for
 from theseus.agent.render import MARKER, annotations, best_fix, code, render_comment, tested_line, verdict
 from theseus.api import reviews, suggest, webhooks
 from theseus.api.github import CHECK_NAME, NOTHING_CHANGED, GitHub
@@ -483,7 +483,7 @@ def analyze(
                 updated_at=now(),
             )
             gh.upsert_comment(req.repo, req.pr_number, comment)
-            gh.set_labels(req.repo, req.pr_number, labels_for(result), LABELS)
+            gh.set_labels(req.repo, req.pr_number, labels_for(result), MANAGED)
         else:
             log.info(
                 "%s#%d moved on from %s; leaving the comment to the newer run",
