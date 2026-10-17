@@ -66,8 +66,9 @@ def _routes(paths: list[PathRecord], dep: Dependency) -> list[PathRecord]:
 def single_points(
     deps: list[Dependency], paths: dict[str, list[PathRecord]], top: int = TOP
 ) -> list[SinglePoint]:
-    """The nodes on every route of at least one dependency, with the dependencies each would break; most
-    dependencies broken first, then by ID. A dependency with no route has nothing to lose."""
+    """The nodes on every route of at least one dependency, with the dependencies each would break; the ones
+    the most different actors depend on first, then the most dependencies, then by ID. A dependency with no
+    route has nothing to lose."""
     breaks: dict[str, list[Dependency]] = defaultdict(list)
     for dep in deps:
         routes = _routes(paths.get(dep.principal, []), dep)
@@ -79,7 +80,7 @@ def single_points(
             shared &= set(route.route[1:-1])
         for node in shared:
             breaks[node].append(dep)
-    ranked = sorted(breaks.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    ranked = sorted(breaks.items(), key=lambda kv: (-len({d.principal for d in kv[1]}), -len(kv[1]), kv[0]))
     return [SinglePoint(id=node, breaks=found) for node, found in ranked[:top]]
 
 

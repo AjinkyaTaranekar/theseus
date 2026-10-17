@@ -91,7 +91,7 @@ def test_a_shared_role_on_every_route_is_a_single_point_of_failure_for_each_serv
     found = {s.id: [(b.principal, b.resource) for b in s.breaks] for s in run().single_points}
     assert found["role:shared"] == [("workload:api", "db:main"), ("workload:job", "secret:key")]
     assert found["role:admin"] == [("user:alice", "db:main")]
-    assert list(found)[0] == "role:shared"  # breaks the most first
+    assert list(found)[0] == "role:shared"  # the most actors depend on it
 
 
 def test_the_shared_role_splits_the_access_graph() -> None:
@@ -137,6 +137,7 @@ def test_the_demo_world_s_main_has_the_db_secret_as_a_single_point_of_failure() 
     points = {p.id: {b.principal for b in p.breaks} for p in found.single_points}
     assert {"user:sam-support", "workload:billing-api"} <= points["secret:prod-db-credentials"]
     assert found.articulation[0].id == "role:prod-support"
+    assert found.single_points[0].id == "secret:prod-db-credentials"  # three actors need it
     assert found.reach[0].worst == "regulated"
     assert found.cost.monthly_usd == round(sum(line.monthly_usd for line in found.cost.lines), 2) > 0
 

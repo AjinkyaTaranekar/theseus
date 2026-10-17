@@ -146,7 +146,7 @@
 
   <section id="reach">
     <h2>Who reaches what on main</h2>
-    <p class="intro">The blast radius of each person, workflow and service: the sensitive data it could reach today if it were compromised. Dashed items are access a requirement in <code>theseus.yaml</code> asks for.</p>
+    <p class="intro">The blast radius of each person, workflow and service: the sensitive data it could reach today if it were compromised. Highlighted items are access nothing requires; dashed ones a requirement in <code>theseus.yaml</code> covers.</p>
     <div class="card scroll" id="reach-table"></div>
   </section>
 
@@ -344,7 +344,7 @@ function render(data) {
   }
   for (const f of data.findings) {
     const card = el("div", null, { class: "card finding" });
-    const h = add(el("h3"), el("span", f.id, { class: "mono" }), el("span", f.action, { class: "sub mono" }));
+    const h = add(el("h3"), el("span", f.id, { class: "mono" }), el("span", nameOf(f.action), { class: "sub mono" }));
     if (typeof f.urgency === "number") h.append(el("span", `urgency ${f.urgency.toFixed(2)}`, { class: `badge ${f.urgency >= 0.7 ? "blocked" : "look"}` }));
     card.append(h);
     const dl = el("dl");
@@ -373,7 +373,7 @@ function render(data) {
     for (const r of reach) {
       const who = add(el("td"), el("div", nameOf(r.actor), { style: "font-weight:600" }), el("div", kindOf(r.actor, info(r.actor)), { class: "sub" }));
       const what = el("td");
-      for (const id of r.targets) what.append(chip(id, r.required.includes(id) && !risky.has(`${r.actor}|${id}`)));
+      for (const id of r.targets) what.append(chip(id, !risky.has(`${r.actor}|${id}`)));
       const notNeeded = r.targets.filter((id) => risky.has(`${r.actor}|${id}`)).length;
       if (notNeeded) what.append(el("div", `${plural(notNeeded, "of these", "of these")} nothing requires.`, { class: "sub" }));
       body.append(add(el("tr"), who, what, el("td", String(r.paths), { class: "num" })));
@@ -402,13 +402,14 @@ function render(data) {
   items($("spof"), (p ? p.single_points : []).slice(0, 6).map((s) => {
     const who = [...new Set(s.breaks.map((b) => nameOf(b.principal)))];
     const what = [...new Set(s.breaks.map((b) => nameOf(b.resource)))];
-    return { id: s.id, n: s.breaks.length, what: `${plural(s.breaks.length, "dependency", "dependencies")} stop: ${list(who)} lose ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
+    const loses = who.length === 1 ? "loses" : "lose";
+    return { id: s.id, n: s.breaks.length, what: `If it goes, ${plural(s.breaks.length, "dependency", "dependencies")} break: ${list(who)} ${loses} ${list(what.slice(0, 4))}${what.length > 4 ? " and more" : ""}.` };
   }), "No node is the only route to anything that is needed.");
   items($("art"), (p ? p.articulation : []).slice(0, 6).map((a) => ({
-    id: a.id, n: a.cut_off, what: `Cuts off ${plural(a.cut_off, "node")} from the rest.`, detail: `Pieces left: ${a.pieces.join(", ")}`,
+    id: a.id, n: a.cut_off, what: `Without it, ${plural(a.cut_off, "node")} lose every link to the rest.`, detail: `It leaves pieces of ${list(a.pieces.map(String))} nodes.`,
   })), "Removing any one node leaves the graph in one piece.");
   items($("choke"), (scan ? scan.choke_points : []).slice(0, 5).map((c) => ({
-    id: c.id, n: c.score, what: `Betweenness ${Number(c.score).toFixed(3)}`,
+    id: c.id, n: c.score, what: `On ${Number(c.score).toFixed(Number.isInteger(c.score) ? 0 : 1)} shortest routes between other nodes.`,
   })), "No role carries more routes than another.");
   const grants = scan ? scan.unused_grants : [];
   const box = $("unused");
