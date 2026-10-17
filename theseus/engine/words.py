@@ -46,14 +46,14 @@ HOLDS = {
 }
 # What an edge lets its source do to its target, as the next clause of a sentence.
 VERBS = {
-    "MEMBER_OF": "is a member of",
-    "CAN_ASSUME": "can switch into",
-    "TRUSTS": "can sign in as",
+    "MEMBER_OF": "is in",
+    "CAN_ASSUME": "can become",
+    "TRUSTS": "can log in as",
     "RUNS_AS": "runs as",
-    "UNLOCKS": "unlocks",
+    "UNLOCKS": "opens",
     "USES": "uses",
     "CALLS": "calls",
-    "REQUESTS": "sends requests to",
+    "REQUESTS": "calls",
 }
 ACCESS = {("read",): "can read", ("write",): "can change", ("read", "write"): "can read and change"}
 

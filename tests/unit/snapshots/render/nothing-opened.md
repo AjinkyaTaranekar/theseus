@@ -1,14 +1,14 @@
 <!-- theseus:pr-comment -->
 ## 🟢 No new access to sensitive data
 
-This change opens no new way to reach sensitive data.
+**No new access to sensitive data.**
 
-**Says:** let Priya read the app logs.\
-**Needs:** **priya-intern** to read **demo-app-logs/**\
-**Do:** nothing. Theseus found no new access to sensitive data.
+**The PR says:** let Priya read the app logs.\
+**It asked for:** **priya-intern** to read **demo-app-logs/**\
+**Fix:** nothing to fix.
 
 <details>
-<summary><b>What Theseus checked</b></summary>
+<summary><b>Details</b></summary>
 
 Checkov 3.2.255 passed this commit (52 checks).
 
@@ -37,8 +37,8 @@ Models: LLM `zai-org/GLM-5.3`, Jev `jev-1.13.0`.
 </details>
 
 <details>
-<summary><b>What is Theseus?</b></summary>
+<summary><b>About Theseus</b></summary>
 
-Theseus reviews infrastructure changes as a graph in FalkorDB: who can reach which data, through which groups, roles, secrets and code. It blocks a merge when a change opens a new way to sensitive data, and every step it shows links to the line that causes it.
+Theseus maps who can reach what in your infrastructure, as a graph in FalkorDB. It blocks a PR that opens a new way to sensitive data, and links every step to the line behind it.
 
 </details>

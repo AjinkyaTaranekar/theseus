@@ -57,3 +57,17 @@ def test_rule_fixes_match_the_intern_answer_key() -> None:
     result = project(analyze("intern"))
     wanted = expected("intern")["candidates"]
     assert {k: result["candidates"][k] for k in ("A", "C", "D")} == {k: wanted[k] for k in ("A", "C", "D")}
+
+
+def test_the_intern_opens_no_path_from_staging_and_the_old_preview_paths_are_not_flagged() -> None:
+    """The preview workflow reaches prod data on `main` too, but this PR did not open that: only what a change
+    opens is flagged, so the intern PR carries no staging-to-prod flag."""
+    result = analyze("intern")
+    assert result.staging_to_prod == []
+    assert any(p.actor.endswith("docs-site/preview.yml") for p in result.unchanged)
+
+
+def test_the_intern_pr_lists_its_choke_point_roles() -> None:
+    result = analyze("intern")
+    ids = [c.id for c in result.choke_points]
+    assert ids and ids[:1] == ["role:prod-support"] and all(i.startswith("role:") for i in ids)

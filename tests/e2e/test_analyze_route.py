@@ -215,12 +215,12 @@ def test_the_intern_pr_gets_its_headline_three_opened_paths_and_a_failing_check(
     assert body.startswith(MARKER)
     # The card says what Priya could do, each hop with its own access: the role reads the secret, and the
     # secret opens the database to reads and changes.
-    assert "**priya-intern**, a user, could read and change **customer-db**, a database" in body
-    assert "can read **prod-db-credentials** → unlocks **customer-db**" in body
+    assert "**This PR would let priya-intern read and change customer-db**, which holds" in body
+    assert "can read **prod-db-credentials** → opens **customer-db**" in body
     # Above the folds, one diagram of the connections, the membership this PR adds drawn in red.
     diagram = body.split("```mermaid", 1)[1].split("```", 1)[0]
     assert body.index("```mermaid") < body.index("<details>")
-    assert '-->|"is a member of, added here"|' in diagram and "linkStyle 0 stroke:#cf222e" in diagram
+    assert '-->|"is in · new"|' in diagram and "linkStyle 0 stroke:#cf222e" in diagram
     for target in ("db:customer-db", "s3://demo-company-files/invoices/", "secret:prod-db-credentials"):
         assert f"| `user:priya-intern` | `{target}` (" in body
     # The graph Theseus reasoned on lives in the store, and the comment says how big it is.
@@ -278,7 +278,7 @@ def test_each_commit_s_files_arrive_in_one_query(client: TestClient, repo: FakeR
 
 
 def page_link(body: str) -> str:
-    [link] = re.findall(r"\[Open the graph Theseus checked →\]\((https://[^)]+)\)", body)
+    [link] = re.findall(r"\[See it on a graph →\]\((https://[^)]+)\)", body)
     return link
 
 
@@ -291,7 +291,9 @@ def test_the_comment_links_to_a_signed_page_with_both_graphs_from_the_store(
     path = link.removeprefix("https://theseus.example")
     page = client.get(path)
     assert page.status_code == 200 and "cytoscape/3.30.2/cytoscape.min.js" in page.text
-    assert 'integrity="sha512-' in page.text and page.headers["cache-control"] == "no-store"
+    # The full-graph library loads only when asked for, pinned and with its SRI hash.
+    assert 'integrity: "sha512-EY3U1MWdgKx0P1dqTE4inlKz2cpXtWpsR1YUyD855Hs6RL' in page.text
+    assert page.headers["cache-control"] == "no-store"
 
     route, _, query = path.partition("?")
     data = client.get(f"{route}/data?{query}").json()

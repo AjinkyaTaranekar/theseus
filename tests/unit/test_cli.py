@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
 from theseus import cli
 from theseus.cli import main
-from theseus.errors import GraphError
+from theseus.config import get_settings
+from theseus.errors import GraphError, TheseusError
+from theseus.graph.store import MemoryStore
 
 COMMANDS = ("analyze", "finding", "scan", "serve")
 
@@ -18,11 +21,6 @@ def test_help_lists_the_four_commands() -> None:
     )
     for command in COMMANDS:
         assert command in out.stdout
-
-
-def test_unbuilt_commands_exit_2(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["finding", "fixtures/compromised-action"]) == 2
-    assert "not implemented yet" in capsys.readouterr().err
 
 
 def test_a_command_is_required() -> None:
@@ -112,11 +110,7 @@ def test_scan_refuses_to_run_without_falkordb(
 
 
 def test_scan_reads_a_scan_fixture_through_the_real_adapters() -> None:
-    from pathlib import Path
-
     from tests.golden.conftest import RecordedJev
-    from theseus.config import get_settings
-    from theseus.graph.store import MemoryStore
 
     store = MemoryStore()
     result = cli.scan_fixture(Path("fixtures/unused-grant"), store, RecordedJev(), get_settings())
@@ -128,11 +122,31 @@ def test_scan_reads_a_scan_fixture_through_the_real_adapters() -> None:
 
 
 def test_scan_refuses_a_fixture_that_is_not_a_scan() -> None:
-    from pathlib import Path
-
-    from theseus.config import get_settings
-    from theseus.errors import TheseusError
-    from theseus.graph.store import MemoryStore
-
     with pytest.raises(TheseusError, match="'pr' fixture"):
         cli.scan_fixture(Path("fixtures/intern"), MemoryStore(), None, get_settings())
+
+
+def test_finding_refuses_to_run_without_falkordb(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def unreachable(settings: object) -> None:
+        raise GraphError("cannot reach FalkorDB at example:1")
+
+    monkeypatch.setattr(cli, "get_client", unreachable)
+    assert main(["finding", "fixtures/compromised-action"]) == 1
+    assert "cannot reach FalkorDB" in capsys.readouterr().err
+
+
+def test_finding_reads_a_finding_fixture_through_the_real_adapters() -> None:
+    from tests.golden.conftest import RecordedJev
+
+    result = cli.finding_fixture(
+        Path("fixtures/compromised-action"), MemoryStore(), RecordedJev(), get_settings()
+    )
+    assert result.mode == "finding"
+    assert result.rotate == ["secret:prod-db-credentials"]
+
+
+def test_finding_refuses_a_fixture_that_is_not_a_finding() -> None:
+    with pytest.raises(TheseusError, match="finding reads finding fixtures"):
+        cli.finding_fixture(Path("fixtures/intern"), MemoryStore(), None, get_settings())

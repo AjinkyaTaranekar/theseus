@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 from collections import defaultdict, deque
 
-from theseus.contracts.engine import EdgeFlow, FlowResult, FlowRow, GraphStore
+from theseus.contracts.engine import EdgeFlow, FlowResult, FlowRow, GraphState, GraphStore
+from theseus.contracts.result import ChokePoint, GraphRows
+from theseus.contracts.schema import PATH_TYPES
 from theseus.errors import GraphError
 
 log = logging.getLogger(__name__)
@@ -91,3 +93,51 @@ def max_flow(
     except GraphError:
         log.warning("max flow failed for %s; using Edmonds-Karp", graph, exc_info=True)
         return edmonds_karp(sources, sinks, caps)
+
+
+def brandes(rows: GraphRows) -> list[ChokePoint]:
+    """Betweenness of every node over the path-type edges: directed, unweighted, unnormalized, parallel edges
+    counted once. Highest score first, then by ID."""
+    nodes = sorted({n.id for n in rows.nodes})
+    out: dict[str, list[str]] = {n: [] for n in nodes}
+    for src, dst in sorted({(e.src, e.dst) for e in rows.edges if e.type in PATH_TYPES}):
+        if src in out and dst in out:
+            out[src].append(dst)
+    score = dict.fromkeys(nodes, 0.0)
+    for source in nodes:
+        order: list[str] = []
+        parents: dict[str, list[str]] = defaultdict(list)
+        paths = dict.fromkeys(nodes, 0)
+        paths[source] = 1
+        depth = {source: 0}
+        queue = deque([source])
+        while queue:
+            here = queue.popleft()
+            order.append(here)
+            for there in out[here]:
+                if there not in depth:
+                    depth[there] = depth[here] + 1
+                    queue.append(there)
+                if depth[there] == depth[here] + 1:
+                    paths[there] += paths[here]
+                    parents[there].append(here)
+        credit = dict.fromkeys(nodes, 0.0)
+        for there in reversed(order):
+            for here in parents[there]:
+                credit[here] += paths[here] / paths[there] * (1 + credit[there])
+            if there != source:
+                score[there] += credit[there]
+    return sorted((ChokePoint(id=n, score=score[n]) for n in nodes), key=lambda c: (-c.score, c.id))
+
+
+def choke_points(store: GraphStore, state: GraphState, top: int = 5) -> list[ChokePoint]:
+    """The `top` roles with the highest betweenness, scores rounded to six places, highest first then by ID.
+
+    The scores are exact (Brandes on the state's rows), whichever store holds the graph. FalkorDB's
+    `algo.betweenness` is a sampled estimate that differs from run to run and can rank another node first
+    (found on the compromised-action graph), and a ranking that changes between runs is not a fact the engine
+    can report. `store.betweenness` still returns the store's own scores for anyone who wants them; `store`
+    is part of the contract's signature and is not read here."""
+    roles = {n.id for n in state.rows.nodes if "Role" in n.labels}
+    rounded = (ChokePoint(id=c.id, score=round(c.score, 6)) for c in brandes(state.rows) if c.id in roles)
+    return sorted(rounded, key=lambda c: (-c.score, c.id))[:top]
