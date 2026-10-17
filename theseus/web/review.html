@@ -584,7 +584,8 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
   }
   // Each fix, drawn on the graph copy the engine verified it on, against the PR's head: what it cuts (red,
   // dashed), what it adds (green), and the route that still gives the actor what the PR asked for (blue).
-  const fixes = finding ? [] : data.fixes || [];
+  const fixes = finding ? [] : r.candidates || [];
+  const fixCache = new Map();
   for (const fx of fixes) {
     const mark = fx.verdict === "pass" ? "✓" : fx.verdict === "fail" ? "✗" : "?";
     const b = el("button", `Fix ${fx.id} ${mark}`, { type: "button", "data-fix": fx.id, "aria-pressed": "false",
@@ -610,9 +611,17 @@ ${short(n.id)}`, hot: hot.has(n.id) ? 1 : 0,
     return route;
   }
   let fixCy = null;
-  function drawFix(id) {
-    const fx = fixes.find((f) => f.id === id);
+  async function drawFix(id) {
     const head = data.graphs.head;
+    if (!fixCache.has(id)) {
+      $("note").textContent = `Loading fix ${id}'s graph from FalkorDB…`;
+      const k = new URLSearchParams(location.search).get("k") || "";
+      try {
+        const res = await fetch(`${location.pathname.replace(/\/$/, "")}/fixes/${encodeURIComponent(id)}?k=${encodeURIComponent(k)}`, { cache: "no-store" });
+        fixCache.set(id, res.ok ? await res.json() : null);
+      } catch (e) { fixCache.set(id, null); }
+    }
+    const fx = fixCache.get(id);
     if (!fx || !head) { $("note").textContent = "This fix's graph isn't in the store any more."; return; }
     const headEdges = new Map(head.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));
     const fixEdges = new Map(fx.edges.filter((e) => ACCESS_TYPES.has(e.type)).map((e) => [ekey(e), e]));

@@ -21,6 +21,7 @@ from theseus.agent.render import verdict
 from theseus.config import Settings
 from theseus.contracts.posture import PostureReport
 from theseus.contracts.result import AnalysisResult
+from theseus.contracts.schema import PATH_TYPES
 from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
 
@@ -151,25 +152,36 @@ def page_doc(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
             graphs[side] = {"name": name, **store.view(name)}
         except GraphError as e:  # deleted since: the page shows what is left
             log.warning("%s: graph %s is gone: %s", doc_key, name, e)
-    return {**doc, "graphs": graphs, "fixes": fix_graphs(store, doc)}
+    return {**doc, "graphs": graphs}
 
 
-def fix_graphs(store: ReviewStore, doc: dict[str, Any]) -> list[dict[str, Any]]:
-    """Each candidate fix with the graph copy the engine verified it on, as the store holds it now: `{id,
-    verdict, title, recommended, ops, reason, name, nodes, edges}`, in the result's order. A candidate whose
-    copy is gone is left out."""
-    head = (doc["result"].get("graphs") or {}).get("head")
-    if not head:
-        return []
-    present = set(store.list_graphs())
-    out = []
-    for c in doc["result"].get("candidates") or []:
-        name = candidate_graph(head, c["id"])
-        if name not in present:
-            continue
-        keep = ("id", "verdict", "title", "recommended", "ops", "reason")
-        out.append({**{k: c.get(k) for k in keep}, "name": name, **store.view(name)})
-    return out
+def fix_graph(store: ReviewStore, doc_key: str, candidate_id: str) -> dict[str, Any] | None:
+    """One candidate fix with the graph copy the engine verified it on, read from the store now and trimmed to
+    what the page draws: `{id, verdict, title, recommended, reason, ops, name, nodes, edges}`, the nodes as
+    `{id, category, sensitivity}` and the edges as `{src, type, dst}` for access links only. None when the
+    review, the candidate or its copy is gone."""
+    doc = _load(store, doc_key)
+    head = ((doc or {}).get("result") or {}).get("graphs", {}).get("head")
+    candidate = (
+        next((c for c in (doc or {})["result"].get("candidates") or [] if c["id"] == candidate_id), None)
+        if doc
+        else None
+    )
+    if not head or candidate is None:
+        return None
+    name = candidate_graph(head, candidate_id)
+    if name not in store.list_graphs():
+        return None
+    view = store.view(name)
+    keep = ("id", "verdict", "title", "recommended", "reason", "ops")
+    return {
+        **{k: candidate.get(k) for k in keep},
+        "name": name,
+        "nodes": [{k: n.get(k) for k in ("id", "category", "sensitivity")} for n in view["nodes"]],
+        "edges": [
+            {k: e[k] for k in ("src", "type", "dst")} for e in view["edges"] if e["type"] in PATH_TYPES
+        ],
+    }
 
 
 def page_data(store: ReviewStore, repo: str, number: int) -> dict[str, Any] | None:

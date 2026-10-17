@@ -17,6 +17,7 @@ from typing import Any
 
 import yaml
 from fastapi import Depends, FastAPI, Request, Response
+from fastapi.middleware.gzip import GZipMiddleware
 
 from theseus import __version__
 from theseus.adapters.aws.adapter import AwsAdapter
@@ -215,6 +216,8 @@ def create_app(connect: Callable[[], Any] = connect_falkordb) -> FastAPI:
         yield
 
     app = FastAPI(title="Theseus", version=__version__, lifespan=lifespan)
+    # Graphs are JSON with much repetition; compressed, a review page's data is a tenth of its size.
+    app.add_middleware(GZipMiddleware, minimum_size=2048)
     app.include_router(routes.router)
 
     @app.get("/health")

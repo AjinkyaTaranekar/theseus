@@ -311,12 +311,22 @@ def test_the_comment_links_to_a_signed_page_with_both_graphs_from_the_store(
     assert data["graphs"]["base"]["name"] == "demo-infra__pr7-base"
     membership = next(e for e in head["edges"] if (e["src"], e["type"]) == ("user:priya-intern", "MEMBER_OF"))
     assert membership["evidence"][0]["address"] == "aws_iam_user_group_membership.priya_support"
-    # Each fix comes with the graph copy the engine verified it on, read from the store now.
-    fixes = {f["id"]: f for f in data["fixes"]}
-    assert set(fixes) == {c["id"] for c in result["candidates"]} and fixes
-    for f in fixes.values():
-        assert f["name"] == f"demo-infra__pr7-fix-{f['id'].lower()}"
-        assert {k: f[k] for k in ("nodes", "edges")} == store.view(f["name"])
+    # Each fix's graph copy, the one the engine verified it on, loads from the store when its view opens.
+    assert result["candidates"]
+    for c in result["candidates"]:
+        fix = client.get(f"{route}/fixes/{c['id']}?{query}").json()
+        assert (fix["id"], fix["verdict"], fix["name"]) == (
+            c["id"],
+            c["verdict"],
+            f"demo-infra__pr7-fix-{c['id'].lower()}",
+        )
+        view = store.view(fix["name"])
+        assert {n["id"] for n in fix["nodes"]} == {n["id"] for n in view["nodes"]}
+        assert {(e["src"], e["type"], e["dst"]) for e in fix["edges"]} <= {
+            (e["src"], e["type"], e["dst"]) for e in view["edges"]
+        }
+    assert client.get(f"{route}/fixes/Z?{query}").status_code == 404
+    assert client.get(f"{route}/fixes/B?k=wrong").status_code == 404
 
 
 @pytest.mark.parametrize("query", ["", "?k=", "?k=0123456789abcdef0123456789abcdef"])
