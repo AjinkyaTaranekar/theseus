@@ -1,8 +1,8 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
-PR mode reports all requirements, protects approved ones in a combined cut for actors with opened paths, and
-verifies applicable rule fixes on graph copies. Scan mode lists the grants the code never uses and verifies
-candidate U, which removes them.
+PR mode reports all requirements, protects approved ones in a combined cut for actors with opened paths,
+verifies applicable rule fixes on graph copies, and flags new code calls to sensitive data no owner approved.
+Scan mode lists the grants the code never uses and verifies candidate U, which removes them.
 The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
@@ -38,7 +38,7 @@ from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
 from theseus.engine.simulate import simulate
 from theseus.engine.staging import staging_to_prod
-from theseus.engine.usage import scan_headline, unused_fix, unused_grants
+from theseus.engine.usage import scan_headline, unused_fix, unused_grants, use_beyond_intent
 from theseus.errors import IngestError, ModelError, PatchError
 from theseus.graph.algos import choke_points
 from theseus.graph.load import load_graph
@@ -167,7 +167,8 @@ def breakage_scores(
 
 def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) -> AnalysisResult:
     """PR mode: both states loaded into the store and analyzed with the same actors and requirements, the
-    config's and the PR's intent; then the headline says what the PR says against what the change grants."""
+    config's and the PR's intent, and the code calls head adds; then the headline says what the PR says
+    against what the change grants and what its code now reads."""
     start = time.perf_counter()
     base_state, base_jev = prepare_state(base, "base", deps)
     head_state, head_jev = prepare_state(head, "head", deps)
@@ -182,6 +183,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     before: Analysis = analyze(deps.store, base_state, requirements, who)
     after: Analysis = analyze(deps.store, head_state, requirements, who)
     found = diff(before, after)
+    uses = use_beyond_intent(base_state, head_state, requirements)
     head_rows = {node.id: node for node in head_state.rows.nodes}
     enforced = approved(requirements, intent, head_rows)
     opened_actors = sorted({path.actor for path in found.opened})
@@ -211,6 +213,9 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
             for node_id in (edge.src, edge.dst):
                 node = head_rows[node_id]
                 head_nodes[node_id] = NodeInfo(category=node.category, sensitivity=node.sensitivity)
+    for node_id in sorted({n for use in uses for n in (use.workload, use.resource, *use.unlocks)}):
+        node = head_rows[node_id]
+        head_nodes[node_id] = NodeInfo(category=node.category, sensitivity=node.sensitivity)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
     jev_ms = base_jev + head_jev + risk_ms
@@ -220,7 +225,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         graphs={"base": base_state.name, "head": head_state.name},
         intent=intent,
         changes=changes(base, head),
-        headline=headline(intent, found.opened, [], info),
+        headline=headline(intent, found.opened, uses, info),
         opened=found.opened,
         closed=found.closed,
         unchanged=found.unchanged,
@@ -228,6 +233,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         candidates=candidates,
         unknowns=sorted(set(head_state.rows.unknowns)),
         min_cut=cut,
+        use_beyond_intent=uses,
         staging_to_prod=staging_to_prod(Analysis(dangerous=found.opened), head_state),
         choke_points=choke_points(deps.store, head_state),
         evidence=dict(sorted({**base_evidence, **head_evidence}.items())),
