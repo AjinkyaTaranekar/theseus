@@ -195,9 +195,9 @@ decision came from a bug found in testing, the record says so.
 
 - **Context.** When the cut is not cuttable (the intern's membership is both the way in and how she reads the
   logs she needs), no rule-based removal can pass. A structural fix, such as a new narrower role, needs design.
-- **Decision.** The fix agent designs exactly one candidate, B, with five tools from the MCP registry and at most
-  8 calls. The engine simulates the submission itself, sends a failure back once, and checks every evidence ID
-  and node ID in the rationale. Its title is built from its ops.
+- **Decision.** The fix agent designs exactly one candidate, B, with five tools from the tool registry (called
+  in process, not over MCP) and at most 8 calls. The engine simulates the submission itself, sends a failure
+  back once, and checks every evidence ID and node ID in the rationale. Its title is built from its ops.
 - **Consequences.** The LLM's creativity is used where it helps, and its output is held to the same verdict as a
   rule's. A fix that cites evidence that does not exist cannot slip through.
 - **Alternatives.** Letting the model rank or choose among fixes: rejected (ranking is fixed code). Several LLM

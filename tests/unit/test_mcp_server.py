@@ -13,8 +13,10 @@ from mcp import Client
 from tests.golden.conftest import FIXTURES, deps_for
 from tests.unit.mcp_support import BASE, HEAD, fake_engine, intern_context
 from theseus.agent.trace import Recorder
+from theseus.graph.store import MemoryStore
+from theseus.mcp import server
 from theseus.mcp.server import TRACE_URI, build_server, context_for_fixture
-from theseus.mcp.tools import build_registry
+from theseus.mcp.tools import ToolContext, build_registry
 
 PRIYA = "user:priya-intern"
 
@@ -112,3 +114,24 @@ def test_a_fixture_with_one_side_loads_that_side_and_needs_no_fix_actors() -> No
 def test_a_folder_with_neither_side_is_refused(tmp_path: Path) -> None:
     with pytest.raises(Exception, match="no base or head"):
         context_for_fixture(tmp_path, deps_for("intern"), engine=fake_engine()[0])
+
+
+def test_main_serves_the_intern_on_the_recordings_in_replay_with_no_keys(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A fresh clone has no keys, and the hash-keyed recordings no longer match the demo world, so `main` has
+    to use the clients the CLI uses in replay (`tests/unit/test_cli.py` checks the commands the same way)."""
+    served: list[ToolContext] = []
+
+    async def serve_once(context: ToolContext) -> None:
+        served.append(context)
+
+    monkeypatch.setenv("THESEUS_MODE", "replay")
+    monkeypatch.setattr("theseus.graph.client.get_client", lambda settings: None)
+    monkeypatch.setattr("theseus.graph.store.FalkorStore", lambda client: MemoryStore())
+    monkeypatch.setattr(server, "serve", serve_once)
+    assert server.main([str(FIXTURES / "intern")]) == 0
+    (context,) = served
+    assert sorted(context.states) == [BASE, HEAD]
+    assert context.fix_actors == [PRIYA]
+    assert {r.id for r in context.requirements} >= {"R1", "I1"}

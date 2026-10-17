@@ -101,3 +101,22 @@ def test_the_view_leaves_out_flow_edges_the_engine_writes(falkor: FalkorStore) -
         "CREATE (a)-[:FLOW {eids: ['x'], capacity: 1}]->(b)",
     )
     assert falkor.view(name) == memory.view(name)
+
+
+def test_rows_read_back_from_falkordb_give_the_engine_the_same_paths(falkor: FalkorStore) -> None:
+    """The compromise view reasons on main's graph as FalkorDB holds it: rows from the view must be enough for
+    the engine to find exactly the paths it finds on the rows it built."""
+    from theseus.engine.analyze import valid_paths
+    from theseus.graph.store import rows_from_view
+
+    deps = deps_for("intern")
+    state, _ = prepare_state(world("intern", "head"), "head", deps)
+    name = f"{PREFIX}rows"
+    try:
+        falkor.load(name, state.rows)
+        read = rows_from_view(falkor.view(name))
+        for actor in ("user:priya-intern", "group:support-engineers", "role:prod-support"):
+            built = valid_paths(falkor, name, state.rows, actor)
+            assert built and valid_paths(falkor, name, read, actor) == built
+    finally:
+        falkor.delete(name)

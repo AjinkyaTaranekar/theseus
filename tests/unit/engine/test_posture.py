@@ -152,3 +152,20 @@ def test_a_posture_run_raises_a_finding_for_an_advisory_that_affects_main() -> N
     assert [(f.finding or {})["id"] for f in report.findings] == ["GHSA-demo-0001"]
     assert report.scan.mode == "scan" and report.scan.choke_points
     assert report.posture.single_points
+
+
+def test_a_saving_carries_the_proof_that_nothing_uses_it() -> None:
+    """The demo world's left-over replica: every actor's paths traced, every code file read; none reach it."""
+    deps = deps_for("unused-grant")
+    report = run_posture(world("unused-grant", "base"), deps, [])
+    (saving,) = report.posture.cost.savings
+    assert saving.id == "db:reports-replica" and saving.monthly_usd > 0
+    proof = saving.proof
+    assert proof is not None
+    assert (proof.file, proof.line) == ("terraform/legacy.tf", 224)
+    assert proof.actors > 10 and proof.paths > proof.actors and proof.code_files > 0
+    assert proof.checks[0].startswith(f"No valid path from any of the {proof.actors} people")
+    assert proof.checks[1].startswith(f"No code calls it: {proof.code_files} code files read")
+    assert proof.inbound == [] and len(proof.blind_spots) == 3
+    line = next(x for x in report.posture.cost.lines if x.address == "aws_db_instance.reports_replica")
+    assert line.pricing_url and line.idle_check and line.retire

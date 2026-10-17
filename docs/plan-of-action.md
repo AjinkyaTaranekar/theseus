@@ -93,7 +93,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | File | What it gives the agent |
 | --- | --- |
 | `AGENTS.md` (`CLAUDE.md` imports it) | Commands first, then Always, Ask first and Never boundaries, code conventions with one example, tests, the definition of done, the commit and pull request rules, where to look, and the start prompt. Codex reads it directly and Claude Code through CLAUDE.md, where a hook blocks writes to expected.json and .env. demo-infra/AGENTS.md adds the demo world's own rules |
-| `docs/spec/` (7 files) | What Theseus does; the demo world with every name and the five scenarios' expected outcomes; the graph schema and canonical Cypher; every engine rule; the full file skeleton and shared models; LLM and Jev prompts; GitHub and deployment |
+| `docs/spec/` (8 files) | What Theseus does; the demo world with every name and the five scenarios' expected outcomes; the graph schema and canonical Cypher; every engine rule; the full file skeleton and shared models; LLM and Jev prompts; GitHub and deployment; what is core and what is an adapter |
 | `docs/tasks/<ID>.md` (31 briefs) | The feature, why it matters, the spec sections to read, each file to create or change and its purpose, steps, done when, out of scope, and the prompt to paste |
 | `docs/tasks/README.md` | Every task by stage, with the files it creates and what it achieves; how to set up the board; which IDs were merged and why |
 | `docs/tasks/human-tasks.md` | The 13 tasks only people do: prep checks, expected.json, the three gates, the video and the submission |
@@ -139,7 +139,7 @@ The demo world (F4) and the engine core (E1, E3, E5, E6) sit on the critical pat
 | A4 PR comment: paths, fix table, trace and coverage | `theseus/agent/templates/comment.md`, `theseus/agent/render.py`, `tests/unit/test_render.py` | none |
 | A5 Real analyze behind the Action | `tests/e2e/test_analyze_route.py` | `theseus/importer/world.py`, `theseus/api/routes.py` |
 | FM1 CI in the graph: workflows and OIDC trust | `theseus/adapters/github/workflows.py`, `theseus/adapters/aws/oidc.py`, `tests/unit/adapters/github/test_workflows.py`, `tests/unit/adapters/aws/test_oidc.py` | `theseus/adapters/github/adapter.py`, `theseus/adapters/aws/adapter.py` |
-| C1 Demo backend: service code and platform resources | `demo-infra/services/` (six services, 17 modules), `demo-infra/terraform/network.tf`, `platform.tf` | `tools/make_fixture.py`, `fixtures/*/` |
+| C1 Demo backend: service code and platform resources | `demo-infra/services/` (the services in spec 02), `demo-infra/terraform/network.tf`, `platform.tf` | `tools/make_fixture.py`, `fixtures/*/` |
 
 **Beat 2: Fix it**
 
@@ -325,7 +325,7 @@ theseus/            repo root; every file and its owner task is in docs/spec/05-
   bench/         benchmark and timings (S2)
   deploy/        Dockerfile, docker-compose.yml, Caddyfile, deploy.sh (F3)
   tools/         make_board.py, tasks.csv, dep_graph.py, agent_guard.py; plan.sh, make_fixture.py (F4)
-  docs/          spec/ (7 files) and tasks/ (31 briefs)
+  docs/          spec/ (8 files) and tasks/ (31 briefs)
 ```
 
 A sample `expected.json` for the intern scenario. It holds only the fields we compare, and we write it by hand; it is the answer key the agents' code is graded against. The line numbers come from `demo-infra/` once F4 is merged.

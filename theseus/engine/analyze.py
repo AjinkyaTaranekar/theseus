@@ -159,22 +159,29 @@ def _rank(p: PathRecord) -> tuple[bool, int, list[str]]:
     return (p.unknown, len(p.steps), p.route)
 
 
+def valid_paths(store: GraphStore, graph: str, rows: GraphRows, actor: str) -> list[PathRecord]:
+    """Every valid path from `actor` in a stored graph (its rows read alongside), sorted by target, then
+    unknown last, fewest hops, route. Any node can be the actor: a role or a group as well as a person."""
+    nodes = {n.id: n for n in rows.nodes}
+    edges = {e.eid: e for e in rows.edges}
+    records: dict[str, PathRecord] = {}
+    if actor in nodes:
+        for eids in store.paths(graph, actor):
+            rec = _record(actor, eids, nodes, edges)
+            if rec is not None:
+                records.setdefault(rec.id, rec)
+    return sorted(records.values(), key=lambda p: (p.target, *_rank(p)))
+
+
 def analyze(
     store: GraphStore, state: GraphState, requirements: list[Requirement], actors: list[str]
 ) -> Analysis:
     """Valid paths per actor, one dangerous path per (actor, target), each requirement's status; sorted."""
     nodes = {n.id: n for n in state.rows.nodes}
-    edges = {e.eid: e for e in state.rows.edges}
     principals = sorted(set(actors) | {r.principal for r in requirements})
-    paths: dict[str, list[PathRecord]] = {}
-    for actor in principals:
-        records: dict[str, PathRecord] = {}
-        if actor in nodes:
-            for eids in store.paths(state.name, actor):
-                rec = _record(actor, eids, nodes, edges)
-                if rec is not None:
-                    records.setdefault(rec.id, rec)
-        paths[actor] = sorted(records.values(), key=lambda p: (p.target, *_rank(p)))
+    paths: dict[str, list[PathRecord]] = {
+        actor: valid_paths(store, state.name, state.rows, actor) for actor in principals
+    }
     dangerous: list[PathRecord] = []
     for actor in sorted(actors):
         covered = _covered(actor, requirements, paths[actor])

@@ -28,10 +28,12 @@ from theseus.contracts.incident import Incident, IncidentReport
 from theseus.contracts.posture import OutageBasis, PostureReport
 from theseus.contracts.result import AnalysisResult
 from theseus.contracts.schema import PATH_TYPES
+from theseus.engine.analyze import step_evidence, valid_paths
 from theseus.engine.incident import blast
 from theseus.engine.pr_graphs import delete_pr_graphs, drop_stale_fixes, world_name
 from theseus.engine.simulate import candidate_graph
 from theseus.errors import GraphError
+from theseus.graph.store import rows_from_view
 
 log = logging.getLogger(__name__)
 
@@ -50,6 +52,7 @@ class ReviewStore(Protocol):
     def docs(self, prefix: str) -> list[str]: ...
     def read_docs(self, prefix: str) -> dict[str, str]: ...
     def list_graphs(self) -> list[str]: ...
+    def paths(self, graph: str, actor: str) -> list[list[str]]: ...
 
 
 class ReadCache:
@@ -424,6 +427,139 @@ def save_incidents(
     return doc
 
 
+def kept_posture(store: ReviewStore, repo: str) -> dict[str, Any] | None:
+    """main's newest kept posture document, or None before the first scan."""
+    return _load(store, posture_key(repo))
+
+
+def kept_review(store: ReviewStore, repo: str, number: int) -> dict[str, Any] | None:
+    """A PR's kept review document, or None."""
+    return _load(store, key(repo, number))
+
+
+def blob_base(repo: str, sha: str, world_root: str) -> str:
+    """Where a world file is on GitHub at a commit: append `<file>#L<line>`."""
+    root = world_root.strip("/")
+    return f"https://github.com/{quote(repo)}/blob/{quote(sha)}/{quote(root)}"
+
+
+# What a node could reach if it were compromised -------------------------------------------------------------
+SENSITIVE_RANK = {"regulated": 0, "confidential": 1, "internal": 2, "public": 3}
+REACH_SHOWN = 40
+
+
+def compromise(store: ReviewStore, repo: str, node: str) -> dict[str, Any] | None:
+    """Everything `node` could reach on `main` if it were compromised: for each resource, the engine's
+    shortest valid path from it in main's graph in FalkorDB, each hop with the file and line behind it;
+    the data classes at risk; and the links on every route to sensitive data, any one of which cuts them all.
+    None before main has a graph; KeyError when the graph has no such node."""
+    posture = _load(store, posture_key(repo))
+    name = ((posture or {}).get("scan") or {}).get("graphs", {}).get("main")
+    if posture is None or not name or name not in store.list_graphs():
+        return None
+    rows = rows_from_view(store.view(name))
+    nodes = {n.id: n for n in rows.nodes}
+    if node not in nodes:
+        raise KeyError(node)
+    paths = valid_paths(store, name, rows, node)
+    best: dict[str, Any] = {}
+    for p in paths:
+        if p.unknown and p.target in best:
+            continue
+        if p.target not in best or len(p.steps) < len(best[p.target].steps):
+            best[p.target] = p
+    evidence = step_evidence(rows)
+    base = blob_base(repo, posture["sha"], posture.get("world_root") or "")
+    required = {
+        (r.get("principal"), r.get("resource"))
+        for r in (posture["scan"].get("requirements") or [])
+        if isinstance(r, dict)
+    }
+
+    def proof(eid: str) -> dict[str, Any]:
+        ev = evidence.get(eid)
+        if ev is None:
+            return {"file": "unknown"}
+        url = (
+            f"{base}/{quote(ev.file)}" + (f"#L{ev.line}" if ev.line else "") if ev.file != "unknown" else None
+        )
+        return {"file": ev.file, "line": ev.line, "address": ev.address, "part": ev.part, "url": url}
+
+    def rank(p: Any) -> tuple[int, int, str]:
+        target = nodes[p.target]
+        return (
+            SENSITIVE_RANK.get(target.sensitivity or "", 4) if target.sensitive else 5,
+            len(p.steps),
+            p.target,
+        )
+
+    ranked = sorted(best.values(), key=rank)
+    reaches = [
+        {
+            "target": p.target,
+            "sensitive": nodes[p.target].sensitive,
+            "sensitivity": nodes[p.target].sensitivity,
+            "category": nodes[p.target].category,
+            "grants": list(p.grants),
+            "unknown": p.unknown,
+            "required": (node, p.target) in required,
+            "steps": [
+                {"from": s.src, "type": s.type, "to": s.dst, "grants": s.grants, "proof": proof(s.evidence)}
+                for s in p.steps
+            ],
+        }
+        for p in ranked[:REACH_SHOWN]
+    ]
+    risky = [p for p in ranked if nodes[p.target].sensitive]
+    common: set[tuple[str, str, str]] | None = None
+    for p in risky:
+        links = {(s.src, s.type, s.dst) for s in p.steps}
+        common = links if common is None else common & links
+    cut_proof = {(s.src, s.type, s.dst): proof(s.evidence) for p in risky for s in p.steps}
+    # In the order the first route takes them: the link nearest the node first.
+    order = {(s.src, s.type, s.dst): i for i, s in enumerate(risky[0].steps)} if risky else {}
+    cut = [
+        {"from": a, "type": t, "to": b, "proof": cut_proof[(a, t, b)]}
+        for a, t, b in sorted(common or set(), key=lambda k: (order.get(k, len(order)), k))
+    ]
+    classes: dict[str, int] = {}
+    for p in risky:
+        level = nodes[p.target].sensitivity or "unclassified"
+        classes[level] = classes.get(level, 0) + 1
+    named = {node} | {s for r in reaches for st in r["steps"] for s in (st["from"], st["to"])}
+    return {
+        "node": node,
+        "graph": name,
+        "sha": posture["sha"],
+        "routes": len(paths),
+        "targets": len(best),
+        "sensitive": len(risky),
+        "classes": classes,
+        "reaches": reaches,
+        "more": max(0, len(ranked) - REACH_SHOWN),
+        "cut": cut,
+        "nodes": {
+            n: {"category": nodes[n].category, "sensitivity": nodes[n].sensitivity, "labels": nodes[n].labels}
+            for n in sorted(named)
+            if n in nodes
+        },
+    }
+
+
+def weak_routes(raw_outage: dict[str, Any], points: list[str], per_point: int = 6) -> dict[str, Any]:
+    """For each single point of failure, the dependencies whose every route passes through it, with those
+    routes: the engine's own routes from the posture run, so the page shows why the node is one."""
+    out: dict[str, Any] = {}
+    for point in points:
+        found = []
+        for dep in raw_outage.get("routes") or []:
+            routes = [r for r in dep.get("routes") or [] if point in r[1:-1]]
+            if routes and len(routes) == len(dep.get("routes") or []):
+                found.append({"dependency": dep.get("dependency"), "routes": routes[:4]})
+        out[point] = found[:per_point]
+    return out
+
+
 def dashboard_url(settings: Settings, repo: str) -> str | None:
     """The dashboard's public link, or None without a public hostname or THESEUS_TOKEN."""
     sig = sign(settings, dashboard_key(repo))
@@ -496,7 +632,7 @@ def _load(store: ReviewStore, doc_key: str) -> dict[str, Any] | None:
 
 
 def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str, Any]:
-    result = AnalysisResult.model_validate(doc["result"])
+    result = _kept_result(doc["result"])
     return {
         "number": doc["number"],
         "title": doc.get("title") or "",
@@ -510,6 +646,10 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
         ],
         "beyond_intent": len(result.use_beyond_intent),
         "closed": [{"actor": p.actor, "target": p.target} for p in result.closed],
+        # Where the change lands, for every PR, sensitive data or not (engine/impact.py).
+        "impact": result.impact.headline if result.impact else None,
+        "most_affected": result.impact.most_affected if result.impact else [],
+        "impact_counts": _impact_summary(doc["result"].get("impact")),
         # The fix that passes, the one a reviewer would commit; the others are named on the PR.
         "fixes": [
             {"id": c.id, "verdict": c.verdict, "title": c.title}
@@ -522,8 +662,31 @@ def _review_row(settings: Settings, repo: str, doc: dict[str, Any]) -> dict[str,
     }
 
 
+def _kept_result(raw: dict[str, Any]) -> AnalysisResult:
+    """A kept result read back, keeping the fields this version knows: a document written by a newer
+    deploy, with a field added since, still lists on the dashboard."""
+    return AnalysisResult.model_validate({k: v for k, v in raw.items() if k in AnalysisResult.model_fields})
+
+
+def _impact_summary(impact: Any) -> dict[str, Any] | None:
+    """The few fields of a change's impact the PR list shows, or None when the result has none."""
+    if not isinstance(impact, dict):
+        return None
+    access = [a for a in impact.get("access") or [] if isinstance(a, dict)]
+    relies = [r for r in impact.get("relies") or [] if isinstance(r, dict)]
+    return {
+        "headline": impact.get("headline") or "",
+        "most_affected": list(impact.get("most_affected") or [])[:8],
+        "gained": sum(1 for a in access if a.get("change") == "gained"),
+        "lost": sum(1 for a in access if a.get("change") == "lost"),
+        "relies_lost": sum(1 for r in relies if r.get("state") == "lost"),
+        "monthly_usd_before": impact.get("monthly_usd_before"),
+        "monthly_usd_after": impact.get("monthly_usd_after"),
+    }
+
+
 def _finding_row(settings: Settings, doc: dict[str, Any]) -> dict[str, Any]:
-    result = AnalysisResult.model_validate(doc["result"])
+    result = _kept_result(doc["result"])
     finding = result.finding or {}
     cut = result.min_cut.cut if result.min_cut is not None else []
     # Jev's urgency is kept as {"p", "source"}; the dashboard ranks and shows the probability.
@@ -587,6 +750,10 @@ def dashboard_data(store: ReviewStore, settings: Settings, repo: str) -> dict[st
     if posture is not None:
         # The basis is for the incident routes; the page gets the picker's terms and the last feed check.
         raw = (posture.get("posture") or {}).pop("outage", None)
+        if raw:
+            points = [s["id"] for s in (posture.get("posture") or {}).get("single_points") or []]
+            posture["weak_routes"] = weak_routes(raw, points)
+        posture["blob"] = blob_base(repo, posture.get("sha", ""), posture.get("world_root") or "")
         if raw and raw.get("tags"):
             outage = outage_terms(OutageBasis.model_validate(raw))
             outage["live"] = _load(store, incidents_key(repo))

@@ -59,6 +59,27 @@ class CostLine(Contract):
     monthly_usd: float
     basis: str
     usage_billed: bool = False
+    # The cloud's own pricing page for this service, so the estimate can be checked at its source.
+    pricing_url: str | None = None
+    # A read-only command against the cloud's own telemetry that shows whether the resource is used, what an
+    # idle one shows, and the steps a person takes to retire it after that check. Empty when not known.
+    idle_check: str | None = None
+    idle_expect: str | None = None
+    retire: list[str] = Field(default_factory=list)
+
+
+class SavingProof(Contract):
+    """Why the graph says nothing uses a resource, in checks a reader can follow: what was traced and found
+    empty, every link into it and why it does not count, and what the graph cannot see."""
+
+    file: str = "unknown"
+    line: int | None = None
+    actors: int = 0
+    paths: int = 0
+    code_files: int = 0
+    checks: list[str] = Field(default_factory=list)
+    inbound: list[str] = Field(default_factory=list)
+    blind_spots: list[str] = Field(default_factory=list)
 
 
 class Saving(Contract):
@@ -67,6 +88,7 @@ class Saving(Contract):
     id: str
     monthly_usd: float = 0.0
     reason: str
+    proof: SavingProof | None = None
 
 
 class CostSummary(Contract):

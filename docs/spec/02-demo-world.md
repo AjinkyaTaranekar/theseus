@@ -485,7 +485,7 @@ requirements:
 
 ## What `main` looks like
 
-About 70 nodes. Every requirement R1 to R17 is satisfied. Exactly six dangerous paths exist before any PR; they
+About 70 nodes. Every requirement R1 to R21 is satisfied. Exactly six dangerous paths exist before any PR; they
 appear as "unchanged" in every PR diff and are what scan mode reports.
 
 | Actor | Reaches | Why |
@@ -529,7 +529,7 @@ from `demo-infra/` plus the change below. Humans write `expected.json` from thes
 - **Opened dangerous paths (3):** `priya-intern` to invoices, to `secret:prod-db-credentials`, and to
   `db:customer-db`. The database route: `priya-intern` MEMBER_OF `support-engineers` CAN_ASSUME
   `prod-support` CAN `prod-db-credentials` UNLOCKS `customer-db`.
-- **Requirements:** R1 to R17 and the intent requirement I1 all satisfied in head.
+- **Requirements:** R1 to R21 and the intent requirement I1 all satisfied in head.
 - **Minimum cut for `priya-intern`:** value at least 1,000,000, so not cuttable: every route starts with her
   membership edge, which I1 needs.
 - **Candidates:** A (remove her from the group) fails, breaking I1. B (the LLM: a new `intern-onboarding` role that

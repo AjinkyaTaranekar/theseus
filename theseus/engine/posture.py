@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from collections.abc import Callable
 
 from theseus.contracts.engine import GraphState, GraphStore
 from theseus.contracts.posture import (
@@ -25,9 +26,10 @@ from theseus.contracts.posture import (
     Posture,
     Reach,
     Saving,
+    SavingProof,
     SinglePoint,
 )
-from theseus.contracts.result import EdgeRow, NodeInfo, NodeRow, PathRecord, Requirement
+from theseus.contracts.result import EdgeRow, Evidence, NodeInfo, NodeRow, PathRecord, Requirement
 from theseus.contracts.schema import PATH_TYPES, RESOURCE
 from theseus.engine.analyze import analyze
 from theseus.engine.incident import outage_basis
@@ -62,7 +64,8 @@ def dependencies(state: GraphState, requirements: list[Requirement]) -> list[Dep
     return [Dependency(principal=p, access=a, resource=r, source=s) for p, a, r, s in sorted(found)]  # type: ignore[arg-type]
 
 
-def _routes(paths: list[PathRecord], dep: Dependency) -> list[PathRecord]:
+def routes_for(paths: list[PathRecord], dep: Dependency) -> list[PathRecord]:
+    """The valid paths that serve `dep`: to its resource, with its access."""
     return [p for p in paths if p.target == dep.resource and dep.access in p.grants and not p.unknown]
 
 
@@ -74,7 +77,7 @@ def single_points(
     route has nothing to lose."""
     breaks: dict[str, list[Dependency]] = defaultdict(list)
     for dep in deps:
-        routes = _routes(paths.get(dep.principal, []), dep)
+        routes = routes_for(paths.get(dep.principal, []), dep)
         if not routes:
             log.info("%s has no route to %s %s; nothing to lose", dep.principal, dep.access, dep.resource)
             continue
@@ -207,8 +210,64 @@ def unreached(state: GraphState, paths: dict[str, list[PathRecord]]) -> list[str
     )
 
 
-def cost_summary(lines: list[CostLine], state: GraphState, gone: list[str]) -> CostSummary:
-    """The total, the lines by cost, and the savings: each unreached resource with its own line's cost."""
+# What a graph of identities, grants and code calls cannot see, said with every saving.
+BLIND_SPOTS = [
+    "Network access the graph does not model, such as a security group, a peered network or a VPN.",
+    "A credential used outside the cloud's identity system, such as a database password someone copied.",
+    "Access from another account, or from a tool whose configuration is not in this repository.",
+]
+
+
+def saving_proof(
+    node: str,
+    state: GraphState,
+    paths: dict[str, list[PathRecord]],
+    requirements: list[Requirement],
+    code_files: int,
+    where: Evidence | None,
+) -> SavingProof:
+    """The checks behind "nothing uses it": every actor's valid paths, every code call and environment
+    variable, every requirement, and each link into it with why it does not count."""
+    reached = {n for ps in paths.values() for p in ps for n in p.route}
+    traced = sum(len(ps) for ps in paths.values())
+    calls = sum(1 for e in state.rows.edges if e.type == "CALLS")
+    checks = [
+        f"No valid path from any of the {len(paths)} people, workflows and services reaches it "
+        f"({traced} paths traced).",
+        f"No code calls it: {code_files} code files read, {calls} calls resolved, none to it.",
+        "No service's environment names it.",
+        "No theseus.yaml requirement needs it.",
+    ]
+    if any(e.type == "HAS_ENV" and e.dst == node for e in state.rows.edges):
+        checks[2] = "A service's environment names it, but no code reads it."
+    if any(r.resource == node for r in requirements):
+        checks[3] = "A theseus.yaml requirement names it, but no route serves it."
+    inbound = []
+    for e in sorted(state.rows.edges, key=lambda e: (e.type, e.src)):
+        if e.dst != node or e.type not in LINKS:
+            continue
+        why = "and nothing reaches it" if e.src not in reached else "but that link is not a valid path"
+        inbound.append(f"{e.src} {e.type} it, {why}.")
+    return SavingProof(
+        file=where.file if where is not None else "unknown",
+        line=where.line if where is not None else None,
+        actors=len(paths),
+        paths=traced,
+        code_files=code_files,
+        checks=checks,
+        inbound=inbound,
+        blind_spots=BLIND_SPOTS,
+    )
+
+
+def cost_summary(
+    lines: list[CostLine],
+    state: GraphState,
+    gone: list[str],
+    proofs: dict[str, SavingProof] | None = None,
+) -> CostSummary:
+    """The total, the lines by cost, and the savings: each unreached resource with its own line's cost and,
+    when given, the proof that nothing uses it."""
     by_address = {line.address: line for line in lines}
     addresses = {n.id: str(n.props.get("address", "")) for n in state.rows.nodes}
     savings = []
@@ -220,6 +279,7 @@ def cost_summary(lines: list[CostLine], state: GraphState, gone: list[str]) -> C
                 id=node,
                 monthly_usd=cost,
                 reason="No person, workflow or service can reach it, and no code calls it.",
+                proof=(proofs or {}).get(node),
             )
         )
     savings.sort(key=lambda s: (-s.monthly_usd, s.id))
@@ -239,6 +299,8 @@ def posture(
     actors: list[str],
     cost: list[CostLine],
     outages: list[OutageMap] | None = None,
+    code_files: int = 0,
+    locate: Callable[[str], Evidence] | None = None,
 ) -> Posture:
     """The posture of a loaded graph: reach for these actors, single points of failure for every code call
     and config requirement, articulation points, unreached data, the cost with its savings, and the basis an
@@ -254,7 +316,22 @@ def posture(
         single_points=single_points(deps, analysis.paths),
         articulation=articulation_points(state.rows.nodes, state.rows.edges),
         unreached=gone,
-        cost=cost_summary(cost, state, gone),
+        cost=cost_summary(
+            cost,
+            state,
+            gone,
+            {
+                n: saving_proof(
+                    n,
+                    state,
+                    analysis.paths,
+                    requirements,
+                    code_files,
+                    locate(str(nodes[n].props.get("address", ""))) if locate and n in nodes else None,
+                )
+                for n in gone
+            },
+        ),
     )
     named = {r.actor for r in found.reach} | {t for r in found.reach for t in r.targets}
     named |= {s.id for s in found.single_points} | {a.id for a in found.articulation} | set(gone)
@@ -266,7 +343,7 @@ def posture(
     }
     routes = [
         DependencyRoutes(
-            dependency=d, routes=sorted(p.route for p in _routes(analysis.paths.get(d.principal, []), d))
+            dependency=d, routes=sorted(p.route for p in routes_for(analysis.paths.get(d.principal, []), d))
         )
         for d in deps
     ]

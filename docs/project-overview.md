@@ -585,7 +585,7 @@ What else will land:
 
 ### The demo world
 
-**`demo-infra/` is a made-up online store that lives in our own repo, with no real AWS account and no GitHub org behind it.** It holds about 110 Terraform resources across 17 AWS services, six backend services and the company's CI workflows. About 60 resources are modeled; the rest (network, queues, keys, logs) are skipped and counted, so the account looks real without adding noise to the graph. Demo PRs are PRs in our repo that change only that folder. Every name is in `docs/spec/02-demo-world.md`.
+**`demo-infra/` is a made-up online store that lives in our own repo, with no real AWS account and no GitHub org behind it.** It holds 137 Terraform resources across 16 AWS services, eight backend services and the company's CI workflows. 85 resources are modeled; the other 52 (network, keys, container registries, the ECS cluster, schedules, bucket and database settings, DNS and an API gateway) are skipped and counted, so the account looks real without adding noise to the graph. Demo PRs are PRs in our repo that change only that folder. Every name is in `docs/spec/02-demo-world.md`.
 
 - **People:** `sam-support` (and, after the intern PR, `priya-intern`) in `support-engineers`, which may assume `prod-support`; `alex-analyst` in `data-analysts`, which may assume `analytics-read`; `jordan-platform` in `platform-engineers`, which reads the app logs through a shared managed policy.
 - **Data:**

@@ -96,6 +96,16 @@ def pr_body(finding_id: str, result: AnalysisResult, k: Candidate, page: str | N
         f"**Verification:** fix {k.id}, verdict `{k.verdict}` on a copy of main's graph. "
         f"Paths left: {len(k.paths_left)}. Requirements broken: {len(k.requirements_broken)}.",
     ]
+    if k.needs_closer_look:
+        # A veto takes away the recommendation, not the proposal: the engine's check passed and a person
+        # still merges. The reviewer is told, since the PR would otherwise read as safe to merge.
+        relied = ", ".join(f"`{name(c.src)}` assuming `{name(c.dst)}`" for c in cut)
+        parts += [
+            "",
+            "**Needs a closer look.** The engine's check passed, but an advisory check rates this fix "
+            "likely to disrupt legitimate use that the graph cannot see."
+            + (f" Before you merge, check that nothing relies on {relied}." if cut else ""),
+        ]
     if result.rotate:
         parts += [
             "",

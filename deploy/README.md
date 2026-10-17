@@ -14,8 +14,9 @@ this file.
 | Item | Value |
 | --- | --- |
 | Host | `guest-box`: Ubuntu 24.04 in a container on an Oracle ARM host; 4 cores, 22 GB, 50 GB disk; Python 3.12 |
-| Tailnet | `tail27b7c5.ts.net`, owned by `ajinkyataranekar26@gmail.com` |
-| SSH | `ssh dev@100.104.51.40` over Tailscale SSH, from a device on the tailnet; no key needed |
+| Tailnet | `tail27b7c5.ts.net`; the Tailscale admin console names its owner |
+| Address | guest-box's Tailscale address, which `tailscale status` shows. The commands below write it as `<host-ip>` |
+| SSH | `ssh dev@<host-ip>` over Tailscale SSH, from a device on the tailnet; no key needed |
 | Public URL (`DOMAIN`) | `https://guest-box.tail27b7c5.ts.net`, through Tailscale Funnel |
 | API | `127.0.0.1:8000` on the host, under `deploy/run.sh` |
 | Deploy clone | `~/theseus` on the host, pulled with a read-only deploy key ("guest-box (read-only deploy)") |
@@ -31,13 +32,13 @@ Do these once, in order. Steps 1 to 4 need a person: they sign in to Tailscale o
      `"C:\Program Files\Tailscale\tailscale.exe" login --login-server=https://controlplane.tailscale.com`
      and open the link it prints. A machine that was set up for another tailnet (a university VPN, say) keeps
      that profile; `tailscale switch --list` shows both, and `tailscale switch <ID>` moves between them.
-   - Check it worked: `tailscale status` lists `guest-box` at `100.104.51.40`. If the list is empty, you are
+   - Check it worked: `tailscale status` lists `guest-box` and its address, `<host-ip>`. If the list is empty, you are
      signed in to a different tailnet: compare the tailnet name in `tailscale switch --list`.
-2. **SSH in.** `ssh dev@100.104.51.40`. Tailscale SSH answers (the banner says `SSH-2.0-Tailscale`) and
+2. **SSH in.** `ssh dev@<host-ip>`. Tailscale SSH answers (the banner says `SSH-2.0-Tailscale`) and
    decides by your tailnet identity and the tailnet policy, so no key is needed. If the policy's rule is a
    `check`, the first login opens a browser to confirm.
 3. **Let `dev` manage Tailscale on the host.** Once, with `dev`'s sudo password:
-   `ssh -t dev@100.104.51.40 "sudo tailscale set --operator=dev"`. Without it, `tailscale funnel` fails with
+   `ssh -t dev@<host-ip> "sudo tailscale set --operator=dev"`. Without it, `tailscale funnel` fails with
    "Access denied: serve config denied". Someone with access to the Oracle host can do the same with
    `docker exec <container> tailscale set --operator=dev`.
 4. **Allow Funnel in the tailnet.** In the Tailscale admin console, under DNS, turn on MagicDNS and HTTPS
@@ -53,8 +54,8 @@ Do these once, in order. Steps 1 to 4 need a person: they sign in to Tailscale o
 6. **Install.** `python3 -m venv ~/theseus/.venv && ~/theseus/.venv/bin/pip install ~/theseus`.
 7. **Secrets.** Copy your `.env` without printing it, then lock it down and set the public name:
    ```bash
-   ssh dev@100.104.51.40 'umask 077; cat > ~/theseus/.env' < .env
-   ssh dev@100.104.51.40 'chmod 600 ~/theseus/.env; sed -i "s/^DOMAIN=.*/DOMAIN=guest-box.tail27b7c5.ts.net/" ~/theseus/.env'
+   ssh dev@<host-ip> 'umask 077; cat > ~/theseus/.env' < .env
+   ssh dev@<host-ip> 'chmod 600 ~/theseus/.env; sed -i "s/^DOMAIN=.*/DOMAIN=guest-box.tail27b7c5.ts.net/" ~/theseus/.env'
    ```
    If FalkorDB Cloud has an IP allowlist, add the host's public address (`curl ifconfig.me` on the host).
 8. **Start the API.** `bash ~/theseus/deploy/run.sh start`, then `bash ~/theseus/deploy/run.sh status`: it
@@ -78,8 +79,8 @@ Do these once, in order. Steps 1 to 4 need a person: they sign in to Tailscale o
 From a device on the tailnet:
 
 ```bash
-deploy/deploy-funnel.sh dev@100.104.51.40                              # main
-THESEUS_REF=f7-action-app deploy/deploy-funnel.sh dev@100.104.51.40    # a branch, before it merges
+deploy/deploy-funnel.sh dev@<host-ip>                              # main
+THESEUS_REF=f7-action-app deploy/deploy-funnel.sh dev@<host-ip>    # a branch, before it merges
 ```
 
 It records the running commit, resets the clone to `origin/<THESEUS_REF>` (default `main`), installs it into the
@@ -91,7 +92,7 @@ It believes only what the host says. If SSH drops after the host reported its co
 `HEALTHY`, the script rolls back over a new connection. It exits 0 when the new commit answers publicly, and 1
 when the deploy failed but the host confirmed it is back on its previous commit, or nothing changed. It exits 3
 when the host's state is not confirmed: the host could not return, or the rollback's answer never arrived.
-Then check the host yourself: `ssh dev@100.104.51.40 'cd theseus && git log -1 --oneline && curl -s
+Then check the host yourself: `ssh dev@<host-ip> 'cd theseus && git log -1 --oneline && curl -s
 localhost:8000/health'`.
 
 ## Deploying from GitHub
@@ -111,8 +112,8 @@ workflows on `main` can use, so a workflow edited on a PR branch never sees it. 
 can start a workflow.
 
 **One-time setup.** The GitHub side is done: the `production` environment (branch `main` only) holds the
-variables `DEPLOY_HOST` (`dev@100.104.51.40`), `DEPLOY_TAILNET_IP` and `DEPLOY_KNOWN_HOSTS` (guest-box's
-Tailscale SSH host key, from `ssh-keyscan -t ed25519 100.104.51.40`). The tailnet's admin does the rest:
+variables `DEPLOY_HOST` (`dev@<host-ip>`), `DEPLOY_TAILNET_IP` and `DEPLOY_KNOWN_HOSTS` (guest-box's
+Tailscale SSH host key, from `ssh-keyscan -t ed25519 <host-ip>`). The tailnet's admin does the rest:
 
 1. **Tag guest-box.** Admin console, Machines, guest-box, **Edit ACL tags**: `tag:server`. Tailscale lets a
    tagged device such as the runner SSH only into tagged devices, so the host needs a tag.
@@ -145,7 +146,7 @@ Tailscale SSH host key, from `ssh-keyscan -t ed25519 100.104.51.40`). The tailne
    `LIVE: https://guest-box.tail27b7c5.ts.net/health`.
 
 If guest-box's host key ever changes (a new container), refresh it:
-`ssh-keyscan -t ed25519 100.104.51.40 | grep -v '^#' | gh variable set DEPLOY_KNOWN_HOSTS --env production`.
+`ssh-keyscan -t ed25519 <host-ip> | grep -v '^#' | gh variable set DEPLOY_KNOWN_HOSTS --env production`.
 
 ## When something goes wrong
 
