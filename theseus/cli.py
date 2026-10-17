@@ -93,6 +93,21 @@ def adapters_for(root: Path) -> Adapters:
     )
 
 
+def models(settings: Settings) -> tuple[Any, Any]:
+    """The LLM and Jev the commands use. In replay, those that look recordings up by what they were asked
+    (task S4), as the Try-it page does: the demo world grew after A1 and A2 recorded, so its requests no
+    longer hash to their keys. In live and record, the real clients."""
+    if settings.theseus_mode == "replay":
+        from theseus.agent.replayed import ReplayedIntent, ReplayedJev
+
+        return ReplayedIntent(), ReplayedJev(settings)
+    from theseus.agent.jev import Jev
+    from theseus.agent.llm import Llm
+
+    llm = Llm(settings)
+    return llm, Jev(settings, llm=llm)
+
+
 def analyze_fixture(
     fixture: Path, store: GraphStore, jev: Any, settings: Settings, llm: Any = None
 ) -> AnalysisResult:
@@ -126,13 +141,10 @@ def scan_fixture(fixture: Path, store: GraphStore, jev: Any, settings: Settings)
 
 def scan(fixture: Path) -> int:
     """Print the fixture's scan result as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-
     settings = get_settings()
     try:
         store = FalkorStore(get_client(settings))
-        result = scan_fixture(fixture, store, Jev(settings, llm=Llm(settings)), settings)
+        result = scan_fixture(fixture, store, models(settings)[1], settings)
     except (TheseusError, OSError) as e:
         print(f"theseus scan: {e}", file=sys.stderr)
         return 1
@@ -142,14 +154,11 @@ def scan(fixture: Path) -> int:
 
 def analyze(fixture: Path) -> int:
     """Print the fixture's AnalysisResult as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-
     settings = get_settings()
     try:
         store = FalkorStore(get_client(settings))
-        llm = Llm(settings)
-        result = analyze_fixture(fixture, store, Jev(settings, llm=llm), settings, llm)
+        llm, jev = models(settings)
+        result = analyze_fixture(fixture, store, jev, settings, llm)
     except (TheseusError, OSError) as e:
         print(f"theseus analyze: {e}", file=sys.stderr)
         return 1
@@ -171,13 +180,10 @@ def finding_fixture(fixture: Path, store: GraphStore, jev: Any, settings: Settin
 
 def finding(fixture: Path) -> int:
     """Print the fixture's finding result as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-
     settings = get_settings()
     try:
         store = FalkorStore(get_client(settings))
-        result = finding_fixture(fixture, store, Jev(settings, llm=Llm(settings)), settings)
+        result = finding_fixture(fixture, store, models(settings)[1], settings)
     except (TheseusError, OSError) as e:
         print(f"theseus finding: {e}", file=sys.stderr)
         return 1
@@ -222,14 +228,11 @@ def posture_world(
 
 def posture(world_root: Path, plan: Path, feed: str | None) -> int:
     """Print the world's posture report as JSON, or exit 1 when FalkorDB or the inputs fail (rule 3)."""
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-
     settings = get_settings()
     try:
         store = FalkorStore(get_client(settings))
         advisories = load_advisories(Path(feed or settings.theseus_advisories))
-        jev = Jev(settings, llm=Llm(settings))
+        jev = models(settings)[1]
         report = posture_world(world_root, plan, store, jev, settings, advisories)
     except (TheseusError, OSError) as e:
         print(f"theseus posture: {e}", file=sys.stderr)
@@ -242,13 +245,10 @@ def incident(world_root: Path, plan: Path, args: argparse.Namespace) -> int:
     """Print an outage's blast radius on the world as JSON: its posture first, then the incident a headline
     names (or the one given with --provider and --service). Exit 1 when FalkorDB or the inputs fail, and 2
     when the headline names no service Theseus maps."""
-    from theseus.agent.jev import Jev
-    from theseus.agent.llm import Llm
-
     settings = get_settings()
     try:
         store = FalkorStore(get_client(settings))
-        jev = Jev(settings, llm=Llm(settings))
+        jev = models(settings)[1]
         basis = posture_world(world_root, plan, store, jev, settings, []).posture.outage
     except (TheseusError, OSError) as e:
         print(f"theseus incident: {e}", file=sys.stderr)

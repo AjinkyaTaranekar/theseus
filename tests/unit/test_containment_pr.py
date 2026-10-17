@@ -211,3 +211,16 @@ def test_the_commit_message_follows_the_commit_rules(finding: AnalysisResult) ->
     assert _check.problems(message) == []
     assert message.rstrip().endswith("Proposed-by: theseus")
     assert branch_for("GHSA-demo-0001") == BRANCH
+
+
+def test_the_review_reads_a_containment_pr_without_theseus_s_own_notes() -> None:
+    """The verification notes said the PR was safe, which the intent model rightly called steering."""
+    from theseus.api.contain import NOTES_CLOSE, NOTES_OPEN, purpose_text
+
+    body = (
+        f"Stop trusting preview.yml as github-deploy.\n\n{NOTES_OPEN}\n**Verification:** pass.\n{NOTES_CLOSE}"
+    )
+    assert purpose_text(body) == "Stop trusting preview.yml as github-deploy."
+    assert purpose_text("No notes here.") == "No notes here."
+    # Only the marked block goes: text after it stays for the model to read.
+    assert purpose_text(f"a {NOTES_OPEN} b {NOTES_CLOSE} c") == "a  c"

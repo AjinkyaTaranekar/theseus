@@ -11,6 +11,7 @@ the open PR and the open issue instead of opening new ones.
 from __future__ import annotations
 
 import logging
+import re
 import textwrap
 from dataclasses import dataclass
 
@@ -25,6 +26,11 @@ log = logging.getLogger(__name__)
 LABEL = "demo"
 FIX = "K"
 WRAP = 72  # commit body width (AGENTS.md, "Commits")
+# Theseus's own notes in a PR body: what it checked and what to do outside the PR. A review reads the PR's
+# purpose without them, since a PR that says it is safe is steering its review, whoever wrote it.
+NOTES_OPEN = "<!-- theseus:notes -->"
+NOTES_CLOSE = "<!-- /theseus:notes -->"
+_NOTES = re.compile(re.escape(NOTES_OPEN) + r".*?" + re.escape(NOTES_CLOSE), re.S)
 
 
 @dataclass(frozen=True)
@@ -86,6 +92,7 @@ def pr_body(finding_id: str, result: AnalysisResult, k: Candidate, page: str | N
         )
         + "The role now trusts only the workflows a requirement needs, as `terraform-apply` already does.",
         "",
+        NOTES_OPEN,
         f"**Verification:** fix {k.id}, verdict `{k.verdict}` on a copy of main's graph. "
         f"Paths left: {len(k.paths_left)}. Requirements broken: {len(k.requirements_broken)}.",
     ]
@@ -97,7 +104,14 @@ def pr_body(finding_id: str, result: AnalysisResult, k: Candidate, page: str | N
         parts += [f"- `{name(s)}`" for s in result.rotate]
     if page:
         parts += ["", f"[See the finding on a graph →]({page})"]
+    parts.append(NOTES_CLOSE)
     return "\n".join(parts)
+
+
+def purpose_text(body: str) -> str:
+    """A PR body as its review reads it for intent: without Theseus's own notes blocks. Removing text only
+    narrows what the model reads; nothing in a PR body is evidence either way."""
+    return _NOTES.sub("", body).strip()
 
 
 def issue_body(finding_id: str, result: AnalysisResult, page: str | None) -> str:

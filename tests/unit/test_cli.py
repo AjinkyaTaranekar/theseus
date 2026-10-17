@@ -197,3 +197,56 @@ def test_a_bad_advisory_file_is_skipped_and_the_rest_are_read(tmp_path: Path) ->
     (tmp_path / "c.json").write_text('{"id": "GHSA-3"}')
     assert [a["id"] for a in cli.load_advisories(tmp_path)] == ["GHSA-1"]
     assert cli.load_advisories(tmp_path / "missing") == []
+
+
+WORLD = ["fixtures/unused-grant/base", "fixtures/unused-grant/base.plan.json"]
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["analyze", "fixtures/intern"],
+        ["analyze", "fixtures/public-bucket"],
+        ["analyze", "fixtures/code-pr"],
+        ["finding", "fixtures/compromised-action"],
+        ["scan", "fixtures/unused-grant"],
+        ["posture", *WORLD],
+        ["incident", *WORLD, "AWS Lambda is down in eu-west-1"],
+    ],
+)
+def test_every_command_runs_offline_on_the_recordings_in_replay(
+    argv: list[str], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv("THESEUS_MODE", "replay")
+    monkeypatch.setattr(cli, "get_client", lambda settings: None)
+    monkeypatch.setattr(cli, "FalkorStore", lambda client: MemoryStore())
+    code = main(argv)
+    out = capsys.readouterr()
+    assert code == 0, out.err
+    assert out.out.startswith("{")
+
+
+def test_analyze_in_replay_opens_the_intern_s_three_paths(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import json
+
+    monkeypatch.setenv("THESEUS_MODE", "replay")
+    monkeypatch.setattr(cli, "get_client", lambda settings: None)
+    monkeypatch.setattr(cli, "FalkorStore", lambda client: MemoryStore())
+    assert main(["analyze", "fixtures/intern"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert sorted(p["target"] for p in result["opened"]) == [
+        "db:customer-db",
+        "s3://demo-company-files/invoices/",
+        "secret:prod-db-credentials",
+    ]
+
+
+def test_live_and_record_keep_the_real_clients() -> None:
+    from theseus.agent.jev import Jev
+    from theseus.agent.llm import Llm
+
+    for mode in ("live", "record"):
+        llm, jev = cli.models(get_settings().model_copy(update={"theseus_mode": mode}))
+        assert type(llm) is Llm and type(jev) is Jev and jev.llm is llm
