@@ -170,7 +170,7 @@ def test_s3_locations_cannot_name_a_different_bucket() -> None:
 def test_patch_handoffs_are_explicit() -> None:
     adapter = AwsAdapter(CONFIG)
     assert adapter.ops_schema()["oneOf"]
-    with pytest.raises(PatchError, match="E6"):
+    with pytest.raises(PatchError, match="edge ID"):
         adapter.ops_for(Change(kind="remove_edge", eid="e1"), GraphRows(), [])
     assert adapter.apply_ops([], []) == []
     with pytest.raises(PatchError, match="unknown aws op"):

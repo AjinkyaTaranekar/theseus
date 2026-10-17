@@ -1,6 +1,7 @@
 """One run end to end: worlds into graphs in the store, analysis, and the result (05-contracts.md, `run_pr`).
 
-PR mode reports all requirements and protects approved ones in a combined cut for actors with opened paths.
+PR mode reports all requirements, protects approved ones in a combined cut for actors with opened
+paths, and verifies applicable rule fixes on graph copies.
 The store is FalkorDB in the product; `MemoryStore` only in offline tests.
 """
 
@@ -14,7 +15,7 @@ from typing import Any
 
 from theseus.agent.intent import extract_intent, to_requirements, vocabulary
 from theseus.agent.sensitivity import apply, classify
-from theseus.contracts.engine import Analysis, Deps, GraphState, World
+from theseus.contracts.engine import Analysis, CandidateDraft, Deps, GraphState, World
 from theseus.contracts.result import (
     AnalysisResult,
     Coverage,
@@ -28,9 +29,11 @@ from theseus.contracts.result import (
 )
 from theseus.contracts.schema import RESOURCE
 from theseus.engine.analyze import analyze, diff, step_evidence
+from theseus.engine.candidates import rank, rule_candidates
 from theseus.engine.finding import action_id, match_advisory, secrets_reached, with_finding
 from theseus.engine.intent_effect import approved, changes, headline
 from theseus.engine.mincut import min_cut
+from theseus.engine.simulate import simulate
 from theseus.engine.staging import staging_to_prod
 from theseus.errors import IngestError, ModelError
 from theseus.graph.algos import choke_points
@@ -136,13 +139,50 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
     before: Analysis = analyze(deps.store, base_state, requirements, who)
     after: Analysis = analyze(deps.store, head_state, requirements, who)
     found = diff(before, after)
-    opened_actors = sorted({path.actor for path in found.opened})
     head_rows = {node.id: node for node in head_state.rows.nodes}
-    cut = (
-        min_cut(deps.store, head_state, after, opened_actors, approved(requirements, intent, head_rows))
-        if opened_actors
-        else None
-    )
+    enforced = approved(requirements, intent, head_rows)
+    opened_actors = sorted({path.actor for path in found.opened})
+    cut = min_cut(deps.store, head_state, after, opened_actors, enforced) if opened_actors else None
+    candidates = []
+    for fix in rule_candidates(head_state, after, found.opened, cut, base=base_state, requirements=enforced):
+        operations = []
+        for change in fix.changes:
+            translated = deps.adapters.cloud.ops_for(
+                change, head_state.rows, head.resources, base_resources=base.resources
+            )
+            if not translated:
+                break
+            operations.extend(translated)
+        else:
+            unique = {op.model_dump_json(): op for op in operations}
+            draft = CandidateDraft(
+                id=fix.id,
+                source="rule",
+                proposed_by="theseus",
+                title=fix.title,
+                ops=[unique[key] for key in sorted(unique)],
+            )
+            candidates.append(
+                simulate(
+                    deps.store,
+                    head_state,
+                    draft,
+                    sorted({p.actor for p in found.opened}),
+                    enforced,
+                    deps.adapters,
+                )
+            )
+    risk_start = time.perf_counter()
+    scores = {}
+    if hasattr(deps.jev, "breakage"):
+        calls = [
+            {"workload": edge.src, "resource": edge.dst, "access": str(edge.props.get("access", ""))}
+            for edge in head_state.rows.edges
+            if edge.type == "CALLS"
+        ]
+        scores = deps.jev.breakage(candidates, enforced, calls)
+    risk_ms = int((time.perf_counter() - risk_start) * 1000)
+    candidates = rank(candidates, scores)
     head_evidence, head_nodes = _listed([*found.opened, *found.unchanged], head_state)
     base_evidence, base_nodes = _listed(found.closed, base_state)
     if cut is not None:
@@ -154,7 +194,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
                 head_nodes[node_id] = NodeInfo(category=node.category, sensitivity=node.sensitivity)
     info = {n.id: NodeInfo(category=n.category, sensitivity=n.sensitivity) for n in head_state.rows.nodes}
     total_ms = int((time.perf_counter() - start) * 1000)
-    jev_ms = base_jev + head_jev
+    jev_ms = base_jev + head_jev + risk_ms
     return AnalysisResult(
         scenario=scenario_of(head),
         mode="pr",
@@ -166,6 +206,7 @@ def run_pr(base: World, head: World, pr_title: str, pr_body: str, deps: Deps) ->
         closed=found.closed,
         unchanged=found.unchanged,
         requirements=after.requirements,
+        candidates=candidates,
         unknowns=sorted(set(head_state.rows.unknowns)),
         min_cut=cut,
         staging_to_prod=staging_to_prod(Analysis(dangerous=found.opened), head_state),

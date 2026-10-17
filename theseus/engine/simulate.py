@@ -6,7 +6,7 @@ import logging
 
 from theseus.contracts.adapters import Adapters
 from theseus.contracts.engine import CandidateDraft, GraphState, GraphStore
-from theseus.contracts.result import Candidate, GraphRows, Requirement
+from theseus.contracts.result import Candidate, GraphRows, RankingFacts, Requirement
 from theseus.contracts.schema import RESOURCE, is_candidate_id
 from theseus.engine.analyze import analyze
 from theseus.errors import GraphError, PatchError
@@ -44,6 +44,15 @@ def _sensitivity(head: GraphRows, patched: GraphRows) -> GraphRows:
     )
 
 
+def _permissions(rows: GraphRows) -> set[tuple[str, str, str, str]]:
+    return {
+        (edge.src, edge.type, edge.dst, access)
+        for edge in rows.edges
+        if edge.type in {"CAN", "CAN_ASSUME", "TRUSTS"} and edge.kind != "unknown"
+        for access in (edge.grants if edge.type == "CAN" else ["assume"])
+    }
+
+
 def simulate(
     store: GraphStore,
     head: GraphState,
@@ -64,6 +73,7 @@ def simulate(
     try:
         patched_world = head.world.model_copy(deep=True)
         patched_world.resources = adapters.cloud.apply_ops(patched_world.resources, draft.ops)
+        traits = adapters.cloud.patch_traits(draft.ops)
     except PatchError as exc:
         return Candidate(**result, verdict="invalid", reason=str(exc))
     rebuilt = _sensitivity(head.rows, build_rows(patched_world, {}, adapters))
@@ -138,6 +148,7 @@ def simulate(
             "pass",
             "Requested dangerous paths are closed; no new dangerous path or loss of required access.",
         )
+    unknown_edges = {(edge.src, edge.type, edge.dst) for edge in rebuilt.edges if edge.kind == "unknown"}
     return Candidate(
         **result,
         verdict=verdict,
@@ -146,4 +157,16 @@ def simulate(
         new_paths=new_paths,
         requirements_broken=broken,
         unknown=unknown,
+        ranking_facts=RankingFacts(
+            unknown_steps=len(
+                {
+                    (step.src, step.type, step.dst)
+                    for path in [*remaining, *opened]
+                    for step in path.steps
+                    if (step.src, step.type, step.dst) in unknown_edges
+                }
+            ),
+            permissions_removed=len(_permissions(head.rows) - _permissions(rebuilt)),
+            adds_broad_wildcard=traits.adds_broad_wildcard,
+        ),
     )

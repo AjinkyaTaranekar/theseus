@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -22,7 +23,7 @@ from pydantic import Field
 from theseus.agent.llm import LlmReply, recording_key, untrusted
 from theseus.agent.screen import mask_secrets, normalize
 from theseus.config import Settings
-from theseus.contracts.result import Contract, Sensitivity
+from theseus.contracts.result import Candidate, Contract, Requirement, Sensitivity
 from theseus.errors import ModelError
 
 log = logging.getLogger(__name__)
@@ -178,6 +179,46 @@ class Jev:
                     raise ModelError(f"sensitivity ({reply.key}): {r[0]} got class {answer.choice!r}")
                 self._labels[r] = answer
         return {r[0]: self._labels[r] for r in resources}
+
+    def breakage(
+        self,
+        candidates: list[Candidate],
+        requirements: list[Requirement],
+        calls: list[dict[str, str]],
+    ) -> dict[str, float]:
+        """Probabilities that passing fixes break legitimate use; these can only veto a recommendation."""
+        passing = sorted(
+            (candidate for candidate in candidates if candidate.verdict == "pass"),
+            key=lambda candidate: candidate.id,
+        )
+        if not passing:
+            return {}
+        data = {
+            "candidates": [
+                {"id": candidate.id, "ops": [op.model_dump() for op in candidate.ops]}
+                for candidate in passing
+            ],
+            "requirements": [req.model_dump() for req in sorted(requirements, key=lambda req: req.id)],
+            "code_calls": sorted(calls, key=lambda call: json.dumps(call, sort_keys=True)),
+        }
+        state = untrusted("untrusted_fix_context", json.dumps(data, sort_keys=True))
+        question = {
+            "type": "noul",
+            "instructions": "Could this fix break legitimate use?",
+            "criteria": {
+                "true": "The fix could disrupt legitimate use described by requirements or code calls.",
+                "false": "The fix preserves that legitimate use.",
+            },
+        }
+        reply = self.ask("breakage", state, {candidate.id: question for candidate in passing})
+        scores = {}
+        for candidate in passing:
+            answer = reply.answers.get(candidate.id)
+            value = answer.noul if answer is not None and answer.type == "noul" else None
+            if value is None or not math.isfinite(value) or not 0 <= value <= 1:
+                raise ModelError(f"breakage ({reply.key}): invalid probability for {candidate.id}")
+            scores[candidate.id] = value
+        return scores
 
     def urgency(self, finding_summary: str, blast_summary: str) -> JevAnswer:
         """How likely the finding is urgent. Its text is untrusted, so it is normalized and its secrets are

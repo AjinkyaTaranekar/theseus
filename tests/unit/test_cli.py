@@ -83,7 +83,14 @@ def test_analyze_reads_a_pr_fixture_through_the_real_adapters() -> None:
         "base": "fx__intern__base",
         "head": "fx__intern__head",
     }
-    assert store.list_graphs() == ["fx__intern__base", "fx__intern__head"]
+    assert store.list_graphs() == [
+        "fx__intern__base",
+        "fx__intern__fix-a",
+        "fx__intern__fix-c",
+        "fx__intern__fix-d",
+        "fx__intern__head",
+    ]
+    assert {c.id for c in result.candidates} == {"A", "C", "D"}
     assert sorted(p.target for p in result.opened) == [
         "db:customer-db",
         "s3://demo-company-files/invoices/",
