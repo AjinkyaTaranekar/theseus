@@ -28,8 +28,8 @@
 </p>
 
 <p align="center">
-  <a href="docs/media/theseus-demo.mp4"><img src="docs/media/theseus-demo-poster.jpg" width="720" alt="Watch the Theseus demo video, 2 minutes 53 seconds: the title card shows the Theseus shield logo, the line 'A graph agent that reviews infrastructure changes before they merge', and Team Project Hail Mary, Ajinkya Taranekar and Sakshi Chitnis"></a>
-  <br><sub>The 2:53 demo video: <a href="docs/media/theseus-demo.mp4">play the MP4</a></sub>
+  <a href="https://youtu.be/oKLoHeoLxqk"><img src="docs/media/theseus-demo-poster.jpg" width="720" alt="Watch the Theseus demo video, 2 minutes 53 seconds: the title card shows the Theseus shield logo, the line 'A graph agent that reviews infrastructure changes before they merge', and Team Project Hail Mary, Ajinkya Taranekar and Sakshi Chitnis"></a>
+  <br><sub>The 2:53 demo video: <a href="https://youtu.be/oKLoHeoLxqk">play on Youtube</a></sub>
 </p>
 
 <p align="center">
