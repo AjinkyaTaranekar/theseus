@@ -1,0 +1,8 @@
+# Generated: captures, voice-over, renders, secrets-bearing links
+captures/
+audio/
+pv/
+node_modules/
+__pycache__/
+*.mp4
+dash.url
