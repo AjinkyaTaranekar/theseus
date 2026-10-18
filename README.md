@@ -1,4 +1,4 @@
-<img src="docs/images/logo.svg" width="72" alt="Theseus logo: a web of nodes with one path traced to a red node at its centre">
+<img src="docs/images/logo.svg" width="80" alt="Theseus logo: a blue shield holding a graph, one coral path running down to the node it protects">
 
 # Theseus
 

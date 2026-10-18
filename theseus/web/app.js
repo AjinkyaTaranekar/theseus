@@ -240,3 +240,17 @@ if (typeof mermaid !== "undefined") {
   mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default" });
 }
 for (const button of buttons) button.addEventListener("click", () => run(button));
+
+// The front page's terminal types its lines once it scrolls into view. Without script, or with reduced
+// motion, every line is simply there.
+const term = document.querySelector(".term");
+if (term && "IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  term.classList.add("armed");
+  const seen = new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) {
+      term.classList.add("play");
+      seen.disconnect();
+    }
+  }, { threshold: 0.35 });
+  seen.observe(term);
+}
