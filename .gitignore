@@ -31,3 +31,6 @@ Thumbs.db
 # Claude Code personal files
 .claude/settings.local.json
 CLAUDE.local.md
+
+# Local checks: cached plans and the Terraform providers they need (hundreds of MB)
+.theseus/

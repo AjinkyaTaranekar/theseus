@@ -824,9 +824,12 @@ def limited(request: Request) -> None:
 
 
 @router.get("/", response_class=HTMLResponse)
-def try_page() -> HTMLResponse:
-    """The Try-it page: one button for each preset."""
-    html = _PAGE.get_template("index.html").render(presets=presets())
+def try_page(settings: SettingsDep) -> HTMLResponse:
+    """The front page: what Theseus is and every way in, the first repository's live dashboard (its signed
+    link, when this server has a public hostname and a token), and one Try-it button for each preset."""
+    repo = settings.repos[0] if settings.repos else None
+    dashboard = reviews.dashboard_url(settings, repo) if repo else None
+    html = _PAGE.get_template("index.html").render(presets=presets(), dashboard=dashboard, repo=repo)
     return HTMLResponse(html, headers={"Cache-Control": "no-store", "Content-Security-Policy": PAGE_POLICY})
 
 

@@ -1,0 +1,14 @@
+{
+  "name": "theseus",
+  "owner": { "name": "Theseus" },
+  "metadata": {
+    "description": "Theseus for Claude Code: the access graph before the PR."
+  },
+  "plugins": [
+    {
+      "name": "theseus",
+      "source": "./plugins/theseus",
+      "description": "Check what an infrastructure change grants before the commit or PR, and ask the access graph questions."
+    }
+  ]
+}

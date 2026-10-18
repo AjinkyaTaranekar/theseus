@@ -24,6 +24,7 @@ export THESEUS_PYTHON=.venv/bin/python      # per shell; Windows (cmd): set THES
 pytest -q                                   # offline: unit, golden, contract, replay. Run before every commit
 pytest -q tests/golden/test_intern.py -x    # one golden test, stop at the first failure
 pytest -q -m falkordb                       # runs against FalkorDB Cloud; needs the FALKORDB_* settings in .env
+python tools/purge_test_graphs.py           # lists graphs old test runs leaked on a shared FalkorDB; --yes deletes them
 pytest -q -m live                           # real LLM and Jev calls; needs keys; only when a brief says so
 ruff check . && ruff format --check .       # must be clean; `ruff format .` fixes formatting
 python -m theseus analyze fixtures/intern   # prints the AnalysisResult JSON
@@ -138,6 +139,31 @@ dict order, `evidence=[]`, or a line number typed in by hand. (`edge` and `evide
 
 Golden tests compare a projection, so ordering and timings never break them. A new recording is made only with
 `THESEUS_MODE=record` and committed with the test that uses it.
+
+### Run the falkordb tests on your own machine
+
+`pytest -m falkordb` reads the `FALKORDB_*` settings from `.env`, which on this team is the shared FalkorDB Cloud
+instance: 100 MB, no eviction, one set of graphs for everyone. A full run needs about 11 MB free, and
+`tests/conftest.py` stops the run before its first test, with a message, when there is less. Use a FalkorDB of
+your own whenever you can; it cannot fill anyone else's:
+
+```bash
+docker run -d --name theseus-test-db -e REDIS_ARGS="--requirepass localtest" -p 127.0.0.1:56390:6379 falkordb/falkordb:v4.22.0
+export FALKORDB_HOST=localhost FALKORDB_PORT=56390 FALKORDB_TLS=false FALKORDB_USERNAME=default FALKORDB_PASSWORD=localtest
+pytest -q -m falkordb
+docker rm -f theseus-test-db
+```
+
+Set all five variables and give the container a password. A blank or missing variable falls back to `.env`
+(`Settings` ignores empty values), which is how a local run ends up asking your container for the Cloud password.
+On Windows `cmd`, use `set NAME=value` for each.
+
+On the shared instance, delete only graphs your own run made, by exact name: the guard in `tests/conftest.py`
+does it for any module that leaves one. Graphs that earlier runs left are `tools/purge_test_graphs.py`'s: it
+lists them, `--yes` deletes them, and it can never select a `demo-infra__*`, `fx__*` or `theseus__*` graph. Run
+it with `--yes` only when nobody is running the tests. When you add a module that saves many graphs, run the
+full suite on a fresh container, compare `used_memory` before with `used_memory_peak` after (`INFO memory`), and
+raise `FULL_RUN_MB` in `tests/falkordb_guard.py` if the difference passes it.
 
 ## Definition of done
 
