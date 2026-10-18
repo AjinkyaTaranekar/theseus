@@ -151,3 +151,58 @@ main.landing { max-width: 1080px; }
   .nav { margin-left: 0; width: 100%; }
 }
 @media (prefers-reduced-motion: reduce) { .chain .edge::before, .arrow::before { animation: none; } }
+
+/* Front page visuals: the logo, the hero shot, the gallery of real screens, the terminal and the icons. */
+.brand img { display: block; }
+.hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 32px; align-items: center; }
+.hero-text h1 { max-width: 18ch; }
+.hero-shot { margin: 0; animation: rise .9s cubic-bezier(.2, .7, .2, 1) both; }
+.hero-shot figcaption, .shot figcaption { color: var(--muted); font-size: 13px; margin-top: 10px; }
+.frame {
+  border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: var(--panel);
+  box-shadow: 0 0 0 1px rgba(110, 159, 255, .08), 0 24px 60px -20px rgba(242, 73, 92, .35), 0 10px 40px -10px rgba(63, 99, 242, .35);
+}
+.frame img, .shot img { display: block; width: 100%; height: auto; }
+.bar { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: #0e1013; }
+.bar i { width: 10px; height: 10px; border-radius: 50%; background: #2a2d33; }
+.bar span { margin-left: 8px; color: var(--muted); font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px) scale(.985); } to { opacity: 1; transform: none; } }
+
+.chain { margin-top: 28px; }
+.chain li { animation: hop .5s ease-out both; animation-delay: calc(.35s + var(--i, 0) * .32s); }
+.chain .node.hot { animation: pulse 2.4s ease-in-out 2.2s infinite; }
+@keyframes hop { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
+@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(242, 73, 92, .0); } 50% { box-shadow: 0 0 0 6px rgba(242, 73, 92, .18); } }
+
+.gallery { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.shot { margin: 0; }
+.shot img { border: 1px solid var(--line); border-radius: 10px; transition: transform .25s ease, border-color .25s ease; }
+.shot:hover img { transform: translateY(-3px); border-color: var(--accent); }
+.shot figcaption b { color: var(--text); }
+
+.term { margin: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #050607; }
+.term pre {
+  margin: 0; padding: 16px 18px; overflow-x: auto; color: #c9ccd2;
+  font: 13px/1.65 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap;
+}
+.term .l { display: block; }
+.term .prompt { color: var(--text); font-weight: 600; }
+.term .tool { color: var(--accent); }
+.term .bad { color: var(--danger); font-weight: 700; }
+.term .good { color: var(--ok); }
+.term .dim, .term em { color: var(--muted); font-style: normal; }
+.term.armed .l { opacity: 0; }
+.term.armed.play .l { animation: line .35s ease-out both; animation-delay: calc(var(--i, 0) * .45s); }
+@keyframes line { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+.surface h3 { display: flex; align-items: center; gap: 10px; }
+.icon { width: 22px; height: 22px; flex: none; fill: none; stroke: var(--accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+@media (max-width: 900px) {
+  .hero-grid, .gallery { grid-template-columns: minmax(0, 1fr); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hero-shot, .chain li, .chain .node.hot, .term.armed.play .l { animation: none; }
+  .term.armed .l { opacity: 1; }
+  .shot img { transition: none; }
+}

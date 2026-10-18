@@ -6,13 +6,19 @@
 <meta name="referrer" content="no-referrer">
 <title>Theseus</title>
 <meta name="description" content="Theseus reviews every infrastructure change as a graph in FalkorDB: what it really grants, where it lands, and the smallest fix, proven before merge.">
+<link rel="icon" href="/web/logo.svg" type="image/svg+xml">
+{% if site %}<meta property="og:title" content="Theseus">
+<meta property="og:description" content="See what an infrastructure change really grants, before it merges.">
+<meta property="og:image" content="https://{{ site }}/web/shot-review.jpg">
+<meta name="twitter:card" content="summary_large_image">{% endif %}
 <link rel="stylesheet" href="/web/style.css">
 </head>
 <body>
 <header>
-  <a class="brand" href="/"><svg viewBox="0 0 32 32" aria-hidden="true" width="22" height="22"><g fill="none" stroke="#686d76" stroke-width="1.2" stroke-linejoin="round"><polygon points="16,4 26.39,10 26.39,22 16,28 5.61,22 5.61,10"/><polygon points="16,9 22.06,12.5 22.06,19.5 16,23 9.94,19.5 9.94,12.5"/><path d="M16 16L16 4M16 16L26.39 10M16 16L26.39 22M16 16L16 28M16 16L5.61 22M16 16L5.61 10"/></g><g fill="#9a9fa8"><circle cx="16" cy="4" r="1.4"/><circle cx="26.39" cy="10" r="1.4"/><circle cx="26.39" cy="22" r="1.4"/><circle cx="16" cy="28" r="1.4"/><circle cx="5.61" cy="10" r="1.4"/></g><path d="M5.61 22L5.61 10L16 16" fill="none" stroke="#6e9fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="5.61" cy="22" r="2" fill="#6e9fff"/><circle cx="16" cy="16" r="3.2" fill="#f2495c"/></svg>Theseus</a>
+  <a class="brand" href="/"><img src="/web/logo.svg" width="26" height="26" alt="">Theseus</a>
   <nav class="nav" aria-label="Sections">
     {% if dashboard %}<a href="{{ dashboard }}">Live dashboard</a>{% endif %}
+    <a href="#action">See it</a>
     <a href="#try">Try a PR</a>
     <a href="#surfaces">What's inside</a>
     <a href="#how">How it decides</a>
@@ -23,6 +29,8 @@
 <main class="landing">
 
   <section class="hero">
+   <div class="hero-grid">
+   <div class="hero-text">
     <p class="eyebrow">FalkorDB Graph Hacks · Track 01 · Agents that act on connected data</p>
     <h1>See what an infrastructure change really grants, before it merges.</h1>
     <p class="lede">Theseus reviews every Terraform change as a graph in FalkorDB. It traces each path from a
@@ -34,16 +42,65 @@
       <a class="cta" href="#try">Try a pull request ↓</a>
       {% if repo %}<a class="cta" href="https://github.com/{{ repo }}">Source on GitHub</a>{% endif %}
     </div>
+   </div>
+    <figure class="hero-shot">
+      <div class="frame">
+        <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>Theseus · review of PR #129</span></div>
+        <img src="/web/shot-review.jpg" width="1308" height="612" alt="Theseus's review page for a demo pull request: the PR adds priya-intern to support-engineers at people.tf:83, and the graph shows four hops from her to customer-db, which holds regulated data. The merge is blocked.">
+      </div>
+      <figcaption>A real review: the one line the PR adds, and the four hops it opens to the customer database.</figcaption>
+    </figure>
+   </div>
 
     <figure class="chain" aria-label="Example: one added line opens a path to the customer database">
       <figcaption>One line in <code>people.tf:83</code>. Static checks pass. The graph follows it:</figcaption>
       <ol>
-        <li><span class="node">priya-intern</span><span class="kind">user</span></li>
-        <li><span class="edge">is in</span><span class="node">support-engineers</span><span class="kind">group</span></li>
-        <li><span class="edge">can become</span><span class="node">prod-support</span><span class="kind">role</span></li>
-        <li><span class="edge">can read</span><span class="node">prod-db-credentials</span><span class="kind">secret</span></li>
-        <li><span class="edge">opens</span><span class="node hot">customer-db</span><span class="kind">regulated data</span></li>
+        <li style="--i:0"><span class="node">priya-intern</span><span class="kind">user</span></li>
+        <li style="--i:1"><span class="edge">is in</span><span class="node">support-engineers</span><span class="kind">group</span></li>
+        <li style="--i:2"><span class="edge">can become</span><span class="node">prod-support</span><span class="kind">role</span></li>
+        <li style="--i:3"><span class="edge">can read</span><span class="node">prod-db-credentials</span><span class="kind">secret</span></li>
+        <li style="--i:4"><span class="edge">opens</span><span class="node hot">customer-db</span><span class="kind">regulated data</span></li>
       </ol>
+    </figure>
+  </section>
+
+  <section id="action" class="block">
+    <h2>See it in action</h2>
+    <p class="explain">Real screens from the live deployment and a demo pull request, not mock-ups.</p>
+    <div class="gallery">
+      <figure class="shot">
+        <img src="/web/shot-comment.jpg" width="814" height="578" loading="lazy" alt="Theseus's comment on pull request #129: Merge blocked. The PR asked to read logs but would get customer-db, prod-db-credentials and invoices; the path is cited at people.tf:83; a fix tested on a graph copy closes all three ways in. A warning says text in the PR tried to steer the review and was ignored.">
+        <figcaption><b>On the pull request.</b> What it asked for against what it would get, the path with its lines, and a fix tested on a graph copy. Text that tries to steer the review is flagged and ignored.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="/web/shot-dashboard.jpg" width="1308" height="646" loading="lazy" alt="The Theseus dashboard overview for main: where to start, then 23 dangerous paths, 5 of 11 pull requests blocked, 2 advisories, 2 single points of failure, 3 unused grants and an estimated monthly cost.">
+        <figcaption><b>The dashboard of main.</b> Where to start, each item with its proof: dangerous paths, blocked PRs, advisories, single points of failure, unused grants and cost.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="/web/shot-weak.jpg" width="1046" height="556" loading="lazy" alt="Weak points: shared-lambda is on every route of 8 things two services need; a small graph shows both services running as the role and the role reading two resources, then the list of what breaks if it goes.">
+        <figcaption><b>Weak points.</b> A single point of failure, every route through it, what breaks if it goes, and what to change.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="/web/shot-whatif.jpg" width="998" height="600" loading="lazy" alt="What if shared-lambda is compromised: traced on main's graph in FalkorDB, it could reach three sensitive resources through three routes, each hop with the line behind it.">
+        <figcaption><b>What if it's compromised?</b> Traced live on main's graph in FalkorDB, hop by hop, with the line behind each grant.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="terminal" class="block">
+    <h2>Before the PR, in your terminal</h2>
+    <p class="explain">The Claude Code plugin runs the same check on your working tree. Its hook stops a commit that would open a path to sensitive data, with the reason and the fix. This is its real output on the intern change.</p>
+    <figure class="term" aria-label="The output of /theseus:check on the intern change">
+      <div class="bar" aria-hidden="true"><i></i><i></i><i></i><span>claude · theseus plugin</span></div>
+<pre><span class="l prompt" style="--i:0">&gt; /theseus:check give priya-intern read access to the production logs</span>
+<span class="l tool" style="--i:1">● theseus · check_change</span>
+<span class="l bad" style="--i:2">Theseus check: BLOCKED. priya-intern can reach customer-db.</span>
+<span class="l" style="--i:3">It opens 3 dangerous paths and closes 0.</span>
+<span class="l" style="--i:4">Impact: Lands on support-engineers, which 2 people and services reach; priya-intern gains access to 4 resources.</span>
+<span class="l" style="--i:5">  priya-intern is in support-engineers <em>(people.tf:83, new)</em> → can become prod-support <em>(people.tf:56)</em></span>
+<span class="l" style="--i:6">    → can read prod-db-credentials <em>(roles.tf:36)</em> → opens customer-db <em>(data.tf:31)</em></span>
+<span class="l good" style="--i:7">Fix A: Revert the added access. Tested on a copy of the graph: closes all 3 ways in, breaks nothing.</span>
+<span class="l dim" style="--i:8">Built in FalkorDB: 86 nodes, 189 edges; 6.3 s.</span></pre>
     </figure>
   </section>
 
@@ -52,41 +109,41 @@
     <p class="explain">Every surface reads the same graphs and the same engine. Pick the one that fits the moment.</p>
     <div class="surfaces">
       <article class="surface">
-        <h3>GitHub agent</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3v12M18 9v12M6 15a3 3 0 1 0 0 6 3 3 0 0 0 0-6ZM18 3a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/><path d="M18 9c0-3-2-4-5-4h-2m0 0 2-2m-2 2 2 2"/></svg>GitHub agent</h3>
         <p>Reviews every pull request that touches the infrastructure: a required <b>Theseus</b> check, one
         comment in plain words, labels, a note on the changed line, and a suggested fix. A reviewer comments
         <code>/theseus apply</code> and the App commits the fix that passed.</p>
         <p class="when">When a PR is opened or updated</p>
       </article>
       <article class="surface">
-        <h3>Website</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 13h8M8 16h5"/></svg>Website</h3>
         <p>The dashboard for <code>main</code>: pull requests, findings, incidents, who reaches what, weak points
         and "what if this is compromised", the graph itself, and cost with proof, each page saying what it answers
         and what to do.</p>
         <p class="when">{% if dashboard %}<a href="{{ dashboard }}">Open it →</a>{% else %}Every push to main and nightly{% endif %}</p>
       </article>
       <article class="surface">
-        <h3>Claude Code plugin</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v3a2 2 0 1 0 4 0V3h2v18h-6v-3a2 2 0 1 0-4 0v3H3V3h6Z"/></svg>Claude Code plugin</h3>
         <p>The check before a PR exists. <code>/theseus:check</code>, <code>/theseus:investigate</code> and
         <code>/theseus:help</code>, a skill that knows the tools, and a hook that stops a commit that would open
         a path to sensitive data, with the reason and the fix.</p>
         <p class="when"><code>/plugin install theseus --marketplace AjinkyaTaranekar/theseus</code></p>
       </article>
       <article class="surface">
-        <h3>MCP server</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 2v5M15 2v5M6 7h12v4a6 6 0 0 1-12 0V7ZM12 17v5"/></svg>MCP server</h3>
         <p>Ten graph tools for any MCP client: blast radius, explain path, shortest route, minimum cut,
         simulate fix, choke points, unused grants, secrets reachable, requirements and diff. In repo mode,
         <code>check_change</code> checks the working tree.</p>
         <p class="when"><code>python -m theseus.mcp.server --repo .</code></p>
       </article>
       <article class="surface">
-        <h3>CLI</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 10 3 2-3 2M12 15h5"/></svg>CLI</h3>
         <p>The same engine in a terminal: check the working tree before a PR, analyze a PR, map an advisory's
         blast radius, report the posture of <code>main</code>, or rank what an outage breaks.</p>
         <p class="when"><code>python -m theseus check</code> · <code>analyze</code> · <code>finding</code> · <code>posture</code> · <code>incident</code></p>
       </article>
       <article class="surface">
-        <h3>The graph</h3>
+        <h3><svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="6" r="2"/><circle cx="19" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="7" cy="19" r="2"/><circle cx="18" cy="18" r="2"/><path d="m6.6 7.4 3.8 3.4M17.4 7.4l-3.8 3.4M10.8 13.6 8 17.3M13.6 13.4l3.1 3.3"/></svg>The graph</h3>
         <p>One FalkorDB graph per commit, and a <code>GRAPH.COPY</code> for every candidate fix. Cypher finds
         the paths; the engine computes the minimum cut and simulates each fix. Node labels follow Cartography's
         ontology, so a live cloud map can feed the same engine.</p>

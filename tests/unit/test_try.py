@@ -279,7 +279,7 @@ def test_the_front_page_names_every_way_in_and_links_the_live_dashboard(fast: Te
     assert link and f'href="{link}"' in res.text
     assert 'href="https://github.com/acme/infra"' in res.text
     for surface in ("GitHub agent", "Website", "Claude Code plugin", "MCP server", "CLI", "The graph"):
-        assert f"<h3>{surface}</h3>" in res.text
+        assert f"</svg>{surface}</h3>" in res.text
     assert "System One" in res.text and "System Two" in res.text and 'id="presets"' in res.text
 
 
@@ -291,3 +291,13 @@ def test_without_a_signed_link_the_front_page_still_works(fast: TestClient) -> N
     finally:
         fast.app.dependency_overrides.pop(get_settings)  # type: ignore[attr-defined]
     assert res.status_code == 200 and "/dashboard/" not in res.text and "Live dashboard" not in res.text
+
+
+@pytest.mark.parametrize(
+    ("name", "media"),
+    [("logo.svg", "image/svg+xml"), ("shot-review.jpg", "image/jpeg"), ("shot-comment.jpg", "image/jpeg")],
+)
+def test_the_front_page_serves_its_logo_and_real_screens(fast: TestClient, name: str, media: str) -> None:
+    res = fast.get(f"/web/{name}")
+    assert res.status_code == 200 and res.headers["content-type"].startswith(media)
+    assert f'src="/web/{name}"' in fast.get("/").text
