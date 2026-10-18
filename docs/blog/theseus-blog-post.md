@@ -57,8 +57,9 @@ approves. Here is a real run on our live demo:
 ## Try it in 60 seconds
 
 - **Live demo:** <https://guest-box.tail27b7c5.ts.net>. Pick the `intern` preset. The engine runs for real on
-  FalkorDB, and the model's answers replay from recordings, so a try costs nothing. The hosted demo is slower
-  than a local run: when we timed the first click it took about a minute (56,982 ms reported).
+  FalkorDB, and the model's answers replay from recordings, so a try costs nothing. A click returns in about
+  two seconds. The page's "Analyzed in" figure (56,982 ms for `intern`) is the engine time the server recorded when
+  it computed the result at startup, not the time your click takes.
 - **On your machine:** FalkorDB in Docker, then the app. This is the README's setup:
 
 ```bash
