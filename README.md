@@ -28,6 +28,11 @@
 </p>
 
 <p align="center">
+  <a href="docs/media/theseus-demo.mp4"><img src="docs/media/theseus-demo-poster.jpg" width="720" alt="Watch the Theseus demo video, 2 minutes 53 seconds: the title card shows the Theseus shield logo, the line 'A graph agent that reviews infrastructure changes before they merge', and Team Project Hail Mary, Ajinkya Taranekar and Sakshi Chitnis"></a>
+  <br><sub>The 2:53 demo video: <a href="docs/media/theseus-demo.mp4">play the MP4</a></sub>
+</p>
+
+<p align="center">
   <img src="theseus/web/shot-review.jpg" width="880" alt="Theseus's review of a demo pull request: it adds priya-intern to support-engineers at people.tf:83, and the graph shows four hops from her to customer-db, which holds regulated data. The merge is blocked.">
 </p>
 
@@ -44,7 +49,7 @@ That Act on Connected Data**.
 | --- | --- |
 | **The website** | <https://guest-box.tail27b7c5.ts.net>: every way in, how it decides, and the Try-it presets, where the real engine runs on FalkorDB |
 | **The live dashboard** | [Theseus on this repository](https://guest-box.tail27b7c5.ts.net/dashboard/AjinkyaTaranekar/theseus?k=ea1c289117b62d09647ceab7975762cc#overview): `main`'s posture, pull requests, findings, incidents, who reaches what, weak points, the graph, and cost with proof |
-| **Demo video** | _Link added at submission_ |
+| **Demo video** | [The 2:53 demo](docs/media/theseus-demo.mp4): the problem, the architecture, a pull request blocked and fixed, the plugin, and the dashboard |
 | **A real review** | [Demo PR #125](https://github.com/AjinkyaTaranekar/theseus/pull/125): an intern joins a support group "to read prod logs"; Theseus comments *"This PR would let priya-intern read and change customer-db"*, and `/theseus apply` commits the fix that turns the check green |
 | **More demo PRs** | [#137](https://github.com/AjinkyaTaranekar/theseus/pull/137) makes a bucket public; [#124](https://github.com/AjinkyaTaranekar/theseus/pull/124) is a typo fix whose code reads the customer database; [#129](https://github.com/AjinkyaTaranekar/theseus/pull/129) tries to steer the review; [#126](https://github.com/AjinkyaTaranekar/theseus/pull/126) offboards a contractor and closes 6 paths; [#128](https://github.com/AjinkyaTaranekar/theseus/pull/128) is safe |
 | **A containment PR** | [PR #111](https://github.com/AjinkyaTaranekar/theseus/pull/111), opened by Theseus for a compromised GitHub Action, and [issue #112](https://github.com/AjinkyaTaranekar/theseus/issues/112), the secret to rotate |
