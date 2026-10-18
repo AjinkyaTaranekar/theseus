@@ -1,0 +1,5 @@
+# Tooling for tools/video only. Not a dependency of the Theseus package.
+pillow
+numpy
+edge-tts
+imageio-ffmpeg

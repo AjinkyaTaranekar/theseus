@@ -241,10 +241,75 @@ if (typeof mermaid !== "undefined") {
 }
 for (const button of buttons) button.addEventListener("click", () => run(button));
 
-// The front page's terminal types its lines once it scrolls into view. Without script, or with reduced
-// motion, every line is simply there.
+// The front page's sections rise into view. Without script, or with reduced motion, everything is simply there.
+const calm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+if (!calm && "IntersectionObserver" in window) {
+  document.documentElement.classList.add("motion");
+  const rise = new IntersectionObserver((entries) => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      entry.target.classList.add("in");
+      rise.unobserve(entry.target);
+    }
+  }, { threshold: 0.12 });
+  for (const node of document.querySelectorAll(".reveal")) rise.observe(node);
+}
+
+// Slideshows: a tab shows its slide; while one is on screen it moves on by itself, and holds while the pointer
+// is over it. In the walkthrough, each step also lights its hop of the graph beside it. Without script, every
+// slide is shown in order.
+for (const box of document.querySelectorAll(".slides")) {
+  const slides = [...box.querySelectorAll(".slide")];
+  const tabs = [...box.querySelectorAll(".tab")];
+  const walk = box.closest("[data-walk]");
+  const wait = Number(box.dataset.auto) || 4500;
+  let at = 0;
+  let timer = 0;
+  let onScreen = false;
+  let held = false;
+  const schedule = () => {
+    clearTimeout(timer);
+    box.classList.toggle("idle", !onScreen || calm);
+    if (onScreen && !held && !calm) timer = setTimeout(() => show(at + 1), wait);
+  };
+  const show = (n) => {
+    at = (n + slides.length) % slides.length;
+    slides.forEach((s, i) => s.classList.toggle("on", i === at));
+    tabs.forEach((t, i) => {
+      t.classList.toggle("on", i === at);
+      t.setAttribute("aria-selected", String(i === at));
+    });
+    if (walk) for (const node of walk.querySelectorAll("[data-s]")) node.classList.toggle("lit", Number(node.dataset.s) <= at);
+    schedule();
+  };
+  box.classList.add("live");
+  if (walk) walk.classList.add("live");
+  box.style.setProperty("--auto", `${wait}ms`);
+  tabs.forEach((t, i) => t.addEventListener("click", () => show(i)));
+  box.addEventListener("mouseenter", () => {
+    held = true;
+    box.classList.add("paused");
+    clearTimeout(timer);
+  });
+  box.addEventListener("mouseleave", () => {
+    held = false;
+    box.classList.remove("paused");
+    schedule();
+  });
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver((entries) => {
+      onScreen = entries.some((e) => e.isIntersecting);
+      schedule();
+    }, { threshold: 0.35 }).observe(box);
+  } else {
+    onScreen = true;
+  }
+  show(0);
+}
+
+// The front page's terminal types its lines once it scrolls into view.
 const term = document.querySelector(".term");
-if (term && "IntersectionObserver" in window && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+if (term && "IntersectionObserver" in window && !calm) {
   term.classList.add("armed");
   const seen = new IntersectionObserver((entries) => {
     if (entries.some((e) => e.isIntersecting)) {

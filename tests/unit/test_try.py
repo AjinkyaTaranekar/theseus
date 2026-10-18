@@ -295,9 +295,26 @@ def test_without_a_signed_link_the_front_page_still_works(fast: TestClient) -> N
 
 @pytest.mark.parametrize(
     ("name", "media"),
-    [("logo.svg", "image/svg+xml"), ("shot-review.jpg", "image/jpeg"), ("shot-comment.jpg", "image/jpeg")],
+    [
+        ("logo.svg", "image/svg+xml"),
+        ("shot-review.jpg", "image/jpeg"),
+        ("shot-comment.jpg", "image/jpeg"),
+        ("shot-fixes.jpg", "image/jpeg"),
+        ("shot-incident.jpg", "image/jpeg"),
+        ("shot-graph.jpg", "image/jpeg"),
+    ],
 )
 def test_the_front_page_serves_its_logo_and_real_screens(fast: TestClient, name: str, media: str) -> None:
     res = fast.get(f"/web/{name}")
     assert res.status_code == 200 and res.headers["content-type"].startswith(media)
     assert f'src="/web/{name}"' in fast.get("/").text
+
+
+def test_the_front_page_shows_what_the_app_does_and_how_agents_use_it(fast: TestClient) -> None:
+    """The GitHub App's review, suggested change and apply, and the steps for the plugin, skill and MCP."""
+    text = fast.get("/").text
+    assert "Reviews" in text and "Suggests" in text and "Applies" in text and "/theseus apply" in text
+    assert "suggested a change" in text
+    for step in ("/plugin install theseus", "THESEUS_PYTHON", "/theseus:check", "/theseus:investigate"):
+        assert step in text
+    assert "python -m theseus.mcp.server --repo ." in text and "skill" in text
