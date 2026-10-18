@@ -61,6 +61,12 @@ def server_version(db: FalkorDB) -> str:
     raise GraphError("the server has no graph module")
 
 
+# What one review graph costs on FalkorDB Cloud, on average: the 49 graphs leaked by tests took about 40 MB. A
+# graph's own size cannot be read (`GRAPH.MEMORY USAGE` says 0), so a dry run estimates with this, and a
+# delete measures with the server's memory before and after.
+GRAPH_MB = 0.8
+
+
 @dataclass(frozen=True)
 class Memory:
     """The server's memory in megabytes: what it holds, and the most it may hold (None for no limit)."""

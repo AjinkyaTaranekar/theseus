@@ -46,7 +46,7 @@ from theseus.engine.incident import blast, read_incident
 from theseus.engine.pipeline import run_finding, run_posture, run_pr, run_scan
 from theseus.engine.pr_graphs import PrunePlan, merge_states, plan_prune, world_name
 from theseus.errors import GraphError, TheseusError
-from theseus.graph.client import Memory, get_client, memory
+from theseus.graph.client import GRAPH_MB, Memory, get_client, memory
 from theseus.graph.load import delete_graph
 from theseus.graph.store import FalkorStore
 from theseus.importer.world import load_world
@@ -486,12 +486,6 @@ def check(args: argparse.Namespace) -> int:
         return 0
     print(result.model_dump_json(indent=2, by_alias=True) if args.json else check_text(result))
     return 2 if verdict(result).level == "blocked" else 0
-
-
-# What one review graph costs on FalkorDB Cloud, on average: the 49 graphs leaked by tests took about 40 MB. A
-# graph's own size cannot be read (`GRAPH.MEMORY USAGE` says 0), so the dry run estimates, and `--yes`
-# measures with the server's memory before and after.
-GRAPH_MB = 0.8
 
 
 def _read_memory(db: Any) -> Memory | None:

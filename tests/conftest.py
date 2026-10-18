@@ -7,7 +7,7 @@ from collections.abc import Iterator
 
 import pytest
 
-from tests.falkordb_guard import GraphLedger, drop_unused_docs_graph
+from tests.falkordb_guard import GraphLedger, drop_unused_docs_graph, refuse_a_full_instance
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -24,6 +24,14 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
             item.add_marker(no_falkordb)
         if "live" in item.keywords and os.environ.get("THESEUS_LIVE") != "1":
             item.add_marker(no_live)
+
+
+def pytest_collection_finish(session: pytest.Session) -> None:
+    """Before the first test, stop a FalkorDB run that the instance has no room for.
+
+    The shared Cloud instance has 100 MB and a full run needs about 11 MB; on a nearly full one it fails
+    halfway with an out-of-memory error that has nothing to do with the code. See tests/falkordb_guard.py."""
+    refuse_a_full_instance(session)
 
 
 @pytest.fixture(scope="module", autouse=True)
