@@ -34,6 +34,21 @@ The client is made once in `theseus/graph/client.py` (`get_client`), which pings
 `GraphError` if it cannot connect. `theseus serve` and the API's startup refuse to run without it: the product
 never runs on the in-memory store ([`AGENTS.md`](../../AGENTS.md), "Never").
 
+**The Cloud instance's memory.** FalkorDB Cloud has a 100 MB limit and the `noeviction` policy, so a full instance
+refuses writes instead of dropping old data, and every graph costs about 0.8 MB (a graph's own size cannot be
+read). `memory()` in `theseus/graph/client.py` reads the used and the limit from `INFO memory`. Four things keep
+the instance from filling:
+
+| What | Clears or prevents |
+| --- | --- |
+| The webhook for a closed PR, and `python -m theseus prune` | The base, head and fix graphs of closed and merged PRs |
+| `tests/conftest.py`, with `tests/falkordb_guard.py` | A test module that leaves a graph: it fails, and the graph is deleted by name |
+| `tools/purge_test_graphs.py` | The graphs earlier test runs left, found only by the name `<test>__<process id>__<name>` |
+| The check before `pytest -m falkordb` | A run that would fail halfway: with less than about 11 MB free it stops before its first test |
+
+The tests can also run on a FalkorDB of your own, which is what to prefer
+([`AGENTS.md`](../../AGENTS.md), "Run the falkordb tests on your own machine").
+
 ## The store protocol
 
 Core code never calls the FalkorDB client directly. It calls a `GraphStore` (`theseus/contracts/engine.py`),
