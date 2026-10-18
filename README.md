@@ -1,8 +1,37 @@
-<img src="docs/images/logo.svg" width="80" alt="Theseus logo: a blue shield holding a graph, one coral path running down to the node it protects">
+<p align="center">
+  <img src="theseus/web/logo.svg" width="112" alt="Theseus logo: a blue shield holding a graph, one coral path running down to the node it protects">
+</p>
 
-# Theseus
+<h1 align="center">Theseus</h1>
 
-**See what an infrastructure change really grants, before it merges.** Theseus reviews every Terraform change
+<p align="center"><b>See what an infrastructure change really grants, before it merges.</b></p>
+
+<p align="center">
+  <a href="https://github.com/AjinkyaTaranekar/theseus/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/AjinkyaTaranekar/theseus/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://www.wemakedevs.org/hackathons/falkordb"><img alt="FalkorDB Graph Hacks: Track 01" src="https://img.shields.io/badge/FalkorDB_Graph_Hacks-Track_01-3F63F2"></a>
+  <a href="#falkordb-and-cypher"><img alt="FalkorDB 4.22" src="https://img.shields.io/badge/FalkorDB-4.22-F2495C"></a>
+  <img alt="Python 3.12" src="https://img.shields.io/badge/python-3.12-3776AB?logo=python&amp;logoColor=white">
+  <img alt="Tests: 2258 passing" src="https://img.shields.io/badge/tests-2258_passing-73BF69">
+  <a href="#try-the-tools-from-claude-code"><img alt="MCP: 10 graph tools" src="https://img.shields.io/badge/MCP-10_graph_tools-6E9FFF"></a>
+  <a href="#before-the-pr-the-claude-code-plugin"><img alt="Claude Code plugin" src="https://img.shields.io/badge/Claude_Code-plugin-D97757"></a>
+  <a href="https://guest-box.tail27b7c5.ts.net"><img alt="Live" src="https://img.shields.io/badge/live-online-73BF69"></a>
+  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-8F949D"></a>
+</p>
+
+<p align="center">
+  <a href="https://guest-box.tail27b7c5.ts.net"><b>Website</b></a> ·
+  <a href="https://guest-box.tail27b7c5.ts.net/dashboard/AjinkyaTaranekar/theseus?k=ea1c289117b62d09647ceab7975762cc#overview"><b>Live dashboard</b></a> ·
+  <a href="#architecture"><b>Architecture</b></a> ·
+  <a href="#run-it-locally"><b>Run it locally</b></a> ·
+  <a href="#deploy-it"><b>Deploy</b></a> ·
+  <a href="docs/architecture/"><b>Docs</b></a>
+</p>
+
+<p align="center">
+  <img src="theseus/web/shot-review.jpg" width="880" alt="Theseus's review of a demo pull request: it adds priya-intern to support-engineers at people.tf:83, and the graph shows four hops from her to customer-db, which holds regulated data. The merge is blocked.">
+</p>
+
+Theseus reviews every Terraform change
 as a graph in FalkorDB. It traces each path from a person, workflow or service to sensitive data, compares that
 with what the PR says and what the code calls, says where the change lands, proves the smallest fix on a copy of
 the graph, and acts: it blocks the merge, commits the fix a person approves, and contains a compromised
@@ -29,7 +58,7 @@ That Act on Connected Data**.
 | **Claude Code plugin** | The check before a PR exists: `/theseus:check`, `/theseus:investigate`, `/theseus:help`, a skill that knows the tools, and a hook that stops a commit that would open a path to sensitive data | `/plugin install theseus --marketplace AjinkyaTaranekar/theseus` ([more](#before-the-pr-the-claude-code-plugin)) |
 | **MCP server** | Ten graph tools for any MCP client, and `check_change` on the working tree | `python -m theseus.mcp.server --repo .` ([more](#try-the-tools-from-claude-code)) |
 | **CLI** | Check the working tree, analyze a PR, map an advisory, report `main`'s posture, rank an outage | `python -m theseus check`, `analyze`, `finding`, `posture`, `incident` |
-| **The graph** | One FalkorDB graph per commit, a `GRAPH.COPY` per candidate fix, Cypher for the paths, labels from Cartography's ontology | [Graph model](#graph-model), [Cypher](#cypher-and-graph-algorithms) |
+| **The graph** | One FalkorDB graph per commit, a `GRAPH.COPY` per candidate fix, Cypher for the paths, labels from Cartography's ontology | [Graph model](#graph-model), [Cypher](#falkordb-and-cypher) |
 
 ### How it decides
 
@@ -40,7 +69,62 @@ needs and designs fixes by calling the engine's graph tools. **The engine** deci
 FalkorDB, tests every fix on a graph copy, and returns UNKNOWN where it can't model. **A person** approves every
 write.
 
-![Theseus flags where what the PR says, what Terraform allows and what the code does disagree](docs/images/three-sources.png)
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph IN["Inputs"]
+    PR["PR title and body"]
+    TF["Terraform plan JSON"]
+    CODE["Python service code"]
+    WF["GitHub workflows"]
+    ADV["Advisories, status feeds"]
+  end
+  AD["Adapters: AWS, Terraform, GitHub Actions, Python"]
+  subgraph FDB["FalkorDB"]
+    G1[("A graph per state: base, head, main")]
+    G2[("A GRAPH.COPY per candidate fix")]
+  end
+  S1["System One: Jev<br/>typed answers with a probability"]
+  S2["System Two: the LLM<br/>reads intent, designs fixes"]
+  EN{{"Engine: Cypher paths, maxFlow cut, simulation<br/>decides facts, says UNKNOWN"}}
+  OUT["Check, comment, labels, fix commit,<br/>containment PR, dashboard, MCP"]
+  P(["A person approves"])
+  IN --> AD --> G1
+  S1 -- "labels each node's sensitivity" --> G1
+  G1 <--> EN
+  EN <--> G2
+  S2 -- "calls the ten graph tools" --> EN
+  EN --> OUT --> P
+  P -- "/theseus apply" --> OUT
+```
+
+| | System One: Jev | System Two: the LLM | The engine on FalkorDB |
+| --- | --- | --- | --- |
+| **Its job** | Fast, typed judgments, each with a probability | Reading what the PR says it needs; designing structural fixes; explaining | Deciding facts |
+| **What it is asked** | Is this resource's data sensitive? Is this PR text steering the review? How likely is this fix to break something? | What access does the PR say it needs? Which fix closes the cut without breaking a requirement? | Which paths exist? What does each fix close and what does it break? |
+| **How it meets the graph** | Its answers set each node's `sensitivity` before the graph loads; an override in `theseus.yaml` always wins | Only through the ten graph tools, over MCP or in process; never by writing to the graph | Cypher on each state's graph, `algo.maxFlow` for the cut, `GRAPH.COPY` for every candidate |
+| **Can it decide?** | No. It can stop an approval (steering), never grant one | No. Every fix it proposes is re-checked on a graph copy | Yes, and it returns UNKNOWN for anything outside the IAM subset it models |
+
+**How FalkorDB carries it.** Every state of the infrastructure is its own graph: `demo-infra__pr129-base`,
+`demo-infra__pr129-head`, `demo-infra__main`. Each edge keeps the file and line that created it. A
+variable-length Cypher match finds every route from every actor to every resource, `algo.maxFlow` finds the
+fewest edges that close the dangerous ones, and each candidate fix runs on its own `GRAPH.COPY` before it gets a
+verdict. The queries are in [FalkorDB and Cypher](#falkordb-and-cypher), and the full design is in
+[docs/architecture/](docs/architecture/).
+
+### In pictures
+
+<table>
+  <tr>
+    <td width="50%"><img src="theseus/web/shot-comment.jpg" alt="Theseus's comment on pull request #129: Merge blocked, what it asked for against what it would get, the cited path and a tested fix"><br><b>On the pull request.</b> What it asked for against what it would get, the path with its lines, and a fix tested on a graph copy; text that tries to steer the review is flagged and ignored.</td>
+    <td width="50%"><img src="theseus/web/shot-dashboard.jpg" alt="The dashboard overview for main: where to start, then dangerous paths, blocked PRs, advisories, single points of failure, unused grants and cost"><br><b>The dashboard of main.</b> Where to start, each item with its proof.</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="theseus/web/shot-weak.jpg" alt="Weak points: a single point of failure, every route through it, and what breaks if it goes"><br><b>Weak points.</b> A single point of failure, every route through it, and what breaks if it goes.</td>
+    <td width="50%"><img src="theseus/web/shot-whatif.jpg" alt="What if shared-lambda is compromised: three sensitive resources through three routes, traced on main's graph in FalkorDB"><br><b>What if it's compromised?</b> Traced live on main's graph in FalkorDB, hop by hop.</td>
+  </tr>
+</table>
 
 ## How it works
 
@@ -130,7 +214,7 @@ explanations must cite evidence IDs, and a checker rejects any ID that does not 
 
 ![The intern and a compromised Action both reach one choke point](docs/images/graph-model.png)
 
-## Cypher and graph algorithms
+## FalkorDB and Cypher
 
 All Cypher is in [`theseus/graph/queries.py`](theseus/graph/queries.py) and runs through the FalkorDB store in
 [`theseus/graph/store.py`](theseus/graph/store.py); the Python algorithms are in
@@ -199,7 +283,7 @@ RETURN node.id AS id, score ORDER BY score DESC, id
 **The product does not run without FalkorDB.** `theseus serve` refuses to start without it, `/health` reports
 `degraded` when it goes away, and the in-memory store exists only for offline tests.
 
-## Setup
+## Run it locally
 
 A fresh clone needs Docker and Python 3.12, and no keys: the LLM and Jev replay from [`recordings/`](recordings/),
 and the engine runs live on a local FalkorDB. One command after the clone:
@@ -223,6 +307,14 @@ the `FALKORDB_*` settings.
 .venv/bin/pytest -q -m falkordb     # the same answers from FalkorDB as from the in-memory store
 ```
 
+Check a change on your own machine before a PR (Terraform on the PATH, no cloud account), or ask the graph from
+Claude Code:
+
+```bash
+.venv/bin/python -m theseus check --intent "Logs for Priya"   # exit 2 when the change would be blocked
+/plugin install theseus --marketplace AjinkyaTaranekar/theseus  # inside Claude Code; set THESEUS_PYTHON first
+```
+
 To review your own pull requests, install the GitHub App and add `theseus.yaml` and the workflows:
 [docs/onboarding.md](docs/onboarding.md). Every setting is in [`.env.example`](.env.example).
 
@@ -239,7 +331,7 @@ such as Claude Code can ask the graph questions itself.
 | Call record | The resource `theseus://tool-trace` | The result's `tool_trace`, shown in the PR comment and on the Try-it page |
 
 [`.mcp.json`](.mcp.json) starts the server on `fixtures/intern`. It loads the fixture's two graphs into the
-FalkorDB from [Setup](#setup) (or the one the `FALKORDB_*` settings name) and answers from the recordings, so it
+FalkorDB from [Run it locally](#run-it-locally) (or the one the `FALKORDB_*` settings name) and answers from the recordings, so it
 needs no keys. It runs `${THESEUS_PYTHON:-python}`, and a stock macOS has no `python` on its PATH, so name your
 virtualenv's Python in the shell that starts Claude Code, from the repository root:
 
@@ -290,7 +382,7 @@ commit or a pull request exists. Install it from this repository's marketplace:
 ```
 
 Its server needs `THESEUS_PYTHON` set as above (a plugin's config takes no default), FalkorDB from
-[Setup](#setup), and Terraform on the PATH. Plans need no cloud account.
+[Run it locally](#run-it-locally), and Terraform on the PATH. Plans need no cloud account.
 
 | Part | What it does |
 | --- | --- |
@@ -337,6 +429,26 @@ Try-it presets) and the health check at
 [`/health`](https://guest-box.tail27b7c5.ts.net/health). It is a container on an Oracle ARM host, published
 through Tailscale Funnel, with FalkorDB on FalkorDB Cloud, and it also receives the GitHub App's webhooks for the
 demo PRs. How it is set up and deployed: [deploy/README.md](deploy/README.md).
+
+## Deploy it
+
+Theseus is one FastAPI container beside FalkorDB (FalkorDB Cloud or the `falkordb/falkordb` image). Full steps,
+the App's permissions and recovery are in [deploy/README.md](deploy/README.md).
+
+1. **Settings.** Copy [`.env.example`](.env.example) to `.env`: the `FALKORDB_*` connection, `THESEUS_TOKEN` (a
+   long random string that signs every page link), `THESEUS_REPOS`, `THESEUS_WORLD_ROOT`, `DOMAIN`, and the
+   GitHub App's ID, key and webhook secret.
+2. **The GitHub App.** Create it from [`deploy/github-app-manifest.json`](deploy/github-app-manifest.json) and
+   install it on the repository. It comments, checks and labels, and commits a fix only after a person asks.
+3. **Run it.**
+   - On a host with Docker and public ports: `deploy/deploy.sh user@host` runs
+     [`deploy/docker-compose.yml`](deploy/docker-compose.yml) (the API and Caddy for HTTPS), waits for `/health`,
+     and rolls back if it fails.
+   - Behind Tailscale Funnel, as the live demo is: **Actions → Deploy → Run workflow**, or
+     `gh workflow run deploy.yml -f ref=main`.
+4. **Connect a repository.** Add `theseus.yaml` and the three workflows, set `THESEUS_URL` and `THESEUS_TOKEN` in
+   the repository, require the `Theseus` check on `main`, and build `main`'s graph once from Actions
+   ([docs/onboarding.md](docs/onboarding.md)). The dashboard's Setup page ticks off each step.
 
 ## Results
 
