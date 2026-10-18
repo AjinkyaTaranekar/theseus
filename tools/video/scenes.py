@@ -74,7 +74,8 @@ class S01(Scene):
         im = bg()
         d = ImageDraw.Draw(im, "RGBA")
         p = ss(t, 0.15, 0.7)
-        d.text((120, 96 - (1 - p) * 20), "Monday.", font=AV(140, "bold"), fill=fade(FG, p))
+        pill(d, 126, 60, "THE POSTMORTEM", RED, p, fs=24)
+        d.text((120, 110 - (1 - p) * 20), "A routine change.", font=AV(120, "bold"), fill=fade(FG, p))
         q = ss(t, s.t_int, s.t_int + 0.5)
         d.text((126, 262), "An intern joins the support team.", font=AV(44, "reg"), fill=fade(DIM, q))
         # diff card
@@ -234,7 +235,7 @@ class S03(Scene):
         a = ss(t, 0.2, 0.9)
         lg = s.logo.resize((300, 300), Image.LANCZOS)
         glow = Image.new("RGBA", (600, 600), (0, 0, 0, 0))
-        ImageDraw.Draw(glow).ellipse([150, 150, 450, 450], fill=(90, 150, 255, 90))
+        ImageDraw.Draw(glow).ellipse([150, 150, 450, 450], fill=(70, 120, 255, 55))
         glow = glow.filter(ImageFilter.GaussianBlur(60))
         im.paste(glow, (W // 2 - 300, 70 - 150), glow)
         la = lg.copy()
@@ -251,6 +252,10 @@ class S03(Scene):
         center(
             d, "Built on FalkorDB  ·  Graph Hacks Track 01", 730, AV(34, "demi"), fade(BLUE, ss(t, 1.5, 2.1))
         )
+        k = ss(t, 2.0, 2.6)
+        d.line([(W // 2 - 220, 808), (W // 2 + 220, 808)], fill=fade(LINE, k), width=2)
+        center(d, "TEAM PROJECT HAIL MARY", 832, AV(28, "demi"), fade(DIM, k))
+        center(d, "Ajinkya Taranekar  ·  Sakshi Chitnis", 876, AV(40, "demi"), fade(FG, k))
         return im.convert("RGB")
 
 
@@ -453,7 +458,7 @@ class S06(Scene):
 
         def ov2(lay, w, tt, tabs):
             pill(ImageDraw.Draw(lay, "RGBA"), 64, 52, "LIVE · Try-it page", BLUE, 1.0, fs=24)
-            p = ss(tabs, s.t_hops, s.t_hops + 0.5)
+            p = ss(tabs, s.t_hops + 0.35, s.t_hops + 0.85)
             x0, y0 = w.to_screen(tt, 0.02, 0.49)
             x1, y1 = w.to_screen(tt, 0.98, 0.70)
             callout(lay, (x0, y0, x1, y1), "four hops to customer-db", RED, p, "top", 30)
@@ -462,7 +467,7 @@ class S06(Scene):
             x1, y1 = w.to_screen(tt, 0.60, 1.0)
             callout(lay, (x0, y0, x1, y1), "every hop cites its Terraform line", GRN, q, "top", 30)
 
-        return _seg_scene([(0, s.w1, ov1), (s.t_hops - 0.4, s.w2, ov2)], t, 0)
+        return _seg_scene([(0, s.w1, ov1), (s.t_hops + 0.2, s.w2, ov2)], t, 0)
 
 
 # ===================================================================== 7 the fix
@@ -694,7 +699,7 @@ class S10(Scene):
         x0, y0, w, h = 130, 150, 1660, 700
         d.rounded_rectangle([x0 - 8, y0 - 8, x0 + w + 8, y0 + h + 8], 30, fill=(0, 0, 0, int(110 * a)))
         d.rounded_rectangle(
-            [x0, y0, x0 + w, y0 + h], 26, fill=fade((9, 12, 20), 0.97 * a), outline=fade(LINE, a), width=3
+            [x0, y0, x0 + w, y0 + h], 26, fill=fade((14, 14, 16), 0.97 * a), outline=fade(LINE, a), width=3
         )
         for i, col in enumerate([(255, 95, 86), (255, 189, 46), (39, 201, 63)]):
             d.ellipse([x0 + 28 + i * 40, y0 + 22, x0 + 28 + i * 40 + 22, y0 + 44], fill=fade(col, a))
@@ -958,7 +963,12 @@ class SG(Scene):
     def __init__(s, tm):
         s.t_red, s.t_yel = tm.at("red"), tm.at("yellow")
         s.t_ei = tm.at("eightysix")
-        c = load(HI + "graph-crop.png")
+        if os.path.exists(HI + "graph-crop.png"):
+            c = load(HI + "graph-crop.png")
+        else:  # the graph panel of capture6's full-page shot, without the side bar
+            g = load(HI + "graph-everything.png")
+            box = (0.171 * g.width, 0.165 * g.height, 0.986 * g.width, 0.962 * g.height)
+            c = g.crop(tuple(int(v) for v in box))
         s.w = Win(
             c,
             ww=1750,
@@ -1177,25 +1187,28 @@ class S14(Scene):
         # phase C: end card
         C = ss(t, s.t_try - 0.2, s.t_try + 0.6)
         if C > 0.01:
-            hs = s.hero.resize((1000, 563), Image.LANCZOS).convert("RGBA")
+            hs = s.hero.resize((880, 495), Image.LANCZOS).convert("RGBA")
             m = Image.new("L", hs.size, 0)
-            ImageDraw.Draw(m).rounded_rectangle([0, 0, 999, 562], 22, fill=int(255 * C))
-            im.paste(hs, (460, 60 + int((1 - C) * 20)), m)
-            d.rounded_rectangle([460, 60, 1460, 623], 22, outline=fade(LINE, C), width=3)
-            center(d, "THESEUS", 650, AV(88, "heavy"), fade(FG, C))
-            center(d, "Try it live:  guest-box.tail27b7c5.ts.net", 770, AV(44, "demi"), fade(BLUE, C))
-            center(d, "Code:  github.com/AjinkyaTaranekar/theseus", 830, AV(34), fade(FG, C))
+            ImageDraw.Draw(m).rounded_rectangle([0, 0, 879, 494], 22, fill=int(255 * C))
+            im.paste(hs, (520, 40 + int((1 - C) * 20)), m)
+            d.rounded_rectangle([520, 40, 1400, 535], 22, outline=fade(LINE, C), width=3)
+            center(d, "THESEUS", 556, AV(80, "heavy"), fade(FG, C))
+            center(d, "Try it live:  guest-box.tail27b7c5.ts.net", 666, AV(42, "demi"), fade(BLUE, C))
+            center(d, "Code:  github.com/AjinkyaTaranekar/theseus", 722, AV(32), fade(FG, C))
+            d.line([(W // 2 - 260, 786), (W // 2 + 260, 786)], fill=fade(LINE, C), width=2)
+            team = "Team Project Hail Mary  ·  Ajinkya Taranekar and Sakshi Chitnis"
+            center(d, team, 806, AV(34, "demi"), fade(FG, C))
             center(
                 d,
-                "FalkorDB Graph Hacks  ·  Track 01  ·  live on FalkorDB Cloud, a click returns in under 2 s",
-                886,
-                AV(30, "demi"),
+                "FalkorDB Graph Hacks  ·  Track 01: Agents That Act on Connected Data",
+                856,
+                AV(28, "demi"),
                 fade(YEL, C),
             )
             center(
                 d,
                 "Synthetic infrastructure · AWS IAM subset · Python code · Network exposure not modelled · Cost is a list-price estimate",  # noqa: E501
-                935,
+                900,
                 AV(22),
                 fade(DIM, C),
             )
@@ -1217,9 +1230,9 @@ class SP(Scene):
         im = bg()
         d = ImageDraw.Draw(im, "RGBA")
         h = ss(t, 0.1, 0.6)
-        d.text((110, 90 - (1 - h) * 14), "What is new", font=AV(80, "bold"), fill=fade(FG, h))
+        d.text((110, 90 - (1 - h) * 14), "Where Theseus fits", font=AV(80, "bold"), fill=fade(FG, h))
         a = ss(t, s.t_c - 0.1, s.t_c + 0.5)
-        card(d, 110, 250, 760, 480, "Maps what already exists", None, col=LINE, a=a, fs=44)
+        card(d, 110, 250, 760, 480, "Cartography (CNCF)", None, col=LINE, a=a, fs=44)
         for i, l in enumerate(["Reads the deployed cloud", "Finds the attack paths", "Runs after deploy"]):  # noqa: E741
             la = ss(t, s.t_c + 0.3 + i * 0.25, s.t_c + 0.7 + i * 0.25) * a
             d.text((150, 360 + i * 90), l, font=AV(38), fill=fade(DIM, la))
@@ -1250,14 +1263,6 @@ class SP(Scene):
                 [1040, 372 + i * 82 + 8, 1058, 372 + i * 82 + 26], fill=fade(col if col != FG else BLUE, la)
             )
             d.text((1076, 360 + i * 82), l, font=AV(33, "demi"), fill=fade(col, la))
-        c = ss(t, s.t_s + 0.6, s.t_s + 1.2)
-        center(
-            d,
-            "Cartography tells you what exists. Theseus tells you what your change will do.",
-            800,
-            AV(40, "demi"),
-            fade(FG, c),
-        )
         return im
 
 

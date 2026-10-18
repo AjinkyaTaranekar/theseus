@@ -8,14 +8,16 @@ import wave
 import imageio_ffmpeg
 import numpy as np
 from kit import (
-    BLUE,
+    AV,
     FPS,
+    SPOT,
     H,
     Timing,
     W,
     caption_layer,
     clamp,
     over,
+    spotlight,
 )
 from PIL import Image, ImageDraw
 from scenes import SCENES
@@ -31,6 +33,13 @@ for s in sc:
     g += D
 TOTAL = g
 tms = [Timing(s, LEAD) for s in sc]
+# Chapters, in order of first appearance, each with the time span of its scenes
+CH = []
+for s, D, g0 in plan:
+    if CH and CH[-1][0] == s["chapter"]:
+        CH[-1][2] = g0 + D
+    else:
+        CH.append([s["chapter"], g0, g0 + D])
 objs = [None] * len(sc)
 
 
@@ -42,17 +51,39 @@ def obj(i):
 
 def frame_at(i, t):
     s, D, g0 = plan[i]
-    im = obj(i).frame(min(t, D)).convert("RGBA")
+    SPOT.clear()
+    im = spotlight(obj(i).frame(min(t, D)), SPOT).convert("RGBA")
     cap, a = tms[i].cap(t)
     over(im, caption_layer(cap or "", a if cap else 0))
     f = min(1, t / 0.22, (D - t) / 0.25)
     im = im.convert("RGB")
     if f < 1:
-        im = Image.blend(Image.new("RGB", (W, H), (5, 7, 14)), im, clamp(f))
-    d = ImageDraw.Draw(im)
-    p = (g0 + t) / TOTAL
-    d.rectangle([0, 0, int(W * p), 5], fill=BLUE)
+        im = Image.blend(Image.new("RGB", (W, H), (0, 0, 0)), im, clamp(f))
+    if tms[i].show:  # the title card has no captions and no chapter bar
+        chapter_bar(im, g0 + t)
     return im
+
+
+def chapter_bar(im, g):
+    """Thin segments across the top, one per chapter, filling as it plays, with the chapter names."""
+    px = np.zeros((96, W, 4), np.uint8)  # a dark strip, so the names read over any screenshot
+    px[..., 3] = np.concatenate([np.full(52, 235), np.linspace(235, 0, 44)]).astype(np.uint8)[:, None]
+    lay = Image.fromarray(px, "RGBA")
+    d = ImageDraw.Draw(lay, "RGBA")
+    n, gap, x = len(CH), 12, 64
+    sw = (W - 128 - gap * (n - 1)) / n
+    f = AV(17, "demi")
+    for name, a, b in CH:
+        k = clamp((g - a) / (b - a))
+        now = a <= g < b
+        d.rounded_rectangle([x, 18, x + sw, 21], 2, fill=(255, 255, 255, 46))
+        if k > 0:
+            d.rounded_rectangle([x, 18, x + sw * k, 21], 2, fill=(255, 255, 255, 235 if now else 150))
+        d.text((x, 30), name.upper(), font=f, fill=(245, 245, 247, 235 if now else 100))
+        x += sw + gap
+    base = im.convert("RGBA")
+    base.alpha_composite(lay, (0, 0))
+    im.paste(base.convert("RGB"))
 
 
 # ------------------------------------------------------------------ audio

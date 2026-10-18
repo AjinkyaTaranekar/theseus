@@ -8,14 +8,16 @@ import wave
 import edge_tts
 import imageio_ffmpeg
 
-VOICE = sys.argv[1] if len(sys.argv) > 1 else "en-US-AndrewNeural"
-RATE = sys.argv[2] if len(sys.argv) > 2 else "+14%"
+VOICE = sys.argv[1] if len(sys.argv) > 1 else "en-IE-EmilyNeural"
+RATE = sys.argv[2] if len(sys.argv) > 2 else "+32%"
 FF = imageio_ffmpeg.get_ffmpeg_exe()
 
 
 def speak(t):
     t = re.sub(r"\bLLM\b", "L L M", t)
     t = re.sub(r"\bMCP\b", "M C P", t)
+    t = re.sub(r"\bCNCF\b", "C N C F", t)
+    t = re.sub(r"\bSRE\b", "S R E", t)
     t = (
         t.replace("STS", "S T S")
         .replace("GRAPH.COPY", "graph copy")

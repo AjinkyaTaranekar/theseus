@@ -1,6 +1,7 @@
 """Drawing kit for the Theseus pitch: palette, fonts, backdrop, windows, camera, callouts, captions."""
 
 import math
+import os
 import re
 
 import numpy as np
@@ -9,29 +10,43 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 W, H, FPS = 1920, 1080, 24
 FD = "/System/Library/Fonts/"
 IDX = {"bold": 0, "demi": 2, "med": 5, "reg": 7, "heavy": 8}
+# Without macOS fonts (Windows), Segoe UI and Consolas stand in for Avenir Next and Menlo.
+MAC = os.path.exists(FD + "Avenir Next.ttc")
+WD = os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts", "")
+WIN = {
+    "bold": "segoeuib.ttf",
+    "demi": "seguisb.ttf",
+    "med": "seguisb.ttf",
+    "reg": "segoeui.ttf",
+    "heavy": "seguibl.ttf",
+}
 _fc = {}
 
 
 def AV(s, k="reg"):
     if (s, k) not in _fc:
-        _fc[(s, k)] = ImageFont.truetype(FD + "Avenir Next.ttc", s, index=IDX[k])
+        if MAC:
+            _fc[(s, k)] = ImageFont.truetype(FD + "Avenir Next.ttc", s, index=IDX[k])
+        else:
+            _fc[(s, k)] = ImageFont.truetype(WD + WIN[k], s)
     return _fc[(s, k)]
 
 
 def MO(s):
     if ("m", s) not in _fc:
-        _fc[("m", s)] = ImageFont.truetype(FD + "Menlo.ttc", s)
+        _fc[("m", s)] = ImageFont.truetype(FD + "Menlo.ttc" if MAC else WD + "consola.ttf", s)
     return _fc[("m", s)]
 
 
-FG = (236, 241, 248)
-DIM = (140, 152, 170)
-BLUE = (88, 166, 255)
-RED = (255, 92, 92)
-GRN = (70, 205, 120)
-YEL = (240, 180, 60)
-PANEL = (20, 26, 40)
-LINE = (52, 62, 84)
+# A keynote palette: a black stage, neutral greys, one accent per meaning (blue info, red risk, green pass)
+FG = (245, 245, 247)
+DIM = (150, 150, 158)
+BLUE = (41, 151, 255)
+RED = (255, 77, 79)
+GRN = (48, 209, 88)
+YEL = (255, 196, 46)
+PANEL = (22, 22, 24)
+LINE = (58, 58, 64)
 
 
 def clamp(x, a=0.0, b=1.0):
@@ -64,22 +79,16 @@ def bg(w=W, h=H):
         return _bgc[(w, h)].copy()
     y = np.linspace(0, 1, h, dtype=np.float32)[:, None]
     x = np.linspace(0, 1, w, dtype=np.float32)[None, :]
-    top = np.array([13, 19, 38], np.float32)
-    bot = np.array([5, 7, 14], np.float32)
-    base = top * (1 - y[..., None]) + bot * y[..., None]
-    base = np.broadcast_to(base, (h, w, 3)).copy()
+    base = np.zeros((h, w, 3), np.float32)
 
     def glow(cx, cy, r, col, a):
         d = np.sqrt(((x - cx) * w / h) ** 2 + (y - cy) ** 2)
         return (np.clip(1 - d / r, 0, 1) ** 2 * a)[..., None] * np.array(col, np.float32)
 
-    base += glow(0.10, 0.02, 0.75, (45, 95, 210), 0.55) + glow(0.98, 1.02, 0.65, (210, 55, 70), 0.30)
+    # black, with one soft neutral light from above; a little dither keeps the encoder from banding it
+    base += glow(0.5, -0.18, 1.1, (40, 42, 50), 1.0)
+    base += np.random.default_rng(7).uniform(-1.2, 1.2, base.shape).astype(np.float32)
     im = Image.fromarray(np.clip(base, 0, 255).astype(np.uint8))
-    d = ImageDraw.Draw(im, "RGBA")
-    step = max(30, h // 20)
-    for gx in range(step // 2, w, step):
-        for gy in range(step // 2, h, step):
-            d.ellipse([gx - 1, gy - 1, gx + 1, gy + 1], fill=(255, 255, 255, 22))
     _bgc[(w, h)] = im
     return im.copy()
 
@@ -126,11 +135,11 @@ def pill(d, x, y, text, col, a=1.0, fs=26, filled=False, pad=18):
 
 def card(d, x, y, w, h, title=None, sub=None, col=LINE, a=1.0, fs=34, fill=PANEL, subfs=None, glow=False):
     if glow:
-        for i, al in ((14, 0.05), (8, 0.09), (3, 0.16)):
+        for i, al in ((12, 0.03), (7, 0.05), (3, 0.10)):
             d.rounded_rectangle(
                 [x - i, y - i, x + w + i, y + h + i], 22 + i, outline=fade(col, al * a), width=3
             )
-    d.rounded_rectangle([x, y, x + w, y + h], 22, fill=fade(fill, 0.94 * a), outline=fade(col, a), width=3)
+    d.rounded_rectangle([x, y, x + w, y + h], 20, fill=fade(fill, 0.96 * a), outline=fade(col, a), width=2)
     ty = y + 24
     if title:
         for l in wrap(d, title, AV(fs, "demi"), w - 44):  # noqa: E741
@@ -241,6 +250,23 @@ class Win:
         return ((self.X0 + u * self.cw - x0) * W / Vw, (self.Y0 + v * self.chh - y0) * W / Vw)
 
 
+# Callouts drawn while a frame renders; render.py dims everything outside them (`spotlight`)
+SPOT = []
+
+
+def spotlight(im, spots, strength=0.55):
+    """`im` with everything outside the union of `spots` ((x0, y0, x1, y1), progress) dimmed, so the eye goes
+    where the narration is."""
+    if not spots:
+        return im
+    m = Image.new("L", (W, H), int(255 * strength * max(p for _, p in spots)))
+    d = ImageDraw.Draw(m)
+    for box, _p in spots:
+        d.rounded_rectangle(box, 26, fill=0)
+    m = m.filter(ImageFilter.GaussianBlur(16))
+    return Image.composite(Image.new("RGB", (W, H), (0, 0, 0)), im.convert("RGB"), m)
+
+
 def callout(layer, box, label, col, p, side="top", fs=30):
     """Glowing rectangle around box=(x0,y0,x1,y1) in screen px, with a label; p is progress 0..1."""
     if p <= 0.01:
@@ -259,6 +285,8 @@ def callout(layer, box, label, col, p, side="top", fs=30):
         ly = y0 - fs - 26 if side == "top" else y1 + 12
         d.rounded_rectangle([lx, ly, lx + tw + 32, ly + fs + 18], 12, fill=fade(col, 0.95 * p))
         d.text((lx + 16, ly + 7), label, font=f, fill=(8, 10, 16, int(255 * p)))
+        x1, y0, y1 = max(x1, lx + tw + 32), min(y0, ly), max(y1, ly + fs + 18)
+    SPOT.append(((x0 - 22, y0 - 22, x1 + 22, y1 + 22), p))
 
 
 # ---------------------------------------------------------------- captions
@@ -270,20 +298,30 @@ def caption_layer(text, a):
     if _cap_grad is None:
         Image.new("RGBA", (W, 300), (0, 0, 0, 0))
         px = np.zeros((300, W, 4), np.uint8)
-        al = (np.linspace(0, 1, 300) ** 1.6 * 205).astype(np.uint8)
+        al = (np.linspace(0, 1, 300) ** 1.6 * 170).astype(np.uint8)
         px[..., 3] = al[:, None]
         _cap_grad = Image.fromarray(px, "RGBA")
     lay = rgba_canvas()
     lay.paste(_cap_grad, (0, H - 300))
     if a > 0.01:
+        # A subtitle box, so the words stay readable over busy screenshots
         d = ImageDraw.Draw(lay, "RGBA")
-        f = AV(40, "demi")
-        ls = wrap(d, text, f, 1500)
-        y = H - 58 - len(ls) * 54
+        f = AV(38, "demi")
+        ls = wrap(d, text, f, 1400)
+        lh = 52
+        bw = max(d.textlength(l, font=f) for l in ls) + 64  # noqa: E741
+        bh = len(ls) * lh + 26
+        y = H - 46 - bh
+        d.rounded_rectangle(
+            [(W - bw) / 2, y, (W + bw) / 2, y + bh],
+            16,
+            fill=(6, 9, 18, int(215 * a)),
+            outline=(255, 255, 255, int(30 * a)),
+            width=2,
+        )
         for i, l in enumerate(ls):  # noqa: E741
             w = d.textlength(l, font=f)
-            d.text(((W - w) / 2 + 2, y + i * 54 + 2), l, font=f, fill=(0, 0, 0, int(160 * a)))
-            d.text(((W - w) / 2, y + i * 54), l, font=f, fill=(255, 255, 255, int(255 * a)))
+            d.text(((W - w) / 2, y + 11 + i * lh), l, font=f, fill=(255, 255, 255, int(255 * a)))
     return lay
 
 
@@ -295,12 +333,34 @@ def norm(w):
 def spoken(t):
     t = re.sub(r"\bLLM\b", "L L M", t)
     t = re.sub(r"\bMCP\b", "M C P", t)
+    t = re.sub(r"\bCNCF\b", "C N C F", t)
+    t = re.sub(r"\bSRE\b", "S R E", t)
     return (
         t.replace("STS", "S T S")
         .replace("GRAPH.COPY", "graph copy")
         .replace("theseus.yaml", "theseus dot yaml")
         .replace("FalkorDB", "Falkor D B")
     )
+
+
+def captions(text, most=12):
+    """Caption chunks: sentences, then clauses at ; or :, then halves at the comma nearest the middle,
+    until no chunk is longer than `most` words, so a caption never runs past two lines."""
+    out = []
+    for s in re.split(r"(?<=[.!?;:])\s+", text):
+        parts = [s.strip()] if s.strip() else []
+        while True:
+            long = [p for p in parts if len(p.split()) > most and "," in p[:-1]]
+            if not long:
+                break
+            p = long[0]
+            ws = p.split()
+            commas = [i for i, w in enumerate(ws[:-1]) if w.endswith(",")]
+            i = min(commas, key=lambda i: abs(i + 1 - len(ws) / 2))
+            k = parts.index(p)
+            parts[k : k + 1] = [" ".join(ws[: i + 1]), " ".join(ws[i + 1 :])]
+        out += [p.rstrip(",;") for p in parts]
+    return out
 
 
 class Timing:
@@ -310,7 +370,8 @@ class Timing:
         self.lead = lead
         self.ev = [(a + lead, b + lead, norm(w)) for a, b, w in sc["words"]]
         self.dur = sc["dur"]
-        sents = [s.strip() for s in re.split(r"(?<=[.!?])\s+", sc["show"]) if s.strip()]
+        self.show = sc.get("captions", True)  # a title card already shows its words
+        sents = captions(sc["show"])
         counts = [len(spoken(s).split()) for s in sents]
         tot = sum(counts)
         n = len(self.ev)
@@ -336,7 +397,7 @@ class Timing:
         return self.ev[-1][1]
 
     def cap(self, t):
-        for a, b, s in self.caps:
+        for a, b, s in self.caps if self.show else []:
             if a <= t <= b:
                 return s, min(1, (t - a) / 0.18, (b - t) / 0.2)
         return None, 0
