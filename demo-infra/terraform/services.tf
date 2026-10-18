@@ -211,6 +211,7 @@ resource "aws_lambda_function" "support_portal" {
     variables = {
       BILLING_API_URL = "https://billing-api.internal.demo.test"
       ORDERS_API_URL  = "https://orders-api.internal.demo.test"
+      DB_SECRET       = "prod-db-credentials"
     }
   }
 
