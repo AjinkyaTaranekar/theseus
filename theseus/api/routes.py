@@ -738,6 +738,9 @@ WEB_FILES = {
     "shot-dashboard.jpg": "image/jpeg",
     "shot-weak.jpg": "image/jpeg",
     "shot-whatif.jpg": "image/jpeg",
+    "shot-fixes.jpg": "image/jpeg",
+    "shot-incident.jpg": "image/jpeg",
+    "shot-graph.jpg": "image/jpeg",
 }
 PAGE_POLICY = (
     "default-src 'self'; script-src 'self' https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline';"
