@@ -11,8 +11,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
-from theseus.api import routes
+from theseus.api import reviews, routes
 from theseus.api.app import build_try, create_app
 from theseus.config import get_settings
 from theseus.contracts.result import AnalysisResult, compare, project
@@ -257,3 +258,46 @@ def test_the_script_reads_a_result_only_through_text_never_html() -> None:
     js = (ROOT / "theseus/web/app.js").read_text(encoding="utf-8")
     assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "document.write" not in js
     assert 'securityLevel: "strict"' in js
+
+
+def test_the_front_page_names_every_way_in_and_links_the_live_dashboard(fast: TestClient) -> None:
+    """With a public hostname, a token and a repository, the page links the first repository's dashboard
+    by its signed link; every surface is introduced, and the Try-it presets stay on the page."""
+    settings = get_settings().model_copy(
+        update={
+            "domain": "theseus.example",
+            "theseus_token": SecretStr("t" * 32),
+            "theseus_repos": "acme/infra",
+        }
+    )
+    fast.app.dependency_overrides[get_settings] = lambda: settings  # type: ignore[attr-defined]
+    try:
+        res = fast.get("/")
+    finally:
+        fast.app.dependency_overrides.pop(get_settings)  # type: ignore[attr-defined]
+    link = reviews.dashboard_url(settings, "acme/infra")
+    assert link and f'href="{link}"' in res.text
+    assert 'href="https://github.com/acme/infra"' in res.text
+    for surface in ("GitHub agent", "Website", "Claude Code plugin", "MCP server", "CLI", "The graph"):
+        assert f"</svg>{surface}</h3>" in res.text
+    assert "System One" in res.text and "System Two" in res.text and 'id="presets"' in res.text
+
+
+def test_without_a_signed_link_the_front_page_still_works(fast: TestClient) -> None:
+    settings = get_settings().model_copy(update={"domain": "", "theseus_repos": ""})
+    fast.app.dependency_overrides[get_settings] = lambda: settings  # type: ignore[attr-defined]
+    try:
+        res = fast.get("/")
+    finally:
+        fast.app.dependency_overrides.pop(get_settings)  # type: ignore[attr-defined]
+    assert res.status_code == 200 and "/dashboard/" not in res.text and "Live dashboard" not in res.text
+
+
+@pytest.mark.parametrize(
+    ("name", "media"),
+    [("logo.svg", "image/svg+xml"), ("shot-review.jpg", "image/jpeg"), ("shot-comment.jpg", "image/jpeg")],
+)
+def test_the_front_page_serves_its_logo_and_real_screens(fast: TestClient, name: str, media: str) -> None:
+    res = fast.get(f"/web/{name}")
+    assert res.status_code == 200 and res.headers["content-type"].startswith(media)
+    assert f'src="/web/{name}"' in fast.get("/").text
