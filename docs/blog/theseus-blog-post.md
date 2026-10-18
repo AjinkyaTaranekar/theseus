@@ -54,6 +54,21 @@ approves. Here is a real run on our live demo:
 
 ![Theseus reviewing the intern pull request, step by step](assets/intern-run.gif)
 
+## What is new
+
+Tools like [Cartography](https://github.com/cartography-cncf/cartography) map what already exists, and they do it well:
+our node labels follow its ontology on purpose. Theseus asks a different question, on the pull request, before
+anything is deployed: *what will this change do, does that match what the author said, and what is the smallest fix
+that provably keeps everyone working?* Three things make that possible, and none of them is a model's opinion:
+
+- **It compares three sources of truth:** what the PR says, what Terraform allows, and what the code calls. Every gap
+  is a finding.
+- **It proves the fix** with a minimum cut and a simulation on a graph copy, against the access the app declared.
+- **It will not be talked into anything.** On a real demo PR the comment reads *"Text in this PR tries to steer the
+  review. Theseus ignored it, and nothing the PR asks for counts as approved."*
+
+> **Watch the 3-minute demo:** [[VIDEO LINK]]
+
 ## Try it in 60 seconds
 
 - **Live demo:** <https://guest-box.tail27b7c5.ts.net>. Pick the `intern` preset. The engine runs for real on
