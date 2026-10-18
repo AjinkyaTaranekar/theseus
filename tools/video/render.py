@@ -49,41 +49,45 @@ def obj(i):
     return objs[i]
 
 
+# The chapter bar has a band of its own; every scene is scaled to fit below it, so nothing sits under the bar.
+BAND = 60
+SH = H - BAND
+SW = round(W * SH / H)
+SX = (W - SW) // 2
+
+
 def frame_at(i, t):
     s, D, g0 = plan[i]
     SPOT.clear()
-    im = spotlight(obj(i).frame(min(t, D)), SPOT).convert("RGBA")
-    cap, a = tms[i].cap(t)
-    over(im, caption_layer(cap or "", a if cap else 0))
+    im = spotlight(obj(i).frame(min(t, D)), SPOT)
     f = min(1, t / 0.22, (D - t) / 0.25)
-    im = im.convert("RGB")
     if f < 1:
         im = Image.blend(Image.new("RGB", (W, H), (0, 0, 0)), im, clamp(f))
-    if tms[i].show:  # the title card has no captions and no chapter bar
-        chapter_bar(im, g0 + t)
-    return im
+    out = Image.new("RGB", (W, H), (0, 0, 0))
+    out.paste(im.resize((SW, SH), Image.BICUBIC), (SX, BAND))
+    out = out.convert("RGBA")
+    cap, a = tms[i].cap(t)
+    over(out, caption_layer(cap or "", a if cap else 0))
+    out = out.convert("RGB")
+    if tms[i].show:  # the title card has no captions and no chapter names
+        chapter_bar(out, g0 + t)
+    return out
 
 
 def chapter_bar(im, g):
-    """Thin segments across the top, one per chapter, filling as it plays, with the chapter names."""
-    px = np.zeros((96, W, 4), np.uint8)  # a dark strip, so the names read over any screenshot
-    px[..., 3] = np.concatenate([np.full(52, 235), np.linspace(235, 0, 44)]).astype(np.uint8)[:, None]
-    lay = Image.fromarray(px, "RGBA")
-    d = ImageDraw.Draw(lay, "RGBA")
-    n, gap, x = len(CH), 12, 64
-    sw = (W - 128 - gap * (n - 1)) / n
+    """Thin segments in the top band, one per chapter, filling as it plays, with the chapter names."""
+    d = ImageDraw.Draw(im)
+    n, gap, x = len(CH), 12, SX
+    sw = (SW - gap * (n - 1)) / n
     f = AV(17, "demi")
     for name, a, b in CH:
         k = clamp((g - a) / (b - a))
         now = a <= g < b
-        d.rounded_rectangle([x, 18, x + sw, 21], 2, fill=(255, 255, 255, 46))
+        d.rounded_rectangle([x, 16, x + sw, 19], 2, fill=(46, 46, 48))
         if k > 0:
-            d.rounded_rectangle([x, 18, x + sw * k, 21], 2, fill=(255, 255, 255, 235 if now else 150))
-        d.text((x, 30), name.upper(), font=f, fill=(245, 245, 247, 235 if now else 100))
+            d.rounded_rectangle([x, 16, x + sw * k, 19], 2, fill=(235, 235, 237) if now else (140, 140, 144))
+        d.text((x, 27), name.upper(), font=f, fill=(245, 245, 247) if now else (98, 98, 102))
         x += sw + gap
-    base = im.convert("RGBA")
-    base.alpha_composite(lay, (0, 0))
-    im.paste(base.convert("RGB"))
 
 
 # ------------------------------------------------------------------ audio

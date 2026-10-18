@@ -33,8 +33,8 @@ export R124=$(gh api repos/<owner>/<repo>/issues/124/comments --jq '.[0].body' \
 node explore.js        # finds the dashboard link and writes dash.url (git-ignored)
 node capture3.js && node capture4.js && node capture5.js && node capture6.js
 
-# 2. Voice-over and word timings (about 1 minute): Emily, Irish English, at +32%, about 159 words a minute
-.venv/bin/python genvoice.py en-IE-EmilyNeural +32%
+# 2. Voice-over and word timings (about 1 minute): Andrew at +12%, about 162 words a minute
+.venv/bin/python genvoice.py en-US-AndrewNeural +12%
 
 # 3. Look at stills, then render
 .venv/bin/python render.py preview          # or: render.py preview n07

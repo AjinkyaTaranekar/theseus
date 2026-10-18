@@ -8,8 +8,8 @@ import wave
 import edge_tts
 import imageio_ffmpeg
 
-VOICE = sys.argv[1] if len(sys.argv) > 1 else "en-IE-EmilyNeural"
-RATE = sys.argv[2] if len(sys.argv) > 2 else "+32%"
+VOICE = sys.argv[1] if len(sys.argv) > 1 else "en-US-AndrewNeural"
+RATE = sys.argv[2] if len(sys.argv) > 2 else "+12%"
 FF = imageio_ffmpeg.get_ffmpeg_exe()
 
 
