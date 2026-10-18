@@ -1,0 +1,6 @@
+{
+  "name": "theseus-video-capture",
+  "private": true,
+  "description": "Headless-Chrome captures for the pitch video. Not part of the product.",
+  "dependencies": { "puppeteer-core": "^23.0.0" }
+}
