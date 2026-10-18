@@ -1,0 +1,8 @@
+{
+  "name": "theseus",
+  "version": "0.1.0",
+  "description": "Check what an infrastructure change grants before the commit or PR, and ask the access graph questions, with Theseus's FalkorDB graph tools.",
+  "author": { "name": "Theseus" },
+  "homepage": "https://github.com/AjinkyaTaranekar/theseus",
+  "keywords": ["terraform", "iam", "security", "graph", "falkordb", "mcp"]
+}

@@ -10,9 +10,11 @@ import anyio
 import pytest
 from mcp import Client
 
-from tests.golden.conftest import FIXTURES, deps_for
+from tests.golden.conftest import FIXTURES, deps_for, pr_text, world
 from tests.unit.mcp_support import BASE, HEAD, fake_engine, intern_context
 from theseus.agent.trace import Recorder
+from theseus.contracts.result import AnalysisResult
+from theseus.engine.pipeline import run_pr
 from theseus.graph.store import MemoryStore
 from theseus.mcp import server
 from theseus.mcp.server import TRACE_URI, build_server, context_for_fixture
@@ -123,7 +125,8 @@ def test_main_serves_the_intern_on_the_recordings_in_replay_with_no_keys(
     to use the clients the CLI uses in replay (`tests/unit/test_cli.py` checks the commands the same way)."""
     served: list[ToolContext] = []
 
-    async def serve_once(context: ToolContext) -> None:
+    async def serve_once(context: ToolContext, refresh: object = None) -> None:
+        assert refresh is None  # a fixture is served as it is
         served.append(context)
 
     monkeypatch.setenv("THESEUS_MODE", "replay")
@@ -135,3 +138,55 @@ def test_main_serves_the_intern_on_the_recordings_in_replay_with_no_keys(
     assert sorted(context.states) == [BASE, HEAD]
     assert context.fix_actors == [PRIYA]
     assert {r.id for r in context.requirements} >= {"R1", "I1"}
+
+
+def test_repo_mode_lists_check_change_which_swaps_in_the_new_change() -> None:
+    """With a refresh (`--repo`), `check_change` plans the working tree again: its check comes back as text
+    and data, and the other tools then read the new graphs."""
+    first, _ = intern_context()
+    second, _ = intern_context()
+    deps = deps_for("intern")
+    checked = run_pr(world("intern", "base"), world("intern", "head"), *pr_text("intern"), deps)
+    asked: list[str] = []
+
+    def refresh(intent: str) -> tuple[ToolContext, AnalysisResult]:
+        asked.append(intent)
+        return second, checked
+
+    async def check() -> None:
+        with Recorder(build_registry()) as recorder:
+            async with Client(build_server(first, recorder, refresh)) as client:
+                names = [t.name for t in (await client.list_tools()).tools]
+                result = await client.call_tool("check_change", {"intent": "Logs for Priya"})
+                after = await client.call_tool("check_requirements", {"graph": HEAD})
+        assert names[-1] == "check_change" and len(names) == len(build_registry().tools) + 1
+        assert not result.is_error
+        assert result.content[0].text.startswith("Theseus check: BLOCKED.")
+        assert result.structured_content is not None
+        assert result.structured_content["verdict"] == "blocked"
+        assert not after.is_error
+
+    run(check)
+    assert asked == ["Logs for Priya"]
+    second.cleanup()
+
+
+def test_without_a_refresh_there_is_no_check_change() -> None:
+    context, _ = intern_context()
+
+    async def check() -> None:
+        with Recorder(build_registry()) as recorder:
+            async with Client(build_server(context, recorder)) as client:
+                names = [t.name for t in (await client.list_tools()).tools]
+                missing = await client.call_tool("check_change", {})
+        assert "check_change" not in names
+        assert missing.is_error
+
+    run(check)
+
+
+def test_main_takes_a_fixture_or_a_repo_but_not_both() -> None:
+    with pytest.raises(SystemExit):
+        server.main([])
+    with pytest.raises(SystemExit):
+        server.main([str(FIXTURES / "intern"), "--repo", "."])

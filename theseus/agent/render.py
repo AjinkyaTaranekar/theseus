@@ -929,3 +929,68 @@ def render_comment(
         if len(comment) < MAX_CHARS or scale >= 64:
             return comment
         scale *= 2
+
+
+# The check before a PR -------------------------------------------------------------------------------------
+
+CHECK_PATHS = 3
+CHECK_OPS = 6
+LEVELS = {"blocked": "BLOCKED", "look": "NEEDS A LOOK", "clear": "CLEAR"}
+
+
+def _plain_chain(path: PathRecord, result: AnalysisResult) -> str:
+    """The path in one plain line, each hop with its file and line, the hops this change adds marked new."""
+    if not path.steps:
+        return f"{words.name(path.actor)} can reach {words.name(path.target)}"
+    changed = {c.address for c in result.changes}
+    parts: list[str] = []
+    for n, s in enumerate(path.steps):
+        ev = result.evidence.get(s.evidence)
+        where = ""
+        if ev is not None and ev.file != "unknown":
+            spot = f"{ev.file}:{ev.line}" if ev.line else ev.file
+            where = f" ({spot}, new)" if ev.address in changed else f" ({spot})"
+        head = f"{words.name(s.src)} " if n == 0 else ""
+        parts.append(f"{head}{_step_verb(s, path)} {words.name(s.dst)}{where}")
+    return " → ".join(parts)
+
+
+def check_text(result: AnalysisResult) -> str:
+    """A local change checked before its PR, as plain text for a terminal or an agent: the verdict, what the
+    change does, where it lands, each opened path hop by hop with its lines, the fix tested on a graph copy,
+    and what Theseus could not check. Every sentence is a template over the result, as in the comment."""
+    v = verdict(result)
+    lines = [f"Theseus check: {LEVELS[v.level]}. {v.title.split(': ', 1)[-1]}."]
+    did = changes_words(result).replace("`", "")
+    if did:
+        lines.append(f"The change {did}.")
+    lines.append(f"It opens {_plural(len(result.opened), 'dangerous path')} and closes {len(result.closed)}.")
+    if result.impact is not None and result.impact.headline:
+        lines.append(f"Impact: {result.impact.headline}")
+    ranked = sorted(result.opened, key=_rank)
+    if ranked:
+        lines += ["", "How:"]
+        for n, path in enumerate(ranked[:CHECK_PATHS], 1):
+            holds = words.holds(_sensitivity(path.target, result, path))
+            lines.append(f"  {n}. {_plain_chain(path, result)}. {words.name(path.target)} holds {holds}.")
+        if len(ranked) > CHECK_PATHS:
+            lines.append(f"  … and {len(ranked) - CHECK_PATHS} more.")
+    for use in result.use_beyond_intent[:CHECK_PATHS]:
+        where = f"{use.file}:{use.line}" if use.file != "unknown" else "an unknown line"
+        lines.append(
+            f"Code: {words.name(use.workload)} now {DOES[use.access]} {words.name(use.resource)} at {where}."
+        )
+    fix = best_fix(result)
+    if fix is not None:
+        lines += ["", f"Fix {fix.id}: {fix.title}. Tested on a copy of the graph: {tested_line(result)}."]
+        for op in fix.ops[:CHECK_OPS]:
+            args = ", ".join(f"{k}={v}" for k, v in sorted(op.args.items()))
+            lines.append(f"  {op.op}({args})")
+    elif ranked:
+        lines += ["", "No fix passed on a graph copy; run with --json to see each candidate's verdict."]
+    if result.unknowns:
+        shown = ", ".join(result.unknowns[:CHECK_PATHS])
+        lines.append(f"Could not check {_plural(len(result.unknowns), 'thing')}: {shown}.")
+    size, seconds = result.coverage, result.timings.total_ms / 1000
+    lines.append(f"Built in FalkorDB: {size.nodes} nodes, {size.edges} edges; {seconds:.1f} s.")
+    return "\n".join(lines)

@@ -1,8 +1,9 @@
-"""Command line: `python -m theseus analyze | finding | scan | posture | incident | prune | serve`.
+"""Command line: `python -m theseus analyze | finding | scan | posture | incident | check | prune | serve`.
 
 `serve` runs the API (F3); `analyze`, `finding` and `scan` print a PR, finding or scan fixture's
 AnalysisResult as JSON (E3, FM3, C3); `posture` prints a world's posture report (O1 to O3), and
-`incident` an outage's blast radius on it; `prune` lists, and with `--yes` deletes, the graphs closed and
+`incident` an outage's blast radius on it; `check` reviews the working tree's change against `main` before
+there is a PR, also as a Claude Code hook; `prune` lists, and with `--yes` deletes, the graphs closed and
 merged PRs left behind. All of them need FalkorDB (rule 3). A composition root
 (docs/spec/08-core-and-adapters.md): with api/app.py, the only place that picks adapters.
 """
@@ -10,9 +11,17 @@ merged PRs left behind. All of them need FalkorDB (rule 3). A composition root
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import logging
+import re
+import shutil
+import subprocess
 import sys
+import tarfile
+import tempfile
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +33,8 @@ from theseus.adapters.aws.adapter import AwsAdapter
 from theseus.adapters.github.adapter import GithubAdapter
 from theseus.adapters.python.adapter import PythonAdapter
 from theseus.adapters.terraform.adapter import TerraformAdapter
+from theseus.adapters.terraform.runner import plan_json
+from theseus.agent.render import check_text, verdict
 from theseus.api.github import GitHub
 from theseus.config import Settings, get_settings
 from theseus.contracts.adapters import Adapters
@@ -72,6 +83,19 @@ def build_parser() -> argparse.ArgumentParser:
     pruning.add_argument(
         "--yes", action="store_true", help="delete exactly the graphs listed; without it, only list them"
     )
+    checking = commands.add_parser(
+        "check", help="review the working tree's change against main, before there is a PR"
+    )
+    checking.add_argument("--base", default=None, help="the commit to compare with: origin/main, else main")
+    checking.add_argument("--world", default=None, help="the world root; THESEUS_WORLD_ROOT by default")
+    checking.add_argument("--intent", default="", help="what the change is for, in a sentence")
+    checking.add_argument(
+        "--with-models", action="store_true", help="also read the intent and design a fix with the LLM"
+    )
+    checking.add_argument("--json", action="store_true", help="print the AnalysisResult as JSON")
+    checking.add_argument(
+        "--hook", action="store_true", help="run as a Claude Code PreToolUse hook, reading its JSON on stdin"
+    )
     commands.add_parser("serve", help="run the API on http://localhost:8000; needs FalkorDB")
     return parser
 
@@ -91,6 +115,8 @@ def main(argv: list[str] | None = None) -> int:
         return posture(Path(args.world), Path(args.plan), args.advisories)
     if args.command == "incident":
         return incident(Path(args.world), Path(args.plan), args)
+    if args.command == "check":
+        return check(args)
     if args.command == "prune":
         return prune(args.yes)
     print(f"theseus {args.command}: not implemented yet", file=sys.stderr)
@@ -287,6 +313,179 @@ def incident(world_root: Path, plan: Path, args: argparse.Namespace) -> int:
     report = blast(basis, found.model_copy(update=update))
     print(report.model_dump_json(indent=2))
     return 0
+
+
+# The check before a PR ------------------------------------------------------------------------------------
+
+# The commands a check runs before, as a hook: those that commit, push or open a pull request.
+SHIPS = re.compile(r"\b(git\s+(commit|push)|gh\s+pr\s+create)\b")
+SKIP_COPY = shutil.ignore_patterns(".terraform", "*.tfstate*", "tfplan", "__pycache__", ".theseus")
+AGAIN = (
+    "\n\nTell the person what this change opens and offer the fix. Run the command again only if they still"
+    " want it as it is."
+)
+
+
+def git(repo: Path, *args: str) -> bytes:
+    """Run git in `repo`. A failure is a TheseusError with git's own message."""
+    try:
+        done = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, check=False)
+    except FileNotFoundError:
+        raise TheseusError("git is not installed or not on PATH") from None
+    if done.returncode != 0:
+        raise TheseusError(f"git {args[0]}: {done.stderr.decode('utf-8', 'replace').strip()}")
+    return done.stdout
+
+
+def base_ref(repo: Path, wanted: str | None = None) -> str:
+    """The commit to compare with: `wanted`, else origin/main, else main."""
+    for ref in [wanted] if wanted else ["origin/main", "main"]:
+        try:
+            git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}")
+        except TheseusError:
+            continue
+        return ref
+    raise TheseusError(f"no commit to compare with: {wanted or 'origin/main or main'} does not exist")
+
+
+def world_changed(repo: Path, ref: str, world_root: str) -> bool:
+    """Whether the working tree's world root differs from `ref`'s, committed or not, new files included."""
+    if git(repo, "diff", "--name-only", ref, "--", world_root).strip():
+        return True
+    return bool(git(repo, "ls-files", "--others", "--exclude-standard", "--", world_root).strip())
+
+
+def prepare_change(
+    repo: Path,
+    ref: str,
+    world_root: str,
+    folder: Path,
+    plan: Callable[[Path], dict[str, Any]],
+    intent: str = "",
+) -> Path:
+    """The working tree's change as a PR fixture in `folder` (`fixtures/local-<world>/`): `base/` as `ref`
+    has the world root, `head/` as the working tree has it, both plans (`plan` turns a Terraform folder into
+    its plan JSON), and `pr.md` holding the intent."""
+    fixture = folder / "fixtures" / f"local-{Path(world_root).name}"
+    fixture.mkdir(parents=True)
+    archive = git(repo, "archive", "--format=tar", ref, "--", world_root)
+    with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
+        tar.extractall(folder / "archive", filter="data")
+    shutil.move(folder / "archive" / world_root, fixture / "base")
+    shutil.copytree(repo / world_root, fixture / "head", ignore=SKIP_COPY)
+    for side in ("base", "head"):
+        planned = plan(fixture / side / "terraform")
+        (fixture / f"{side}.plan.json").write_text(json.dumps(planned), encoding="utf-8")
+    (fixture / "scenario.yaml").write_text("mode: pr\n", encoding="utf-8")
+    (fixture / "pr.md").write_text(f"# {intent.strip() or 'A local change'}\n", encoding="utf-8")
+    return fixture
+
+
+def check_change(
+    repo: Path,
+    ref: str,
+    world_root: str,
+    store: GraphStore,
+    settings: Settings,
+    intent: str = "",
+    with_models: bool = False,
+    plan: Callable[[Path], dict[str, Any]] | None = None,
+) -> AnalysisResult:
+    """The working tree's change against `ref`, reviewed as a PR would be, then its graphs deleted. The LLM
+    reads the intent and designs a fix only `with_models`; otherwise the check is the engine and Jev alone."""
+    llm, jev = models(settings)
+    with tempfile.TemporaryDirectory(prefix="theseus-check-") as tmp:
+        fixture = prepare_change(repo, ref, world_root, Path(tmp), plan or planner(repo), intent)
+        result = analyze_fixture(fixture, store, jev, settings, llm if with_models else None)
+    drop_graphs(store, result.graphs["head"])
+    return result
+
+
+def planner(repo: Path) -> Callable[[Path], dict[str, Any]]:
+    """Terraform plans for a local check, cached in the repo's `.theseus/plans`."""
+    cache = repo / ".theseus" / "plans"
+    return lambda terraform: plan_json(terraform, cache)
+
+
+def drop_graphs(store: GraphStore, graph: str) -> None:
+    """Delete a local check's graphs: its two sides and every candidate's copy share `graph`'s prefix."""
+    prefix = graph.rsplit("__", 1)[0] + "__"
+    for name in store.list_graphs():
+        if name.startswith(prefix):
+            delete_graph(store, name)
+
+
+def _hook_reply(decision: str, reason: str) -> str:
+    output = {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": decision,
+        "permissionDecisionReason": reason,
+    }
+    return json.dumps({"hookSpecificOutput": output})
+
+
+def hook(event: dict[str, Any], run: Callable[[Path], AnalysisResult | None], seen: Path) -> str:
+    """What the PreToolUse hook answers for one tool call: nothing for a command that does not commit, push
+    or open a PR, or for a clear change; `deny` with the check the first time a change would be blocked, so
+    the agent explains it and offers the fix; `ask` with it after that, or when the change needs a look.
+    `run` returns None when the world root did not change. `seen` keeps the changes already denied once."""
+    command = str((event.get("tool_input") or {}).get("command", ""))
+    if event.get("tool_name") != "Bash" or not SHIPS.search(command):
+        return ""
+    result = run(Path(str(event.get("cwd") or ".")))
+    if result is None:
+        return ""
+    level = verdict(result).level
+    if level == "clear":
+        return ""
+    reason = check_text(result)
+    key = hashlib.sha256(reason.encode()).hexdigest()[:16]
+    denied = set(seen.read_text(encoding="utf-8").split()) if seen.is_file() else set()
+    if level == "blocked" and key not in denied:
+        seen.parent.mkdir(parents=True, exist_ok=True)
+        seen.write_text("\n".join(sorted(denied | {key})) + "\n", encoding="utf-8")
+        return _hook_reply("deny", reason + AGAIN)
+    return _hook_reply("ask", reason)
+
+
+def check(args: argparse.Namespace) -> int:
+    """Print the check of the working tree's change: exit 0 when clear or it needs a look, 2 when it would be
+    blocked, 1 when it cannot be checked. As a hook, read the tool call on stdin, answer on stdout and always
+    exit 0: a check that cannot run never stops the command (the reason goes to stderr)."""
+    # The check has arrows in it; a Windows pipe or console would otherwise print in its code page.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    settings = get_settings()
+    world_root = args.world or settings.theseus_world_root
+
+    def run(repo: Path) -> AnalysisResult | None:
+        root = Path(git(repo, "rev-parse", "--show-toplevel").decode().strip())
+        ref = base_ref(root, args.base)
+        if args.hook and not world_changed(root, ref, world_root):
+            return None
+        store = FalkorStore(get_client(settings))
+        return check_change(root, ref, world_root, store, settings, args.intent, args.with_models)
+
+    if args.hook:
+        try:
+            event = json.loads(sys.stdin.read() or "{}")
+            reply = hook(event, run, Path(str(event.get("cwd") or ".")) / ".theseus" / "denied")
+        except (TheseusError, OSError, ValueError) as e:
+            print(f"theseus check: {e}; the command runs unchecked", file=sys.stderr)
+            return 0
+        if reply:
+            print(reply)
+        return 0
+    try:
+        result = run(Path.cwd())
+    except (TheseusError, OSError) as e:
+        print(f"theseus check: {e}", file=sys.stderr)
+        return 1
+    if result is None:
+        print("theseus check: the world root has no change against the base")
+        return 0
+    print(result.model_dump_json(indent=2, by_alias=True) if args.json else check_text(result))
+    return 2 if verdict(result).level == "blocked" else 0
 
 
 def _read_memory(db: Any) -> Memory | None:

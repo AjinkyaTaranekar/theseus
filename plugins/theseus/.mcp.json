@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "theseus": {
+      "command": "${THESEUS_PYTHON}",
+      "args": ["-m", "theseus.mcp.server", "--repo", "."]
+    }
+  }
+}

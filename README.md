@@ -2,19 +2,43 @@
 
 # Theseus
 
-Theseus reviews Terraform pull requests as a graph in FalkorDB. It shows which sensitive data a change makes
-reachable, compares that with what the PR says and what the code calls, proves the smallest safe fix on graph
-copies, and commits it once a person approves. Built for
-[FalkorDB Graph Hacks](https://www.wemakedevs.org/hackathons/falkordb), **Track 01: Agents That Act on Connected
-Data**.
+**See what an infrastructure change really grants, before it merges.** Theseus reviews every Terraform change
+as a graph in FalkorDB. It traces each path from a person, workflow or service to sensitive data, compares that
+with what the PR says and what the code calls, says where the change lands, proves the smallest fix on a copy of
+the graph, and acts: it blocks the merge, commits the fix a person approves, and contains a compromised
+workflow. Built for [FalkorDB Graph Hacks](https://www.wemakedevs.org/hackathons/falkordb), **Track 01: Agents
+That Act on Connected Data**.
+
+### See it live
 
 | | |
 | --- | --- |
-| **Try it live** | <https://guest-box.tail27b7c5.ts.net>: pick a preset and the real engine runs on FalkorDB ([`/health`](https://guest-box.tail27b7c5.ts.net/health)) |
+| **The website** | <https://guest-box.tail27b7c5.ts.net>: every way in, how it decides, and the Try-it presets, where the real engine runs on FalkorDB |
+| **The live dashboard** | [Theseus on this repository](https://guest-box.tail27b7c5.ts.net/dashboard/AjinkyaTaranekar/theseus?k=ea1c289117b62d09647ceab7975762cc#overview): `main`'s posture, pull requests, findings, incidents, who reaches what, weak points, the graph, and cost with proof |
 | **Demo video** | _Link added at submission_ |
 | **A real review** | [Demo PR #125](https://github.com/AjinkyaTaranekar/theseus/pull/125): an intern joins a support group "to read prod logs"; Theseus comments *"This PR would let priya-intern read and change customer-db"*, and `/theseus apply` commits the fix that turns the check green |
 | **More demo PRs** | [#137](https://github.com/AjinkyaTaranekar/theseus/pull/137) makes a bucket public; [#124](https://github.com/AjinkyaTaranekar/theseus/pull/124) is a typo fix whose code reads the customer database; [#129](https://github.com/AjinkyaTaranekar/theseus/pull/129) tries to steer the review; [#126](https://github.com/AjinkyaTaranekar/theseus/pull/126) offboards a contractor and closes 6 paths; [#128](https://github.com/AjinkyaTaranekar/theseus/pull/128) is safe |
 | **A containment PR** | [PR #111](https://github.com/AjinkyaTaranekar/theseus/pull/111), opened by Theseus for a compromised GitHub Action, and [issue #112](https://github.com/AjinkyaTaranekar/theseus/issues/112), the secret to rotate |
+
+### One graph, six ways in
+
+| Surface | What it does | Where |
+| --- | --- | --- |
+| **GitHub agent** | Reviews every PR that touches the infrastructure: a required `Theseus` check, one comment in plain words, labels, a note on the changed line, a suggested fix. `/theseus apply` commits the fix that passed | Every PR; [demo PRs](#see-it-live) |
+| **Website** | The dashboard of `main`: pull requests, findings, incidents, who reaches what, weak points and "what if this is compromised", the graph, cost with proof | [Live dashboard](https://guest-box.tail27b7c5.ts.net/dashboard/AjinkyaTaranekar/theseus?k=ea1c289117b62d09647ceab7975762cc#overview) |
+| **Claude Code plugin** | The check before a PR exists: `/theseus:check`, `/theseus:investigate`, `/theseus:help`, a skill that knows the tools, and a hook that stops a commit that would open a path to sensitive data | `/plugin install theseus --marketplace AjinkyaTaranekar/theseus` ([more](#before-the-pr-the-claude-code-plugin)) |
+| **MCP server** | Ten graph tools for any MCP client, and `check_change` on the working tree | `python -m theseus.mcp.server --repo .` ([more](#try-the-tools-from-claude-code)) |
+| **CLI** | Check the working tree, analyze a PR, map an advisory, report `main`'s posture, rank an outage | `python -m theseus check`, `analyze`, `finding`, `posture`, `incident` |
+| **The graph** | One FalkorDB graph per commit, a `GRAPH.COPY` per candidate fix, Cypher for the paths, labels from Cartography's ontology | [Graph model](#graph-model), [Cypher](#cypher-and-graph-algorithms) |
+
+### How it decides
+
+Two models share one graph, and neither decides facts. **Jev**, the System One model, gives fast typed answers
+with a probability: is this data sensitive, is this text steering the review, how likely is a fix to break
+something. Its labels land on the graph's nodes. **The LLM**, the System Two model, reads what the PR says it
+needs and designs fixes by calling the engine's graph tools. **The engine** decides what is reachable on
+FalkorDB, tests every fix on a graph copy, and returns UNKNOWN where it can't model. **A person** approves every
+write.
 
 ![Theseus flags where what the PR says, what Terraform allows and what the code does disagree](docs/images/three-sources.png)
 
@@ -256,9 +280,60 @@ To serve another fixture, change the last argument in `.mcp.json`. With `fixture
 secrets the compromised preview workflow can reach: `secrets_reachable` answers `secret:prod-db-credentials`,
 the fixture's rotate list.
 
+## Before the PR: the Claude Code plugin
+
+The plugin in [`plugins/theseus`](plugins/theseus) brings the same review to a developer's terminal, before a
+commit or a pull request exists. Install it from this repository's marketplace:
+
+```text
+/plugin install theseus --marketplace AjinkyaTaranekar/theseus
+```
+
+Its server needs `THESEUS_PYTHON` set as above (a plugin's config takes no default), FalkorDB from
+[Setup](#setup), and Terraform on the PATH. Plans need no cloud account.
+
+| Part | What it does |
+| --- | --- |
+| `check_change` (MCP) | Plans the working tree and `main`, loads both into FalkorDB, and returns the verdict, each opened path hop by hop with its file and line, where the change lands, and the fix tested on a graph copy. The ten graph tools then answer about this change. |
+| `/theseus:check [what it's for]` | Runs the check now. |
+| `/theseus:investigate <question>` | Asks the graph, for example "what if casey-contractor is compromised?" |
+| `/theseus:help` | What the plugin does and how to set it up. |
+| The `theseus` skill | Tells Claude when to check and how to report: facts only from the tools, every hop cited, UNKNOWN kept. |
+| The hook | Before `git commit`, `git push` or `gh pr create`, runs the check. A change that opens a path to sensitive data is stopped once, with the reason and the fix; running it again asks. Other commands pass at once. |
+
+The same check runs without Claude Code; it exits 2 when the change would be blocked:
+
+```bash
+python -m theseus check --intent "Logs for Priya"
+```
+
+On the intern change (Priya added to `support-engineers`, not yet committed), it prints:
+
+```text
+Theseus check: BLOCKED. priya-intern can reach customer-db.
+The change adds aws_iam_user_group_membership.priya_support.
+It opens 3 dangerous paths and closes 0.
+Impact: Lands on support-engineers, which 2 people and services reach; priya-intern gains access to 4
+resources; 3 dependencies run through it, all kept.
+
+How:
+  1. priya-intern is in support-engineers (terraform/people.tf:83, new) → can become prod-support
+     (terraform/people.tf:56) → can read prod-db-credentials (terraform/roles.tf:36) → opens customer-db
+     (terraform/data.tf:31). customer-db holds personal, payment or health data.
+  …
+Fix A: Revert the added access. Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
+  remove_membership(group=support-engineers, user=priya-intern)
+Built in FalkorDB: 86 nodes, 189 edges; 6.3 s.
+```
+
+The first check downloads the AWS provider once, several hundred megabytes kept in `.theseus/`, which took
+about two minutes here. Later checks took about 15 seconds, and a side that has not changed is not planned
+again.
+
 ## Live deployment
 
-<https://guest-box.tail27b7c5.ts.net> serves the Try-it page at `/` and the health check at
+<https://guest-box.tail27b7c5.ts.net> serves the front page at `/` (every surface, the live dashboard and the
+Try-it presets) and the health check at
 [`/health`](https://guest-box.tail27b7c5.ts.net/health). It is a container on an Oracle ARM host, published
 through Tailscale Funnel, with FalkorDB on FalkorDB Cloud, and it also receives the GitHub App's webhooks for the
 demo PRs. How it is set up and deployed: [deploy/README.md](deploy/README.md).
