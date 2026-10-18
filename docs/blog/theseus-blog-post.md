@@ -21,7 +21,7 @@ and it uses only two heading levels, which match Medium's large and small headin
      shot-comment.jpg   the comment on a real pull request
      shot-incident.jpg  the dashboard's Incidents page: an outage's blast radius
 4. Check each code block after pasting. Medium keeps code blocks but drops the language name.
-5. Fill the one placeholder, [[VIDEO LINK]], near the end.
+5. The video link is filled in, in the TL;DR and under "Available today".
 6. The live dashboard link carries a signed key, so the post points to the README for it.
 7. Tags (Medium allows five): Graph Database, Site Reliability Engineering, Cloud Security, AI Agents, Terraform.
 -->
@@ -41,7 +41,7 @@ and it uses only two heading levels, which match Medium's large and small headin
 - It proves the smallest fix on a copy of the graph before anyone is asked to approve it, and its GitHub App commits the fix once a person does.
 - Jev, a System One model, labels data and can veto; GLM 5.3, a System Two model, reads intent and designs fixes; a deterministic engine decides every fact.
 - The same graph gives the blast radius of a compromised Action or an outage in under a second, and a Claude Code plugin and an MCP server bring the check to the terminal before a pull request exists.
-- It is open source, built for FalkorDB Graph Hacks. [Try it live](https://guest-box.tail27b7c5.ts.net), or watch the three-minute demo: [[VIDEO LINK]].
+- It is open source, built for FalkorDB Graph Hacks. [Try it live](https://guest-box.tail27b7c5.ts.net), or [watch the three-minute demo](https://www.youtube.com/watch?v=oKLoHeoLxqk).
 
 ## Why we built it
 
@@ -328,4 +328,4 @@ And to see it working now:
 - **The source**, with steps to run it locally and deploy it, and the live dashboard linked from the README: [github.com/AjinkyaTaranekar/theseus](https://github.com/AjinkyaTaranekar/theseus)
 - **A real review**, from the first comment to `/theseus apply`: [pull request #125](https://github.com/AjinkyaTaranekar/theseus/pull/125)
 - **A real containment**, for a compromised Action: [pull request #111](https://github.com/AjinkyaTaranekar/theseus/pull/111) and [issue #112](https://github.com/AjinkyaTaranekar/theseus/issues/112)
-- **The demo video:** [[VIDEO LINK]]
+- **The demo video:** [youtube.com/watch?v=oKLoHeoLxqk](https://www.youtube.com/watch?v=oKLoHeoLxqk)
