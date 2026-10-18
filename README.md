@@ -256,6 +256,56 @@ To serve another fixture, change the last argument in `.mcp.json`. With `fixture
 secrets the compromised preview workflow can reach: `secrets_reachable` answers `secret:prod-db-credentials`,
 the fixture's rotate list.
 
+## Before the PR: the Claude Code plugin
+
+The plugin in [`plugins/theseus`](plugins/theseus) brings the same review to a developer's terminal, before a
+commit or a pull request exists. Install it from this repository's marketplace:
+
+```text
+/plugin install theseus --marketplace AjinkyaTaranekar/theseus
+```
+
+Its server needs `THESEUS_PYTHON` set as above (a plugin's config takes no default), FalkorDB from
+[Setup](#setup), and Terraform on the PATH. Plans need no cloud account.
+
+| Part | What it does |
+| --- | --- |
+| `check_change` (MCP) | Plans the working tree and `main`, loads both into FalkorDB, and returns the verdict, each opened path hop by hop with its file and line, where the change lands, and the fix tested on a graph copy. The ten graph tools then answer about this change. |
+| `/theseus:check [what it's for]` | Runs the check now. |
+| `/theseus:investigate <question>` | Asks the graph, for example "what if casey-contractor is compromised?" |
+| `/theseus:help` | What the plugin does and how to set it up. |
+| The `theseus` skill | Tells Claude when to check and how to report: facts only from the tools, every hop cited, UNKNOWN kept. |
+| The hook | Before `git commit`, `git push` or `gh pr create`, runs the check. A change that opens a path to sensitive data is stopped once, with the reason and the fix; running it again asks. Other commands pass at once. |
+
+The same check runs without Claude Code; it exits 2 when the change would be blocked:
+
+```bash
+python -m theseus check --intent "Logs for Priya"
+```
+
+On the intern change (Priya added to `support-engineers`, not yet committed), it prints:
+
+```text
+Theseus check: BLOCKED. priya-intern can reach customer-db.
+The change adds aws_iam_user_group_membership.priya_support.
+It opens 3 dangerous paths and closes 0.
+Impact: Lands on support-engineers, which 2 people and services reach; priya-intern gains access to 4
+resources; 3 dependencies run through it, all kept.
+
+How:
+  1. priya-intern is in support-engineers (terraform/people.tf:83, new) → can become prod-support
+     (terraform/people.tf:56) → can read prod-db-credentials (terraform/roles.tf:36) → opens customer-db
+     (terraform/data.tf:31). customer-db holds personal, payment or health data.
+  …
+Fix A: Revert the added access. Tested on a copy of the graph: closes all 3 ways in, breaks nothing.
+  remove_membership(group=support-engineers, user=priya-intern)
+Built in FalkorDB: 86 nodes, 189 edges; 6.3 s.
+```
+
+The first check downloads the AWS provider once, several hundred megabytes kept in `.theseus/`, which took
+about two minutes here. Later checks took about 15 seconds, and a side that has not changed is not planned
+again.
+
 ## Live deployment
 
 <https://guest-box.tail27b7c5.ts.net> serves the Try-it page at `/` and the health check at

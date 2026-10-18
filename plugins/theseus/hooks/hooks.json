@@ -1,0 +1,17 @@
+{
+  "description": "Before a command that commits, pushes or opens a PR, check what the change grants.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"${THESEUS_PYTHON:-python}\" \"${CLAUDE_PLUGIN_ROOT}/hooks/before_ship.py\"",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
